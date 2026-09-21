@@ -1,7 +1,7 @@
 # [Feature Name] — Design Plan
 
 **Version:** vX.Y.Z (or `continuous` for unversioned projects)
-**Status:** Draft
+**Status:** Draft | In Progress | Completed (YYYY-MM-DD)
 
 ---
 

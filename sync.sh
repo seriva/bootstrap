@@ -3,19 +3,38 @@ set -euo pipefail
 
 # ==============================================================================
 # Bootstrap Agentic Workflow Sync Script
-# Propagates canonical Part 1 from bootstrap/AGENTS.md and standard tool bridge
-# files to sibling repositories.
+# Propagates canonical Part 1 from bootstrap/AGENTS.md, standard tool bridge
+# files, and docs/feature-plan-template.md to sibling repositories.
 # ==============================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEV_DIR="$(dirname "$SCRIPT_DIR")"
 BOOTSTRAP_AGENTS="$SCRIPT_DIR/AGENTS.md"
 
+CHECK=false
 DRY_RUN=false
 TARGETS=()
 
 for arg in "$@"; do
-  if [[ "$arg" == "--dry-run" || "$arg" == "-n" ]]; then
+  if [[ "$arg" == "--help" || "$arg" == "-h" ]]; then
+    echo "Usage: $0 [options] [target_dir ...]"
+    echo ""
+    echo "Synchronizes Part 1 of AGENTS.md, bridge files, and docs/feature-plan-template.md"
+    echo "from the bootstrap repository to sibling repositories."
+    echo ""
+    echo "Options:"
+    echo "  -c, --check    Check targets for drift; exit 1 if drift detected, 0 if clean"
+    echo "  -n, --dry-run  Preview changes without modifying files"
+    echo "  -h, --help     Show this help message and exit"
+    echo ""
+    echo "Arguments:"
+    echo "  target_dir     Specific target repo directory or path to its AGENTS.md"
+    echo "                 (defaults to all sibling directories containing AGENTS.md)"
+    exit 0
+  elif [[ "$arg" == "--check" || "$arg" == "-c" ]]; then
+    CHECK=true
+    DRY_RUN=true
+  elif [[ "$arg" == "--dry-run" || "$arg" == "-n" ]]; then
     DRY_RUN=true
   elif [[ -d "$arg" ]]; then
     TARGETS+=("$(cd "$arg" && pwd)")
@@ -23,7 +42,7 @@ for arg in "$@"; do
     TARGETS+=("$(cd "$(dirname "$arg")" && pwd)")
   else
     echo "Unknown argument: $arg"
-    echo "Usage: $0 [--dry-run] [target_dir ...]"
+    echo "Usage: $0 [--check|-c] [--dry-run|-n] [--help|-h] [target_dir ...]"
     exit 1
   fi
 done
@@ -45,7 +64,9 @@ fi
 
 echo "=== Bootstrap Workflow Sync ==="
 echo "Source: $BOOTSTRAP_AGENTS"
-if [[ "$DRY_RUN" == true ]]; then
+if [[ "$CHECK" == true ]]; then
+  echo "Mode:   CHECK (fails with exit code 1 if drift detected)"
+elif [[ "$DRY_RUN" == true ]]; then
   echo "Mode:   DRY RUN (no changes written)"
 fi
 echo "Targets: ${#TARGETS[@]} repositories"
@@ -57,7 +78,9 @@ import re
 import sys
 
 canonical_path = "$BOOTSTRAP_AGENTS"
+check_mode = ("$CHECK" == "true")
 dry_run = ("$DRY_RUN" == "true")
+has_drift = False
 targets = [$(printf '"%s", ' "${TARGETS[@]}")]
 
 with open(canonical_path, "r", encoding="utf-8") as f:
@@ -103,6 +126,7 @@ for target_dir in targets:
         if existing_part1 == canonical_part1:
             print("  - AGENTS.md Part 1: up to date")
         else:
+            has_drift = True
             if dry_run:
                 print("  - AGENTS.md Part 1: [WOULD UPDATE]")
             else:
@@ -129,6 +153,7 @@ for target_dir in targets:
         if already_valid:
             print(f"  - {rel_path}: up to date")
         else:
+            has_drift = True
             if dry_run:
                 print(f"  - {rel_path}: [WOULD CREATE/UPDATE]")
             else:
@@ -137,6 +162,38 @@ for target_dir in targets:
                 with open(bridge_file, "w", encoding="utf-8") as f:
                     f.write(content)
                 print(f"  - {rel_path}: CREATED/UPDATED")
+
+    # Feature plan template (sync if target has docs/ dir)
+    template_rel_path = os.path.join("docs", "feature-plan-template.md")
+    template_src_path = os.path.join("$SCRIPT_DIR", template_rel_path)
+    target_docs_dir = os.path.join(target_dir, "docs")
+    if os.path.isfile(template_src_path) and os.path.isdir(target_docs_dir):
+        with open(template_src_path, "r", encoding="utf-8") as f:
+            template_content = f.read()
+
+        template_target_file = os.path.join(target_dir, template_rel_path)
+        already_valid = False
+        if os.path.isfile(template_target_file):
+            with open(template_target_file, "r", encoding="utf-8") as f:
+                if f.read() == template_content:
+                    already_valid = True
+
+        if already_valid:
+            print(f"  - {template_rel_path}: up to date")
+        else:
+            has_drift = True
+            if dry_run:
+                print(f"  - {template_rel_path}: [WOULD CREATE/UPDATE]")
+            else:
+                with open(template_target_file, "w", encoding="utf-8") as f:
+                    f.write(template_content)
+                print(f"  - {template_rel_path}: CREATED/UPDATED")
+
+if check_mode and has_drift:
+    print("\n[FAIL] Workflow drift detected across repositories.")
+    sys.exit(1)
+elif check_mode:
+    print("\n[PASS] All repositories are in sync.")
 
 EOF
 
