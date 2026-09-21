@@ -28,7 +28,7 @@ Generic project scaffold for agentic development.
 ## Setup
 
 1. Copy this directory into your project root.
-2. Fill in all `[PLACEHOLDER]` sections in `AGENTS.md` and `ci.yml`. In `lefthook.yml`, replace `"true"` no-ops with your actual format/lint/test commands.
+2. Fill in all `[PLACEHOLDER]` sections in `AGENTS.md` and `ci.yml`. In `ci.yml` and `lefthook.yml`, replace the echo / `"true"` no-ops with your actual format/lint/test commands.
 3. Add bridge files for any other tools you use — keep them to one line pointing at `AGENTS.md`.
 4. Install lefthook: `brew install lefthook` or `npm install --save-dev lefthook`, then `lefthook install`.
 5. Run `./sync.sh` from the bootstrap directory anytime Part 1 rules are updated to propagate changes across sibling projects.

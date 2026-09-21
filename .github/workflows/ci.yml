@@ -41,7 +41,7 @@ jobs:
         #   run: npm install
         #   run: pip install -r requirements.txt
         #   run: go mod download
-        run: "[INSTALL_COMMAND]"
+        run: echo "No install step configured"
 
       - name: Lint
         # Examples:
@@ -49,7 +49,7 @@ jobs:
         #   run: ruff check .
         #   run: golangci-lint run
         #   run: cargo clippy
-        run: "[LINT_COMMAND]"
+        run: echo "No lint step configured"
 
       - name: Test
         # Examples:
@@ -57,7 +57,7 @@ jobs:
         #   run: pytest
         #   run: go test ./...
         #   run: cargo test
-        run: "[TEST_COMMAND]"
+        run: echo "No test step configured"
 
   # Uncomment for GitHub Pages deployment:
   # deploy:
