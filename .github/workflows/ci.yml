@@ -1,0 +1,100 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  # Uncomment as needed:
+  # release:
+  #   types: [published]
+  # workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      # Replace this block with your runtime setup, e.g.:
+      #
+      # - name: Setup runtime
+      #   uses: actions/setup-node@v5
+      #   with:
+      #     node-version: "25.x"
+      #     cache: "npm"
+      #
+      # - name: Setup runtime
+      #   uses: actions/setup-python@v5
+      #   with:
+      #     python-version: "3.12"
+      #
+      # - name: Setup runtime
+      #   uses: actions/setup-go@v5
+      #   with:
+      #     go-version: "1.22"
+
+      - name: Install dependencies
+        # Examples:
+        #   run: npm install
+        #   run: pip install -r requirements.txt
+        #   run: go mod download
+        run: "[INSTALL_COMMAND]"
+
+      - name: Lint
+        # Examples:
+        #   run: npm run check
+        #   run: ruff check .
+        #   run: golangci-lint run
+        #   run: cargo clippy
+        run: "[LINT_COMMAND]"
+
+      - name: Test
+        # Examples:
+        #   run: npm test
+        #   run: pytest
+        #   run: go test ./...
+        #   run: cargo test
+        run: "[TEST_COMMAND]"
+
+  # Uncomment for GitHub Pages deployment:
+  # deploy:
+  #   needs: test
+  #   if: github.event_name == 'push'
+  #   runs-on: ubuntu-latest
+  #   permissions:
+  #     pages: write
+  #     id-token: write
+  #   environment:
+  #     name: github-pages
+  #     url: ${{ steps.deployment.outputs.page_url }}
+  #   steps:
+  #     - uses: actions/checkout@v5
+  #     - name: Build
+  #       run: "[BUILD_COMMAND]"
+  #     - uses: actions/upload-pages-artifact@v4
+  #       with:
+  #         path: "./public"
+  #     - uses: actions/deploy-pages@v4
+  #       id: deployment
+
+  # Uncomment for npm publish on release:
+  # publish:
+  #   needs: test
+  #   if: github.event_name == 'release'
+  #   runs-on: ubuntu-latest
+  #   permissions:
+  #     contents: read
+  #     id-token: write
+  #   steps:
+  #     - uses: actions/checkout@v5
+  #     - name: Setup Node.js
+  #       uses: actions/setup-node@v5
+  #       with:
+  #         node-version: "25.x"
+  #         cache: "npm"
+  #     - run: npm install
+  #     - run: npm config delete //registry.npmjs.org/:_authToken --location project
+  #     - run: npm publish --provenance --access public

@@ -1,0 +1,33 @@
+pre-commit:
+  commands:
+    format:
+      priority: 1
+      # Replace "true" with your formatter, then remove the "true" line.
+      # Examples:
+      #   run: npm run format
+      #   run: ruff format .
+      #   run: gofmt -w .
+      #   run: cargo fmt
+      run: "true"
+      # Re-stage only the already-staged files after formatting (unlike `git add -u`, leaves unstaged hunks alone)
+      stage_fixed: true
+
+    lint:
+      priority: 2
+      # Replace "true" with your linter, then remove the "true" line.
+      # Examples:
+      #   run: npm run check
+      #   run: ruff check .
+      #   run: golangci-lint run
+      #   run: cargo clippy
+      run: "true"
+
+    test:
+      priority: 3
+      # Replace "true" with your test runner — remove this command entirely if suite is too slow for commit-time.
+      # Examples:
+      #   run: npm test
+      #   run: pytest
+      #   run: go test ./...
+      #   run: cargo test
+      run: "true"
