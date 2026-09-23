@@ -16,7 +16,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       # Replace this block with your runtime setup, e.g.:
       #
@@ -71,7 +71,7 @@ jobs:
   #     name: github-pages
   #     url: ${{ steps.deployment.outputs.page_url }}
   #   steps:
-  #     - uses: actions/checkout@v5
+  #     - uses: actions/checkout@v7
   #     - name: Build
   #       run: "[BUILD_COMMAND]"
   #     - uses: actions/upload-pages-artifact@v4
@@ -89,7 +89,7 @@ jobs:
   #     contents: read
   #     id-token: write
   #   steps:
-  #     - uses: actions/checkout@v5
+  #     - uses: actions/checkout@v7
   #     - name: Setup Node.js
   #       uses: actions/setup-node@v5
   #       with:
