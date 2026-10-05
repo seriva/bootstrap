@@ -8,11 +8,14 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 ## [Unreleased]
 
 ### Added
+- Implementation Tasks checklist section in `docs/feature-plan-template.md` to track execution progress with `- [ ]` / `- [x]`.
 - Default `.github/dependabot.yml` configuration for automated monthly dependency and GitHub Actions updates.
 - Continuous application roadmap layout (`## Upcoming` / `## Completed`) in `docs/roadmap.md`.
 - Comprehensive `--help` / `-h` CLI flag and usage documentation in `sync.sh`.
 
 ### Changed
+- Update `AGENTS.md` Part 1 `Plan-first` rule to require checking off completed tasks (`- [x]`) during execution.
+- Clarify `AGENTS.md` and `README.md` artifact rules to distinguish tool-specific ephemeral session state from official committed feature plan checklists.
 - Clarify plan archiving for unversioned projects: move completed plans to `docs/plans/archive/` (marking status Completed with date and updating roadmap links).
 - Align agent `Quality` and `Verify` rule wording to `before commit/PR` and `before concluding/commit/PR` to support direct trunk commits.
 - Propagate `docs/feature-plan-template.md` in `sync.sh` to sibling repositories with a `docs/` folder.
