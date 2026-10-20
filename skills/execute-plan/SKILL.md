@@ -140,7 +140,7 @@ Execute the active phase (e.g. `Phase N: <Phase Name>`):
      Execution of **$PHASE_NAME** from plan \`$PLAN_FILE\`.
 
      ### Completed Tasks
-     $(grep -E "^- \[x\] Task $PHASE_NUM\." "$PLAN_FILE" || echo "- Completed phase tasks")
+     $(grep -E "^- \[x\] (\*\*)?Task $PHASE_NUM" "$PLAN_FILE" | sed 's/^- \[x\] \*\*/- /' | sed 's/\*\*//' || echo "- Completed phase tasks")
 
      ## Quality Gates
      - [x] All task unit/integration tests passing
