@@ -8,6 +8,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 ## [Unreleased]
 
 ### Added
+- Universal autonomous `/dev-loop` workflow in `skills/dev-loop/SKILL.md` and multi-vendor conditional installer in `install.sh` (supporting Antigravity, Claude Code, Codex, Cursor, and Copilot).
 - Implementation Tasks checklist section in `docs/feature-plan-template.md` to track execution progress with `- [ ]` / `- [x]`.
 - Default `.github/dependabot.yml` configuration for automated monthly dependency and GitHub Actions updates.
 - Continuous application roadmap layout (`## Upcoming` / `## Completed`) in `docs/roadmap.md`.
