@@ -29,7 +29,13 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - Add `--check` mode to `sync.sh` that exits with code 1 if workflow drift is detected.
 - Document the Unversioned / Continuous Applications setup checklist in `README.md`.
 
+### Removed
+- Remove redundant unpopulated root `AGENTS.md` leftover, establishing `scaffold/AGENTS.md` as the sole canonical source.
+
 ### Fixed
+- Fix branch fallback typo in `/dev-loop` when working branch already exists (`checkout` instead of duplicate `checkout -b`).
+- Harden phase task extraction regex in `/execute-plan` to stop at `^###? (Phase|##)` so the final phase does not swallow subsequent document sections.
+- Ensure untracked files are captured via `git add -A` before committing in `/dev-loop` defect fixes and `/execute-plan` plan completion.
 - Enforce strict Deterministic 2-Pass Review Protocol in `/dev-loop` and `/execute-plan` to eliminate infinite review/fix loops (hard cap: Pass 1 review -> at most 1 fixer turn -> Pass 2 final verification -> terminal stop).
 - Explicitly classify non-blocking `Low` severity cosmetic/nit findings so they never block approval or trigger fixer subagents.
 - Deduplicate Phase 5 Full-Branch AI Audit instructions in `skills/execute-plan/SKILL.md`.

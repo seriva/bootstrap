@@ -140,7 +140,7 @@ Execute the active phase (e.g. `Phase N: <Phase Name>`):
      Execution of **$PHASE_NAME** from plan \`$PLAN_FILE\`.
 
      ### Completed Tasks
-     $(sed -n "/^### Phase $PHASE_NUM:/,/^### Phase/p" "$PLAN_FILE" | grep -E "^- \[x\]" | sed 's/^- \[x\] \*\*/- /' | sed 's/\*\*//' || echo "- Completed phase tasks")
+     $(sed -E -n "/^### Phase $PHASE_NUM[: ]/,/^(### Phase|## )/p" "$PLAN_FILE" | grep -E "^- \[x\]" | sed 's/^- \[x\] \*\*/- /' | sed 's/\*\*//' || echo "- Completed phase tasks")
 
      ## Quality Gates
      - [x] All task unit/integration tests passing
@@ -162,14 +162,14 @@ Execute the active phase (e.g. `Phase N: <Phase Name>`):
 
 2. **Fresh-Context Code Review (Deterministic 2-Pass Protocol)**:
    - **Pass 1 (Initial Review)**:
-     - Spawn an isolated subagent with role **"Code Reviewer"** (Workspace: `inherit`, Model: `inherit`, zero prior context).
+     - Spawn an isolated subagent with role **"Code Reviewer"** (TypeName: `self`, Workspace: `inherit`, Model: `inherit`, zero prior context).
      - Reviewer checks `git diff <PLAN_BRANCH>...HEAD`, runs verification probes, and groups findings under `### High`, `### Medium`, or `### Low`.
      - Low-severity nits/cosmetics are non-blocking and MUST NOT trigger fixes.
      - If clean or zero High/Medium defects: reviewer replies `"Looks Good"` / `"LGTM"` $\rightarrow$ Set `REVIEW_STATUS=PASSED` and proceed to step 3.
    - **Single-Turn Defect Fix** (Runs at most once):
-     - If High or Medium defects exist, spawn **"Defect Fixer"** subagent to fix High/Medium defects, re-run `lefthook run pre-commit`, commit, and push.
+     - If High or Medium defects exist, spawn **"Defect Fixer"** subagent (TypeName: `self`, Workspace: `inherit`, Model: `inherit`) to fix High/Medium defects, re-run `lefthook run pre-commit`, commit, and push.
    - **Pass 2 (Final Verification Review & Hard Stop)**:
-     - Spawn Code Reviewer subagent to verify fixes against `<PLAN_BRANCH>`.
+     - Spawn Code Reviewer subagent (TypeName: `self`, Workspace: `inherit`, Model: `inherit`, zero implementation history) to verify fixes against `<PLAN_BRANCH>`.
      - If clean or zero High/Medium defects: `REVIEW_STATUS=PASSED`.
      - If High or Medium defects persist: `REVIEW_STATUS=BLOCKED_BY_DEFECTS`.
      - **HARD INVARIANT**: Review permanently terminates after Pass 2. Do NOT run a 3rd review or spawn a 2nd fixer.
@@ -177,7 +177,7 @@ Execute the active phase (e.g. `Phase N: <Phase Name>`):
 3. **Phase PR Safety Gate**:
    - **If `REVIEW_STATUS == PASSED`**:
      - `gh pr ready`
-     - Report phase PR is ready for human review.
+     - Report phase PR is ready for human review. Note: once merged into `<PLAN_BRANCH>`, run `/execute-plan` again to proceed to the next phase.
    - **If `REVIEW_STATUS == BLOCKED_BY_DEFECTS`**:
      - Leave PR in Draft mode. Alert the user with unresolved findings.
    - Switch back to `PLAN_BRANCH`:
@@ -204,7 +204,7 @@ When all phases in the plan are completed (`- [x]`):
      ```
 
 2. **Comprehensive Full-Branch AI Audit against the Design Plan**:
-   - Spawn an isolated subagent with role **"Plan Auditor"** (Workspace: `inherit`, Model: `inherit`).
+   - Spawn an isolated subagent with role **"Plan Auditor"** (TypeName: `self`, Workspace: `inherit`, Model: `inherit`).
    - Provide the subagent with the entire `$PLAN_FILE` and this audit prompt:
      ```text
      You are a principal system architect conducting the final comprehensive audit of the completed feature branch before it is merged back into <BASE_BRANCH>.
@@ -237,7 +237,8 @@ When all phases in the plan are completed (`- [x]`):
      - In `$TARGET_REPO/docs/roadmap.md`, move the plan entry to `## Completed` and update its link (e.g. `[<Feature Name>](plans/archive/<plan-slug>-plan.md)`).
      - Commit the completion status and archived plan:
        ```bash
-       git -C "$TARGET_REPO" commit -am "docs(<plan-slug>): mark plan completed, archive plan, and update roadmap"
+       git -C "$TARGET_REPO" add -A
+       git -C "$TARGET_REPO" commit -m "docs(<plan-slug>): mark plan completed, archive plan, and update roadmap"
        git -C "$TARGET_REPO" push
        ```
      - Open the final PR from `PLAN_BRANCH` into `BASE_BRANCH`:

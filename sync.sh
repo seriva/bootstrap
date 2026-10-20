@@ -3,7 +3,7 @@ set -euo pipefail
 
 # ==============================================================================
 # Bootstrap Agentic Workflow Sync Script
-# Propagates canonical Part 1 from bootstrap/AGENTS.md, standard tool bridge
+# Propagates canonical Part 1 from scaffold/AGENTS.md, standard tool bridge
 # files, and docs/feature-plan-template.md to sibling repositories.
 # ==============================================================================
 

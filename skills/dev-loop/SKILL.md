@@ -68,7 +68,7 @@ When this skill is invoked with a task description `$TASK`:
      - Otherwise (e.g. on `1.7.0`, `main`, `master`, or version branch), create and checkout a new branch off `BASE_BRANCH`:
        ```bash
        WORKING_BRANCH="feat/<task-slug>" # or fix/<task-slug> for bug fixes
-       git -C "$TARGET_REPO" checkout -b "$WORKING_BRANCH" "$BASE_BRANCH" 2>/dev/null || git -C "$TARGET_REPO" checkout -b "$WORKING_BRANCH"
+       git -C "$TARGET_REPO" checkout -b "$WORKING_BRANCH" "$BASE_BRANCH" 2>/dev/null || git -C "$TARGET_REPO" checkout "$WORKING_BRANCH"
        ```
 
 2. **Implementation & TDD**:
@@ -137,7 +137,7 @@ When this skill is invoked with a task description `$TASK`:
 > - **Low-severity findings** (style, cosmetic nits, documentation typos, non-critical suggestions) are non-blocking and MUST NEVER trigger a fixer or prevent approval.
 
 #### Pass 1: Initial Isolated Review
-1. Spawn a subagent with role **"Code Reviewer"** (Workspace: `inherit`, Model: `inherit`).
+1. Spawn a subagent with role **"Code Reviewer"** (TypeName: `self`, Workspace: `inherit`, Model: `inherit`).
    **Do NOT pass implementation conversation history** to guarantee fresh, unbiased review.
 
    Reviewer Prompt:
@@ -175,7 +175,7 @@ When this skill is invoked with a task description `$TASK`:
      - Proceed to **Single-Turn Defect Fix**.
 
 #### Single-Turn Defect Fix (Runs at most ONCE)
-Spawn a subagent with role **"Defect Fixer"** (Workspace: `inherit`, Model: `inherit`) with prompt:
+Spawn a subagent with role **"Defect Fixer"** (TypeName: `self`, Workspace: `inherit`, Model: `inherit`) with prompt:
 ```text
 Address the following review findings in target repository <TARGET_REPO>.
 Fix ONLY High and Medium severity items. Ignore Low-severity nits and cosmetic suggestions:
@@ -186,13 +186,14 @@ Instructions:
 2. Re-run local verification (`lefthook run pre-commit` or test/lint commands from AGENTS.md).
 3. Verify all tests pass green.
 4. Commit and push:
-   git -C <TARGET_REPO> commit -am "fix(<scope>): address review feedback"
+   git -C <TARGET_REPO> add -A
+   git -C <TARGET_REPO> commit -m "fix(<scope>): address review feedback"
    git -C <TARGET_REPO> push
 ```
 When the Defect Fixer finishes, proceed directly to **Pass 2: Final Verification Review**.
 
 #### Pass 2: Final Verification Review (Terminal Pass)
-1. Spawn a subagent with role **"Code Reviewer"** (Workspace: `inherit`, Model: `inherit`, zero implementation history) with prompt:
+1. Spawn a subagent with role **"Code Reviewer"** (TypeName: `self`, Workspace: `inherit`, Model: `inherit`, zero implementation history) with prompt:
    ```text
    You are an expert core code reviewer conducting the FINAL verification pass on applied defect fixes.
 
