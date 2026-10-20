@@ -72,10 +72,15 @@ When this skill is invoked with a task description `$TASK`:
        ```
 
 2. **Implementation & TDD**:
-   - Write failing unit/integration tests first for non-trivial logic (TDD).
-   - Implement the feature/fix strictly within the scope of `$TASK`, respecting module boundaries in `AGENTS.md`.
-   - Update `$TARGET_REPO/CHANGELOG.md` under `## [Unreleased]`.
-   - If public APIs, configuration, or CLI arguments changed, update `$TARGET_REPO/README.md`.
+   - **Root-Cause Probe Subagent (Optional for Ambiguous Bugs)**:
+     If `$TASK` involves an elusive bug, race condition, or unexplained failure, spawn an isolated subagent with role **"Probe Investigator"** (TypeName: `self`, Workspace: `inherit`, Model: `inherit`):
+     - Prompt: Write a minimal reproducing test probe or inspect compilation/AST outputs in `<TARGET_REPO>`, isolate the root cause, and return the exact file, line, and failing assertion.
+     - Keeps the main implementation conversation clean and focused.
+   - **TDD Implementation**:
+     - Write failing unit/integration tests first for non-trivial logic (TDD).
+     - Implement the feature/fix strictly within the scope of `$TASK`, respecting module boundaries in `AGENTS.md`.
+     - Update `$TARGET_REPO/CHANGELOG.md` under `## [Unreleased]`.
+     - If public APIs, configuration, or CLI arguments changed, update `$TARGET_REPO/README.md`.
 
 3. **Quality Gates & Self-Review**:
    - Run verification in `$TARGET_REPO`:

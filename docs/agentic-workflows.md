@@ -32,14 +32,14 @@ flowchart TD
     end
 
     subgraph Tier3 ["Tier 3: Delivery Engine"]
-        DL["/dev-loop &lt;task&gt;"]
+        DL["/dev-loop &lt;task&gt; / Phase Implementer"]
         TDD["Implementation with TDD"]
         Gate["Quality Gate (lefthook pre-commit)"]
         Review["Fresh-Context AI Review\n(Probes diff for High/Med/Low defects)"]
         Fix["Defect Fixer Subagent\n(Max 2 rounds)"]
         PR["Ready PR (gh pr ready)"]
 
-        PhaseLoop -.->|"invokes for each task/phase"| DL
+        PhaseLoop -.->|"spawns Phase Implementer"| DL
         DL --> TDD --> Gate --> Review
         Review -- Defects found --> Fix --> Gate
         Review -- Looks Good --> PR
@@ -99,13 +99,14 @@ flowchart TD
 2. **Epic Branch Isolation:**
    - Branches `feat/<plan-slug>` off `main` (or a release branch like `1.7.0`).
    - `main` remains untouched and releasable while the feature develops.
-3. **Phase Execution (One PR per Phase):**
+3. **Phase Execution (One PR per Phase with Context Shielding):**
    - Creates a dedicated phase branch off the epic branch: `feat/<plan-slug>-phase-<N>`.
-   - Autonomously iterates through all unchecked tasks in that phase without halting or yielding mid-phase:
+   - Spawns an isolated **Phase Implementer** subagent to iterate through all unchecked tasks in the phase:
      - Implements with TDD.
      - Runs `lefthook run pre-commit`.
      - Checks off `- [x] Task N.M` in the plan doc.
-     - Commits task changes with Conventional Commits.
+     - Commits task changes atomically with Conventional Commits.
+     - Shields the orchestrator's context from token exhaustion across multi-task phases.
    - Opens a **draft PR** targeted at the epic branch (`feat/<plan-slug>`).
    - Runs the Deterministic 2-Pass AI Code Review (Pass 1 review, optional single-turn defect fix, Pass 2 final verification; hard stop with max 2 reviews, max 1 fix).
    - Once clean, marks the phase PR ready (`gh pr ready`).
@@ -136,6 +137,7 @@ flowchart TD
    - Dynamically identifies the currently checked out branch as `BASE_BRANCH` (supports version branches like `1.7.0` as well as `main`).
    - Creates a clean feature branch: `feat/<task-slug>`.
 2. **Implementation & Quality Gates:**
+   - Optional **Probe Investigator** subagent to isolate elusive bug causes or test minimal repros in isolation.
    - Writes failing tests first for non-trivial logic (TDD).
    - Enforces project conventions from `AGENTS.md`.
    - Runs `lefthook run pre-commit` (or project linters and test suites).

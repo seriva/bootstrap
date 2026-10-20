@@ -98,31 +98,44 @@ Execute the active phase (e.g. `Phase N: <Phase Name>`):
      git -C "$TARGET_REPO" checkout -b "$PHASE_BRANCH" "$PLAN_BRANCH" 2>/dev/null || git -C "$TARGET_REPO" checkout "$PHASE_BRANCH"
      ```
 
-2. **Execute Each Unchecked Task in Current Phase**:
-   For each unchecked task `- [ ] Task N.M: <Description>` in this phase:
-   
-   a. **TDD Implementation**:
-      - Write failing unit/integration tests first for non-trivial logic.
-      - Implement code strictly within module boundaries defined in `AGENTS.md`.
-   
-   b. **Quality Gate**:
-      - Run `lefthook run pre-commit` (or test/lint commands from `AGENTS.md`).
-      - If tests fail, fix issues until 100% green. If stuck twice on the same error, stop and ask the user.
-   
-   c. **Update Plan State & Docs**:
-      - In `$PLAN_FILE`, change `- [ ] Task N.M` to `- [x] Task N.M`.
-      - Update plan status header to `**Status:** In Progress` if it was `Draft`.
-      - In `$TARGET_REPO/CHANGELOG.md`, add an entry under `## [Unreleased]`.
-   
-   d. **Commit Task**:
-      - Commit using Conventional Commits:
-        ```bash
-        git -C "$TARGET_REPO" add -A
-        git -C "$TARGET_REPO" commit -m "feat(<scope>): <task summary> (Task N.M)"
-        ```
+2. **Execute Phase Tasks via Phase Implementer Subagent**:
+   To shield the orchestrator's context window from tens of thousands of tokens of compilation logs, intermediate diffs, and test outputs across multiple tasks:
+   - Spawn an isolated subagent with role **"Phase Implementer"** (TypeName: `self`, Workspace: `inherit`, Model: `inherit`).
+   - Prompt:
+     ```text
+     You are the Phase Implementer for Phase <PHASE_NUM> (<PHASE_NAME>) of plan <PLAN_FILE>.
+     Target repository: <TARGET_REPO>
+     Phase branch: <PHASE_BRANCH>
 
-3. **Phase Completion Gate**:
-   - Run the full project test suite to verify no regressions across the entire phase.
+     Your mission is to autonomously execute and commit all unchecked tasks in Phase <PHASE_NUM> following the project standards in <TARGET_REPO>/AGENTS.md.
+
+     Tasks to execute:
+     <EXTRACTED_PHASE_TASKS>
+
+     Execution Protocol:
+     1. Autonomous loop: Iterate through EVERY unchecked task in this phase without halting or yielding mid-phase. Do NOT pause between tasks.
+     2. TDD: Write failing unit/integration tests first for non-trivial logic before writing implementation code.
+     3. Module Boundaries: Strictly adhere to architectural boundaries and invariants in AGENTS.md.
+     4. Quality Gate: Run `lefthook run pre-commit` (or test/lint commands from AGENTS.md) after each task. If tests fail, fix them. If stuck twice on the exact same error, stop and report.
+     5. Plan State & Docs:
+        - In <PLAN_FILE>, update `- [ ] Task N.M` to `- [x] Task N.M`.
+        - Update plan status header to `**Status:** In Progress` if it was `Draft`.
+        - In <TARGET_REPO>/CHANGELOG.md, add an entry under `## [Unreleased]`.
+     6. Atomic Commits: Commit each completed task individually:
+        git -C <TARGET_REPO> add -A
+        git -C <TARGET_REPO> commit -m "feat(<scope>): <task summary> (Task N.M)"
+
+     When all tasks in Phase <PHASE_NUM> are checked off and all project tests pass:
+     Reply with:
+     PHASE_EXECUTION_COMPLETE: <summary of completed tasks and test results>
+     ```
+   *(Fallback: In single-session environments where subagents are unavailable, execute the steps above directly in the current session).*
+
+3. **Phase Completion & Regression Gate**:
+   - Verify the Phase Implementer subagent completed cleanly (`PHASE_EXECUTION_COMPLETE`).
+   - Run the full project test suite in `$TARGET_REPO` to verify zero regressions across the entire phase.
+   - Confirm all tasks in this phase are marked `- [x]` in `$PLAN_FILE`.
+   - Proceed immediately to **Phase 4 (Phase PR & AI Review Loop)**.
 
 ---
 

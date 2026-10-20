@@ -8,6 +8,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 ## [Unreleased]
 
 ### Added
+- Phase Implementer subagent execution in `/execute-plan` providing context shielding for the orchestrator during multi-task phases.
+- Optional Probe Investigator subagent in `/dev-loop` for isolating tricky root causes with minimal reproducing test cases.
 - Isolated project starter kit in `scaffold/` containing pristine, blank templates (`AGENTS.md`, clean `CHANGELOG.md`, `lefthook.yml`, `.github/`, `docs/`) decoupled from bootstrap's internal tooling.
 - Comprehensive architecture guide and workflow diagrams in `docs/agentic-workflows.md` detailing the 3-tier lifecycle (`/design-plan`, `/execute-plan`, `/dev-loop`).
 - Dedicated `/execute-plan` autonomous plan orchestrator in `skills/execute-plan/SKILL.md` delivering one verified, AI-reviewed PR per phase while tracking plan task checkboxes (`- [x]`).
