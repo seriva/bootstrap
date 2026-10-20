@@ -71,7 +71,11 @@ flowchart TD
    - Explicitly documents architectural reasons for deferred items to halt scope creep before coding begins.
 4. **"Done Means" Contract:**
    - Formulates 3–5 falsifiable, testable completion criteria (e.g., zero regressions on conformance corpus, specific diagnostic on invalid inputs).
-5. **Plan Generation & Roadmap Sync:**
+5. **Phased Task Breakdown (The Dev-Loop Contract):**
+   - Enforces **1 Phase = 1 Dev-Loop**: 3–5 tasks per phase, ~150–500 net LOC diff budget across 3–6 files.
+   - Prevents mega-phases by decoupling orthogonal subsystems into separate sequential phases.
+   - Enforces the 3-point task contract on every task: `Files:` (1–3 files), `Test:` (failing test first), `Done when:` (observable completion).
+6. **Plan Generation & Roadmap Sync:**
    - Populates `docs/vX.Y.Z/<feature>-plan.md` following `docs/feature-plan-template.md`.
    - Links the new plan directly into `docs/roadmap.md`.
 

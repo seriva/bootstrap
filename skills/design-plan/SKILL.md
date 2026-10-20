@@ -83,7 +83,14 @@ When this skill is invoked with a feature request `$FEATURE`:
    - **Verified Gaps & Baseline Audit**: Table of verified findings with probe citations.
    - **Out of Scope**: Explicitly rejected items with clear reasons.
    - **Approach**: Architecture, module boundaries, technical invariants, and edge cases.
-   - **Implementation Tasks**: Phased tasks with checkboxes (`- [ ]`) and validation gates.
+   - **Implementation Tasks (The Dev-Loop Contract)**:
+     Structure phases so that **1 Phase = 1 Dev-Loop** (1 phase branch, 1 PR, 1 isolated 2-pass AI review):
+     - **3–5 Tasks per Phase**: Cap every phase at 3 to 5 tasks (hard max 6). Never bundle independent subsystems into one mega-phase. Decouple distinct subsystems into sequential phases.
+     - **Diff & Context Budget**: Aim for ~150–500 net LOC across 3–6 files per phase (excluding boilerplate tables/fixtures) so fresh-context AI reviewers can audit and probe diffs thoroughly.
+     - **Atomic Task Contract**: Every task `- [ ] Task N.M` must explicitly specify:
+       - `Files:` 1–3 files to touch (prevents unbounded refactoring).
+       - `Test:` Exact test file and assertion to write first (TDD).
+       - `Done when:` Observable, falsifiable exit condition.
    - **Test & Conformance Plan**: Specific test files, negative test cases, and fixture commands.
 
 ---
