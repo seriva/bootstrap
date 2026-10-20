@@ -28,7 +28,7 @@ When this skill is invoked with a plan path or repository target (e.g. `/execute
 2. **Locate Target Plan (`PLAN_FILE`)**:
    - If an explicit file path was passed, verify it exists.
    - If no file was specified:
-     - Search `$TARGET_REPO/docs/v*/` and `$TARGET_REPO/docs/plans/` for active plans with status `Draft` or `In Progress`.
+     - Search `$TARGET_REPO/docs/v*/` and `$TARGET_REPO/docs/plans/` for active plans with status `Draft` or `In Progress` (excluding `docs/plans/archive/`).
      - If multiple exist, ask the user to clarify.
    - Read `$PLAN_FILE` completely. Extract the feature slug from the filename (e.g. `portable-go`).
 
@@ -219,10 +219,17 @@ When all phases in the plan are completed (`- [x]`):
 3. **Evaluate Audit Output**:
    - **If audit returns `PLAN_VERIFIED_LGTM`**:
      - Update `$PLAN_FILE` header: `**Status:** Completed (YYYY-MM-DD)`.
-     - In `$TARGET_REPO/docs/roadmap.md`, move the plan to the Completed milestone.
-     - Commit the completion status:
+     - **Archive Standalone Plan (if unversioned)**:
+       - If `$PLAN_FILE` is a standalone plan in `docs/plans/` (not in a version folder like `docs/v*/`):
+         ```bash
+         mkdir -p "$TARGET_REPO/docs/plans/archive"
+         git -C "$TARGET_REPO" mv "$PLAN_FILE" "$TARGET_REPO/docs/plans/archive/$(basename "$PLAN_FILE")"
+         PLAN_FILE="$TARGET_REPO/docs/plans/archive/$(basename "$PLAN_FILE")"
+         ```
+     - In `$TARGET_REPO/docs/roadmap.md`, move the plan entry to `## Completed` and update its link (e.g. `[<Feature Name>](plans/archive/<plan-slug>-plan.md)`).
+     - Commit the completion status and archived plan:
        ```bash
-       git -C "$TARGET_REPO" commit -am "docs(<plan-slug>): mark plan completed and update roadmap"
+       git -C "$TARGET_REPO" commit -am "docs(<plan-slug>): mark plan completed, archive plan, and update roadmap"
        git -C "$TARGET_REPO" push
        ```
      - Open the final PR from `PLAN_BRANCH` into `BASE_BRANCH`:

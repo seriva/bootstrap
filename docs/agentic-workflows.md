@@ -112,7 +112,7 @@ flowchart TD
      - Confirms zero violations of the "Scope Rule & Boundary Matrix".
      - Validates that **no items listed in "Out of Scope" leaked in**.
      - Confirms full test suite passes green.
-   - Updates plan status to `Completed (YYYY-MM-DD)` and updates `docs/roadmap.md`.
+   - Updates plan status to `Completed (YYYY-MM-DD)`; for unversioned projects, archives the plan file to `docs/plans/archive/` and updates `docs/roadmap.md` links.
    - Opens the final Pull Request from `feat/<plan-slug>` into `main`.
 
 #### Invocations:
