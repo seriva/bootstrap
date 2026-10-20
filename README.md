@@ -9,29 +9,42 @@ Generic project scaffold for agentic development.
 3. **Explicit quality gates** — pre-commit hook + CI block on lint/test failure, independent of which tool wrote the code.
 4. **Docs-first planning** — `docs/vX.Y.Z/<feature>-plan.md` before any non-trivial code. Structured design with implementation tasks checked off as they land.
 
-## Files
+## Structure
 
+### 1. Global Toolkit & Workflows (Machine-Wide)
 | File | Purpose |
 |---|---|
-| `AGENTS.md` | Fill in: project identity, tech stack, architecture; agent maintains the project map |
-| `CLAUDE.md` | `@AGENTS.md` — do not edit |
-| `.cursorrules` | Points to `AGENTS.md` — do not edit |
-| `CHANGELOG.md` | Agents must update `## [Unreleased]` with every change |
-| `lefthook.yml` | Pre-commit hook config (format → lint → test, formatted files auto-restaged) — fill in commands |
-| `.github/workflows/ci.yml` | Fill in runtime setup, lint, test, build/deploy steps |
-| `.gitignore` | Common ignores + agentic artifact ignores pre-configured |
-| `docs/roadmap.md` | Release planning |
-| `docs/feature-plan-template.md` | Plan doc format: Goal → Approach → Edge Cases → Tasks → Test Plan |
+| `install.sh` | Global installer: conditionally deploys skills to detected AI tools (Antigravity, Claude Code, Codex, Cursor, Copilot) |
+| `sync.sh` | Synchronizes `scaffold/AGENTS.md` Part 1 and bridge files to sibling projects |
+| `skills/design-plan/SKILL.md` | Empirical design planning workflow: active probe audit, boundary matrix, and exhaustive plan drafting |
+| `skills/execute-plan/SKILL.md` | Autonomous plan orchestrator: executes plan phase-by-phase with TDD, tracking tasks with `[x]` and opening 1 PR per phase |
 | `skills/dev-loop/SKILL.md` | Universal autonomous development loop: implementation, quality gates, draft PR, AI review, and fix cycle |
-| `install.sh` | Global installer: conditionally deploys `dev-loop` to detected AI tools (Antigravity, Claude Code, Codex, Cursor, Copilot) |
+| `docs/agentic-workflows.md` | Comprehensive architectural guide & diagrams for all autonomous workflows |
 
-## Setup
+### 2. Project Scaffold (`scaffold/` — Copied into New Repos)
+| File | Purpose |
+|---|---|
+| `scaffold/AGENTS.md` | Fill in: project identity, tech stack, architecture; agent maintains the project map |
+| `scaffold/CHANGELOG.md` | Clean starter changelog template for the new project |
+| `scaffold/CLAUDE.md` | `@AGENTS.md` — do not edit |
+| `scaffold/.cursorrules` | Points to `AGENTS.md` — do not edit |
+| `scaffold/lefthook.yml` | Pre-commit hook config (format → lint → test, formatted files auto-restaged) — fill in commands |
+| `scaffold/.github/workflows/ci.yml` | Fill in runtime setup, lint, test, build/deploy steps |
+| `scaffold/.gitignore` | Common ignores + agentic artifact ignores pre-configured |
+| `scaffold/docs/roadmap.md` | Release planning template |
+| `scaffold/docs/feature-plan-template.md` | Design plan format: Goal → Boundary Matrix → Gaps Audit → Tasks → Test Plan |
 
-1. Copy this directory into your project root.
+## Scaffolding a New Project
+
+To scaffold a new project with the agentic standard:
+
+1. Copy the contents of the `scaffold/` directory into your project root:
+   ```bash
+   cp -a ~/dev/bootstrap/scaffold/. /path/to/your/project/
+   ```
 2. Fill in all `[PLACEHOLDER]` sections in `AGENTS.md` and `ci.yml`. In `lefthook.yml`, replace `"true"` no-ops with your actual format/lint/test commands.
-3. Add bridge files for any other tools you use — keep them to one line pointing at `AGENTS.md`.
-4. Install lefthook: `brew install lefthook` or `npm install --save-dev lefthook`, then `lefthook install`.
-5. (Optional) Run `./install.sh` to install global autonomous workflows (`/dev-loop`) into your machine's detected AI tools.
+3. Install lefthook in the new project: `brew install lefthook` or `npm install --save-dev lefthook`, then `lefthook install`.
+4. (One-time machine setup) Run `./install.sh` in `bootstrap/` to deploy global autonomous workflows (`/design-plan`, `/execute-plan`, `/dev-loop`) to your AI tools.
 
 ## Plan Docs
 
@@ -48,25 +61,36 @@ docs/
     websocket-support-plan.md
 ```
 
-## Global Autonomous Workflow (`/dev-loop`)
+## Global Autonomous Workflows (`/design-plan`, `/execute-plan`, `/dev-loop`)
 
-Run `./install.sh` once on your workstation to install the `/dev-loop` skill. It conditionally detects which AI tools are installed on your machine (`agy`, `claude`, `codex`, `cursor`, `copilot`) and installs the skill globally into their user configuration directories.
+> For full architectural diagrams, interaction models, and multi-vendor setup, see the complete guide in [docs/agentic-workflows.md](docs/agentic-workflows.md).
 
-In any project workspace or terminal session:
-```text
-/dev-loop in <repo>: <task description>
-# or simply:
-/dev-loop <task description>
-```
+Run `./install.sh` once on your workstation to install the autonomous skills. It conditionally detects which AI tools are installed on your machine (`agy`, `claude`, `codex`, `cursor`, `copilot`) and installs the skills globally into their user configuration directories.
 
-**Lifecycle:**
-1. Resolves target repository and base branch (supports version branches like `1.7.0` and multi-repo roots).
-2. Creates feature branch, implements feature, writes failing tests first (TDD), and updates `CHANGELOG.md`.
-3. Runs `lefthook run pre-commit` quality gate.
-4. Opens a draft pull request via `gh pr create --draft`.
-5. Spawns an isolated code review subagent (probes diff, checks bounds in `AGENTS.md`, groups defects by severity).
-6. Spawns defect fixer subagent to patch High/Medium defects (up to 2 rounds).
-7. Safety Gate: Only converts draft to ready (`gh pr ready`) when verified clean.
+### 1. `/design-plan <feature description>`
+Use this to author comprehensive, empirical design plans before writing non-trivial code.
+- **Audits Codebase with Probes**: Never assumes; inspects code and writes probes to prove current limitations.
+- **Constructs Verified Gaps Matrix**: Documents every finding with exact file/line citations and probe evidence.
+- **Establishes Scope & Boundary Rules**: Classifies items into In-Scope Core, Target-Specific, Excluded, and Deferred.
+- **Drafts Full Plan**: Creates `docs/vX.Y.Z/<feature>-plan.md` (or `docs/plans/<feature>-plan.md`) following `feature-plan-template.md`.
+- **Links Roadmap**: Automatically links the newly drafted plan in `docs/roadmap.md`.
+
+### 2. `/execute-plan <plan-path>`
+Use this to autonomously execute an approved design plan phase-by-phase:
+- **Durable State Machine**: Tracks execution progress directly in the plan's `## Implementation Tasks` checklist.
+- **One PR per Phase**: Groups phase tasks into a single clean branch, implementing each with TDD and checking off `- [x]`.
+- **Quality Gates & Review**: Runs `lefthook run pre-commit`, opens draft PR, runs isolated AI review and fix loop, and marks ready.
+- **Resumable**: If interrupted, running `/execute-plan` resumes at the next unchecked task.
+
+### 3. `/dev-loop <task description>`
+Use this for standalone tasks or targeted bugfixes:
+- **Target & Base Resolution**: Discovers repository and base branch (supports version branches like `1.7.0` and multi-repo roots).
+- **Implementation & TDD**: Writes failing tests first, implements code, and updates `CHANGELOG.md`.
+- **Quality Gates**: Runs `lefthook run pre-commit` verification.
+- **Draft PR**: Opens a draft pull request via `gh pr create --draft`.
+- **Fresh Reviewer Subagent**: Spawns an isolated review subagent to review diffs and run active verification probes.
+- **Fix Loop**: A defect fixer subagent patches High/Medium defects and pushes (max 2 rounds).
+- **Publish Gate**: Converts draft to ready (`gh pr ready`) only if verified clean.
 
 ## What Stays Out of the Repo
 

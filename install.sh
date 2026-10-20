@@ -71,6 +71,8 @@ for skill_path in "$SKILLS_SRC"/*/; do
   [ -e "$skill_path" ] || continue
   skill_name="$(basename "$skill_path")"
   skill_file="$skill_path/SKILL.md"
+  skill_desc=$(grep -E "^description:" "$skill_file" 2>/dev/null | head -n 1 | sed 's/^description:[[:space:]]*//' | tr -d '"' || true)
+  skill_desc=${skill_desc:-"Autonomous $skill_name workflow"}
 
   echo "Deploying skill: $skill_name"
 
@@ -90,11 +92,11 @@ for skill_path in "$SKILLS_SRC"/*/; do
     # Slash command shim (~/.claude/commands/<skill>.md)
     claude_cmd_dir="$HOME/.claude/commands"
     mkdir -p "$claude_cmd_dir"
-    cat << 'EOF' > "$claude_cmd_dir/$skill_name.md"
-Execute the autonomous dev-loop workflow for the following task:
-$ARGUMENTS
+    cat << EOF > "$claude_cmd_dir/$skill_name.md"
+Execute the $skill_name workflow for the following input:
+\$ARGUMENTS
 EOF
-    echo "  -> [Claude Code] Installed skill (~/.claude/skills/$skill_name) and command (/dev-loop)"
+    echo "  -> [Claude Code] Installed skill (~/.claude/skills/$skill_name) and command (/$skill_name)"
   fi
 
   # 3. OpenAI Codex CLI
@@ -110,7 +112,7 @@ EOF
     mkdir -p "$cursor_rules_dir"
     cat << EOF > "$cursor_rules_dir/$skill_name.mdc"
 ---
-description: End-to-end autonomous development loop: implementation, quality gates, draft PR, fresh-context AI code review, and defect fixing across single or multi-repo workspaces.
+description: $skill_desc
 globs: *
 alwaysApply: false
 ---
@@ -136,7 +138,7 @@ EOF
         cat << EOF > "$pdir/$skill_name.prompt.md"
 ---
 name: $skill_name
-description: End-to-end autonomous development loop.
+description: $skill_desc
 ---
 
 $(cat "$skill_file")

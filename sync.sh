@@ -9,7 +9,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEV_DIR="$(dirname "$SCRIPT_DIR")"
-BOOTSTRAP_AGENTS="$SCRIPT_DIR/AGENTS.md"
+SCAFFOLD_DIR="$SCRIPT_DIR/scaffold"
+BOOTSTRAP_AGENTS="$SCAFFOLD_DIR/AGENTS.md"
 
 CHECK=false
 DRY_RUN=false
@@ -100,7 +101,7 @@ bridge_rel_paths = [
 ]
 bridges = {}
 for rel_path in bridge_rel_paths:
-    src_path = os.path.join("$SCRIPT_DIR", rel_path)
+    src_path = os.path.join("$SCAFFOLD_DIR", rel_path)
     if os.path.isfile(src_path):
         with open(src_path, "r", encoding="utf-8") as f:
             bridges[rel_path] = f.read()
@@ -165,7 +166,7 @@ for target_dir in targets:
 
     # Feature plan template (sync if target has docs/ dir)
     template_rel_path = os.path.join("docs", "feature-plan-template.md")
-    template_src_path = os.path.join("$SCRIPT_DIR", template_rel_path)
+    template_src_path = os.path.join("$SCAFFOLD_DIR", template_rel_path)
     target_docs_dir = os.path.join(target_dir, "docs")
     if os.path.isfile(template_src_path) and os.path.isdir(target_docs_dir):
         with open(template_src_path, "r", encoding="utf-8") as f:

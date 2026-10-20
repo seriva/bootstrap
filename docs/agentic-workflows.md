@@ -1,0 +1,214 @@
+# Agentic Development Workflows & Skills Architecture
+
+This document describes the design, operational lifecycle, and interaction model of the autonomous AI skills bundled with the **Agentic Development Bootstrap**.
+
+---
+
+## 1. Executive Summary: The 3-Tier Lifecycle
+
+Autonomous AI development works best when responsibilities are separated into distinct operational tiers:
+
+```mermaid
+flowchart TD
+    subgraph Tier1 ["Tier 1: Architect"]
+        DP["/design-plan &lt;feature&gt;"]
+        Audit["Empirical Probe Audit\n(Prove bugs, inspect AST/code)"]
+        PlanDoc["docs/vX.Y.Z/&lt;feature&gt;-plan.md\n(Checklist: - [ ] Task N.M)"]
+        DP --> Audit --> PlanDoc
+    end
+
+    subgraph Tier2 ["Tier 2: Orchestrator"]
+        EP["/execute-plan &lt;plan-path&gt;"]
+        PlanBranch["Epic Branch: feat/&lt;plan-slug&gt;\n(Branched off main or release branch)"]
+        PhaseLoop["Phase Loop (1 PR per Phase)\nChecks off - [x] as tasks land"]
+        FinalAudit["Full-Branch AI Audit against Plan\n(Verify 'Done Means' & zero scope leaks)"]
+        FinalPR["Final PR: feat/&lt;plan-slug&gt; &rarr; main"]
+        
+        PlanDoc --> EP
+        EP --> PlanBranch
+        PlanBranch --> PhaseLoop
+        PhaseLoop --> FinalAudit
+        FinalAudit --> FinalPR
+    end
+
+    subgraph Tier3 ["Tier 3: Delivery Engine"]
+        DL["/dev-loop &lt;task&gt;"]
+        TDD["Implementation with TDD"]
+        Gate["Quality Gate (lefthook pre-commit)"]
+        Review["Fresh-Context AI Review\n(Probes diff for High/Med/Low defects)"]
+        Fix["Defect Fixer Subagent\n(Max 2 rounds)"]
+        PR["Ready PR (gh pr ready)"]
+
+        PhaseLoop -.->|"invokes for each task/phase"| DL
+        DL --> TDD --> Gate --> Review
+        Review -- Defects found --> Fix --> Gate
+        Review -- Looks Good --> PR
+    end
+```
+
+| Tier | Skill | Role | When to Use | Output |
+| :--- | :--- | :--- | :--- | :--- |
+| **1. Architect** | [`/design-plan`](#1-design-plan-the-architect) | **Pre-implementation** | Complex features, architectural migrations, multi-component refactors | Exhaustive plan document (`docs/vX.Y.Z/<feature>-plan.md`) with probe evidence & task checklist |
+| **2. Orchestrator** | [`/execute-plan`](#2-execute-plan-the-orchestrator) | **Multi-phase execution** | Once a design plan is approved | Creates epic branch, coordinates phased PRs, updates `- [x]`, conducts pre-merge branch audit |
+| **3. Delivery Unit** | [`/dev-loop`](#3-dev-loop-the-delivery-engine) | **Single-task execution** | Targeted bugfixes, standalone tasks, or driven by `/execute-plan` | Feature branch, TDD, quality gate, draft PR, isolated AI review & fix, published PR |
+
+---
+
+## 2. Detailed Breakdown of Skills
+
+### 1. `/design-plan` (The Architect)
+
+**Purpose:** Prevents shallow, hallucinated planning by forcing an active empirical audit of the codebase before writing design text.
+
+#### Operational Flow:
+1. **Target Discovery:** Resolves target repository (supporting multi-repo umbrella workspaces like `~/dev`).
+2. **Empirical Codebase Audit (No Guessing):**
+   - The agent writes and executes small, non-destructive test probes or CLI commands to verify baseline behavior.
+   - Verifies existing limitations, missing types, or silent wrong results.
+   - Formulates the **Verified Gaps & Baseline Audit** table with exact file/line citations and probe evidence.
+3. **Boundary & Scope Definition:**
+   - Defines explicit categories: `In scope: core`, `In scope: target-specific`, `Excluded: runtime/host`, and `Excluded: deferred`.
+   - Explicitly documents architectural reasons for deferred items to halt scope creep before coding begins.
+4. **"Done Means" Contract:**
+   - Formulates 3–5 falsifiable, testable completion criteria (e.g., zero regressions on conformance corpus, specific diagnostic on invalid inputs).
+5. **Plan Generation & Roadmap Sync:**
+   - Populates `docs/vX.Y.Z/<feature>-plan.md` following `docs/feature-plan-template.md`.
+   - Links the new plan directly into `docs/roadmap.md`.
+
+#### Invocations:
+```text
+/design-plan Add WebSocket reconnection protocol with exponential backoff
+/design-plan in gofront: Implement encoding/csv stdlib package
+```
+
+---
+
+### 2. `/execute-plan` (The Orchestrator)
+
+**Purpose:** Executes an approved design plan phase-by-phase without human babysitting, isolating changes on an epic branch and opening human-reviewable PRs per phase.
+
+#### Operational Flow:
+1. **Durable State Machine:**
+   - Uses the plan's `## Implementation Tasks` checklist directly.
+   - Completed tasks are marked `- [x]`; pending tasks are marked `- [ ]`.
+   - If interrupted, running `/execute-plan` automatically resumes at the first unchecked task.
+2. **Epic Branch Isolation:**
+   - Branches `feat/<plan-slug>` off `main` (or a release branch like `1.7.0`).
+   - `main` remains untouched and releasable while the feature develops.
+3. **Phase Execution (One PR per Phase):**
+   - Creates a dedicated phase branch off the epic branch: `feat/<plan-slug>-phase-<N>`.
+   - Iterates through unchecked tasks in that phase:
+     - Implements with TDD.
+     - Runs `lefthook run pre-commit`.
+     - Checks off `- [x] Task N.M` in the plan doc.
+     - Commits task changes with Conventional Commits.
+   - Opens a **draft PR** targeted at the epic branch (`feat/<plan-slug>`).
+   - Runs the Deterministic 2-Pass AI Code Review (Pass 1 review, optional single-turn defect fix, Pass 2 final verification; hard stop with max 2 reviews, max 1 fix).
+   - Once clean, marks the phase PR ready (`gh pr ready`).
+4. **Full-Branch Final Audit (Pre-Merge to `main`):**
+   - Once all phases are marked `- [x]`, switches to `feat/<plan-slug>`.
+   - Spawns an isolated **Plan Auditor** subagent to inspect the complete diff against `main`:
+     - Verifies every item in the plan's "Done means:" contract.
+     - Confirms zero violations of the "Scope Rule & Boundary Matrix".
+     - Validates that **no items listed in "Out of Scope" leaked in**.
+     - Confirms full test suite passes green.
+   - Updates plan status to `Completed (YYYY-MM-DD)` and updates `docs/roadmap.md`.
+   - Opens the final Pull Request from `feat/<plan-slug>` into `main`.
+
+#### Invocations:
+```text
+/execute-plan docs/v1.8.0/portable-go-plan.md
+/execute-plan in gofront
+```
+
+---
+
+### 3. `/dev-loop` (The Delivery Engine)
+
+**Purpose:** Autonomous inner implementation, quality assurance, draft PR opening, and peer review cycle for a single task.
+
+#### Operational Flow:
+1. **Target & Base Branch Resolution:**
+   - Dynamically identifies the currently checked out branch as `BASE_BRANCH` (supports version branches like `1.7.0` as well as `main`).
+   - Creates a clean feature branch: `feat/<task-slug>`.
+2. **Implementation & Quality Gates:**
+   - Writes failing tests first for non-trivial logic (TDD).
+   - Enforces project conventions from `AGENTS.md`.
+   - Runs `lefthook run pre-commit` (or project linters and test suites).
+   - Updates `CHANGELOG.md` under `## [Unreleased]`.
+3. **Draft PR Containment:**
+   - Opens a draft pull request via `gh pr create --draft`.
+   - Silences notifications while the automated review loop runs.
+4. **Fresh-Context AI Code Review (Deterministic 2-Pass Protocol):**
+   - Spawns an isolated subagent with zero prior chat context.
+   - Inspects `git diff <BASE_BRANCH>...HEAD`, runs verification probes, and groups findings into `High`, `Medium`, and `Low`.
+   - If clean or zero High/Medium defects: returns `"Looks Good"` / `"LGTM"` and passes immediately.
+   - If High or Medium defects found: spawns a fixer subagent for a single fix turn, re-verifies, and pushes fixes.
+   - Runs Pass 2 final verification review. Unconditionally halts after Pass 2 (hard invariant: max 2 reviews, max 1 fix turn; zero infinite loops). Low-severity cosmetic nits never block approval.
+5. **Safety Gate on Publish:**
+   - If review passes cleanly: runs `gh pr ready`.
+   - If unresolved `High` or `Medium` defects persist after Pass 2: leaves the PR in **Draft** mode to prevent accidental merging and notifies you.
+
+#### Invocations:
+```text
+/dev-loop Fix nil pointer exception in session validation logic
+/dev-loop in gofront: Add benchmark for AST token parsing
+```
+
+---
+
+## 3. Multi-Vendor AI Deployment
+
+The skills are designed to follow open standards so you can switch between AI development tools without changing your workflow:
+
+```mermaid
+flowchart TD
+    Canonical["bootstrap/skills/\n├── design-plan/SKILL.md\n├── execute-plan/SKILL.md\n└── dev-loop/SKILL.md"]
+
+    Canonical -->|"install.sh"| Gemini["Google Antigravity\n(~/.gemini/config/skills/)"]
+    Canonical -->|"install.sh"| Claude["Claude Code CLI\n(~/.claude/skills/ & commands/)"]
+    Canonical -->|"install.sh"| Codex["OpenAI Codex CLI\n(~/.codex/skills/)"]
+    Canonical -->|"install.sh"| Cursor["Cursor IDE\n(~/.cursor/rules/*.mdc)"]
+    Canonical -->|"install.sh"| Copilot["GitHub Copilot / VS Code\n(User Prompts / .prompt.md)"]
+```
+
+### Installation
+Running `./install.sh` from `bootstrap`:
+```bash
+cd ~/dev/bootstrap
+./install.sh
+```
+The installer automatically inspects your machine:
+- Detects installed AI tools (`agy`, `claude`, `codex`, `cursor`, `code`).
+- Installs skills only for tools present on the system.
+- Converts prompts into native formats (MDC rules for Cursor, Prompt files for Copilot, Agent Skills for Antigravity/Claude/Codex).
+- Cleanly skips absent tools without creating clutter.
+
+---
+
+## 4. Relationship with Project Repositories
+
+```text
+~/dev/bootstrap/                     <-- Global Agentic Headquarters
+├── install.sh                       <-- Installs /design-plan, /execute-plan, /dev-loop globally
+├── sync.sh                          <-- Syncs scaffold/AGENTS.md Part 1 to sibling projects
+├── skills/                          <-- Global skill definitions (never copied to projects)
+└── scaffold/                        <-- Pristine project starter kit (copied into new projects)
+    ├── AGENTS.md
+    ├── CHANGELOG.md (clean starter template)
+    ├── lefthook.yml
+    └── docs/feature-plan-template.md
+
+~/dev/gofront/                       <-- Sibling Project Repository
+├── AGENTS.md                        <-- Part 1 synced from bootstrap; Part 2 custom project context
+├── lefthook.yml                     <-- Pre-commit quality gate
+├── CHANGELOG.md                     <-- Maintained by /dev-loop and /execute-plan
+└── docs/
+    ├── roadmap.md                   <-- Maintained by /design-plan and /execute-plan
+    └── v1.8.0/                      <-- Plans authored by /design-plan, executed by /execute-plan
+        └── portable-go-plan.md
+```
+
+- **Clean Repositories:** Sibling projects (`gofront`, `simplefps`, etc.) contain zero tool-specific skill directories.
+- **Single Source of Truth:** `AGENTS.md` governs agent behavior across all tools.
+- **Zero Drift:** Updating the skill or rules in `bootstrap` keeps the entire workstation's agent fleet synchronized.

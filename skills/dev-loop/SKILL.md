@@ -116,62 +116,106 @@ When this skill is invoked with a task description `$TASK`:
      EOF
      )
 
-     gh pr create --draft --base "$BASE_BRANCH" --title "<type>(<scope>): <summary>" --body "$PR_BODY" || echo "GH_PR_FAILED"
+     if gh pr view "$WORKING_BRANCH" >/dev/null 2>&1; then
+       echo "PR already exists for $WORKING_BRANCH; branch commits updated."
+     else
+       gh pr create --draft --base "$BASE_BRANCH" --title "<type>(<scope>): <summary>" --body "$PR_BODY" || echo "GH_PR_FAILED"
+     fi
      ```
    - **Fallback**: If `gh pr create` fails (e.g. unauthenticated or no remote), log a warning and proceed with local branch & commits intact.
 
 ---
 
-### Phase 3: Fresh-Context Review & Fix Loop (Max 2 Rounds)
+### Phase 3: Fresh-Context Code Review (Deterministic 2-Pass Protocol)
 
-Execute up to 2 review/fix iterations. Track the latest review status and unresolved findings.
+> [!IMPORTANT]
+> **Strict Review Invariants (Zero Infinite Loops)**:
+> - **Pass 1**: Exactly one initial review pass.
+> - **Fix Turn**: At most ONE fix iteration (only runs if Pass 1 found High or Medium defects).
+> - **Pass 2**: Exactly one final verification review if a fix was applied.
+> - **TERMINAL STOP**: Under NO circumstances run a 3rd review or spawn a 2nd Defect Fixer.
+> - **Low-severity findings** (style, cosmetic nits, documentation typos, non-critical suggestions) are non-blocking and MUST NEVER trigger a fixer or prevent approval.
 
-#### Step 3A: Isolated Code Review
-Spawn a subagent with role **"Code Reviewer"** (Workspace: `inherit`, Model: `inherit`).
-**Do NOT pass implementation conversation history** to guarantee fresh, unbiased review.
+#### Pass 1: Initial Isolated Review
+1. Spawn a subagent with role **"Code Reviewer"** (Workspace: `inherit`, Model: `inherit`).
+   **Do NOT pass implementation conversation history** to guarantee fresh, unbiased review.
 
-Pass the subagent the exact prompt:
+   Reviewer Prompt:
+   ```text
+   You are an expert core code reviewer, not the implementing agent: do not create branches, edit or commit code.
+
+   Target repository: <TARGET_REPO>
+   Base branch: <BASE_BRANCH>
+
+   Run `git -C <TARGET_REPO> diff origin/<BASE_BRANCH>...HEAD` (or `git -C <TARGET_REPO> diff <BASE_BRANCH>...HEAD`) and inspect context in `<TARGET_REPO>/AGENTS.md`.
+
+   Review ONLY the current changes relative to <BASE_BRANCH> for:
+   - Logical bugs, nil/null safety, and error handling.
+   - Security vulnerabilities and performance regressions.
+   - Architectural anti-patterns and boundary violations.
+   - Reproduce claims where you can (run a probe or test in <TARGET_REPO>, not just read) and state which findings you verified.
+
+   Enforce strict change isolation. Flag scope creep, unnecessarily broad modifications, or any changes that risk cascading dependencies in adjacent modules.
+
+   Severity Standards:
+   - High: Security vulnerability, crash, data corruption, or broken core invariant.
+   - Medium: Functional logic error or regression in behavior.
+   - Low: Cosmetic styling, typo, or minor nit. (Non-blocking).
+
+   Output Format:
+   - Group findings under `### High`, `### Medium`, or `### Low`.
+   - If there are zero High and zero Medium defects, state clearly: "Looks Good" (or "LGTM").
+   ```
+
+2. **Pass 1 Evaluation**:
+   - **Condition 1A (Clean Pass)**: Reviewer stated `"Looks Good"` / `"LGTM"` OR reported zero High and zero Medium defects.
+     - Set `REVIEW_STATUS=PASSED`.
+     - **STOP REVIEW IMMEDIATELY.** Proceed directly to Phase 4.
+   - **Condition 1B (High/Medium Defects Found)**:
+     - Proceed to **Single-Turn Defect Fix**.
+
+#### Single-Turn Defect Fix (Runs at most ONCE)
+Spawn a subagent with role **"Defect Fixer"** (Workspace: `inherit`, Model: `inherit`) with prompt:
 ```text
-You are an expert core code reviewer, not the implementing agent: do not create branches, edit or commit code.
+Address the following review findings in target repository <TARGET_REPO>.
+Fix ONLY High and Medium severity items. Ignore Low-severity nits and cosmetic suggestions:
+<PASS_1_REVIEWER_OUTPUT>
 
-Target repository: <TARGET_REPO>
-Base branch: <BASE_BRANCH>
-
-Run `git -C <TARGET_REPO> diff origin/<BASE_BRANCH>...HEAD` (or `git -C <TARGET_REPO> diff <BASE_BRANCH>...HEAD`) and inspect context in `<TARGET_REPO>/AGENTS.md`.
-
-Review ONLY the current changes relative to <BASE_BRANCH> for:
-- Logical bugs, nil/null safety, and error handling.
-- Security vulnerabilities and performance regressions.
-- Architectural anti-patterns and boundary violations.
-- Reproduce claims where you can (run a probe or test in <TARGET_REPO>, not just read) and state which findings you verified.
-
-Enforce strict change isolation. Flag scope creep, unnecessarily broad modifications, or any changes that risk cascading dependencies in adjacent modules.
-
-Be direct, highly critical, and actionable:
-- Group findings by severity: High, Medium, Low.
-- Reference specific files and line numbers.
-- If the code looks clean, correct, and ready to merge with no blocking defects, state: "Looks Good" (or "LGTM").
+Instructions:
+1. Apply fixes in <TARGET_REPO> with minimal change footprint (no scope creep).
+2. Re-run local verification (`lefthook run pre-commit` or test/lint commands from AGENTS.md).
+3. Verify all tests pass green.
+4. Commit and push:
+   git -C <TARGET_REPO> commit -am "fix(<scope>): address review feedback"
+   git -C <TARGET_REPO> push
 ```
+When the Defect Fixer finishes, proceed directly to **Pass 2: Final Verification Review**.
 
-#### Step 3B: Evaluate Review Output
-- **If the reviewer responded with `"Looks Good"` or `"LGTM"`** (and reported no High/Medium defects):
-  - Review passed cleanly. Record `REVIEW_STATUS=PASSED`. Break the loop immediately and proceed to Phase 4.
-- **If defects were reported**:
-  1. Record findings. If Round 2 is reached and High severity defects still persist, set `REVIEW_STATUS=BLOCKED_BY_DEFECTS`.
-  2. Spawn a subagent with role **"Defect Fixer"** (Workspace: `inherit`, Model: `inherit`) with the prompt:
-     ```text
-     Address the following review findings in target repository <TARGET_REPO>, prioritizing High and Medium severity items:
-     <REVIEWER_OUTPUT>
+#### Pass 2: Final Verification Review (Terminal Pass)
+1. Spawn a subagent with role **"Code Reviewer"** (Workspace: `inherit`, Model: `inherit`, zero implementation history) with prompt:
+   ```text
+   You are an expert core code reviewer conducting the FINAL verification pass on applied defect fixes.
 
-     Instructions:
-     1. Apply fixes in <TARGET_REPO> without introducing scope creep.
-     2. Re-run local verification (`lefthook run pre-commit` or test/lint commands).
-     3. Verify all tests pass.
-     4. Commit and push:
-        git -C <TARGET_REPO> commit -am "fix(<scope>): address review feedback"
-        git -C <TARGET_REPO> push
-     ```
-  3. Proceed to iteration 2 of the review loop.
+   Target repository: <TARGET_REPO>
+   Base branch: <BASE_BRANCH>
+
+   Run `git -C <TARGET_REPO> diff origin/<BASE_BRANCH>...HEAD` (or `git -C <TARGET_REPO> diff <BASE_BRANCH>...HEAD`).
+
+   Verify if the previously reported High and Medium defects are resolved without new regressions:
+   - Only High or Medium defects can block approval.
+   - Disregard Low severity nits.
+   - If previous High/Medium defects are resolved, conclude with: "Looks Good" (or "LGTM").
+   ```
+
+2. **Pass 2 Evaluation & Terminal Stop (MANDATORY)**:
+   - **If reviewer says `"Looks Good"` / `"LGTM"` OR reports zero High/Medium defects**:
+     - Set `REVIEW_STATUS=PASSED`.
+   - **If High or Medium defects remain**:
+     - Set `REVIEW_STATUS=BLOCKED_BY_DEFECTS`.
+   - **CRITICAL**: The review phase is now **PERMANENTLY CLOSED**.
+     - **DO NOT** spawn another Defect Fixer.
+     - **DO NOT** launch a 3rd review pass.
+     - Proceed immediately to **Phase 4: Finalize PR & Safety Gate**.
 
 ---
 
@@ -184,10 +228,10 @@ Be direct, highly critical, and actionable:
        gh pr ready
        ```
      - Output confirmation that the PR is published and ready for human review against `$BASE_BRANCH`.
-   - **If `REVIEW_STATUS == BLOCKED_BY_DEFECTS`** (unresolved High defects remain after max rounds):
+   - **If `REVIEW_STATUS == BLOCKED_BY_DEFECTS`** (unresolved High/Medium defects remain after Pass 2):
      - **DO NOT run `gh pr ready`**.
      - Leave the PR in **Draft** mode to prevent team notification spam or accidental merging.
-     - Post a prominent alert highlighting the specific unresolved High defects that require human attention.
+     - Post a prominent alert highlighting the specific unresolved High/Medium defects that require human attention.
 
 2. **Final Summary**:
    Post a clear markdown summary for the user containing:
@@ -195,4 +239,4 @@ Be direct, highly critical, and actionable:
    - **Base Branch & Working Branch**: `base: <BASE_BRANCH>`, `branch: <WORKING_BRANCH>`.
    - **Pull Request**: URL (or status if manual push needed).
    - **Quality Gate**: Pre-commit verification status.
-   - **Review Rounds**: Number of iterations, defects fixed, and final gate status (`PASSED` vs `BLOCKED_FOR_REVIEW`).
+   - **Review Protocol**: Passes executed (1 or 2), fixes applied (0 or 1), and final gate status (`PASSED` vs `BLOCKED_BY_DEFECTS`).
