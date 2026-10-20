@@ -97,7 +97,7 @@ flowchart TD
    - `main` remains untouched and releasable while the feature develops.
 3. **Phase Execution (One PR per Phase):**
    - Creates a dedicated phase branch off the epic branch: `feat/<plan-slug>-phase-<N>`.
-   - Iterates through unchecked tasks in that phase:
+   - Autonomously iterates through all unchecked tasks in that phase without halting or yielding mid-phase:
      - Implements with TDD.
      - Runs `lefthook run pre-commit`.
      - Checks off `- [x] Task N.M` in the plan doc.

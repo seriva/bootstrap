@@ -80,6 +80,9 @@
 
 [Break work into phased sequential tasks. Track execution progress by checking off tasks (`- [x]`) as they land.]
 
+> **Execution Convention**:
+> Each task below is sized for an atomic git commit (`feat(<scope>): <summary> (Task N.M)`). In automated workflows (`/execute-plan`), the orchestrator loops continuously through all tasks in a phase, committing each task individually, running quality gates, and opening a phase PR upon completion without halting mid-phase.
+
 ### Phase 1: Baseline Audit & Test Fixtures
 - [ ] Task 1.1: Add failing conformance fixtures reproducing all items in the Verified Gaps table.
 - [ ] Task 1.2: Establish baseline benchmark numbers (if performance-sensitive).

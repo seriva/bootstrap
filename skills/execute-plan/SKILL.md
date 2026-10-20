@@ -76,6 +76,14 @@ When this skill is invoked with a plan path or repository target (e.g. `/execute
 
 ### Phase 3: Phase Execution & One PR per Phase
 
+> [!IMPORTANT]
+> **Autonomous Phase Execution Invariant**:
+> - The agent **MUST NOT** yield turns, stop, or pause to ask for user confirmation between individual tasks within a phase.
+> - Plan instructions such as "one task per change" or "and stop" mean *one git commit per task on the phase branch*—they NEVER mean halting the autonomous orchestrator.
+> - Loop continuously through **every** unchecked task (`- [ ]`) in the current phase until all tasks in that phase are marked `- [x]`.
+> - Only halt early if stuck on the exact same test failure twice or if an architectural ambiguity requires human clarification.
+> - Once all tasks in the phase are checked off and the full test suite passes, proceed immediately to **Phase 4 (Phase PR & AI Review Loop)**.
+
 Execute the active phase (e.g. `Phase N: <Phase Name>`):
 
 1. **Create / Sync Phase Branch**:
