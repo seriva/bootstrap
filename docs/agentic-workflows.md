@@ -99,18 +99,10 @@ flowchart TD
 2. **Epic Branch Isolation:**
    - Branches `feat/<plan-slug>` off `main` (or a release branch like `1.7.0`).
    - `main` remains untouched and releasable while the feature develops.
-3. **Phase Execution (One PR per Phase with Context Shielding):**
-   - Creates a dedicated phase branch off the epic branch: `feat/<plan-slug>-phase-<N>`.
-   - Spawns an isolated **Phase Implementer** subagent to iterate through all unchecked tasks in the phase:
-     - Implements with TDD.
-     - Runs `lefthook run pre-commit`.
-     - Checks off `- [x] Task N.M` in the plan doc.
-     - Commits task changes atomically with Conventional Commits.
-     - Shields the orchestrator's context from token exhaustion across multi-task phases.
-   - Opens a **draft PR** targeted at the epic branch (`feat/<plan-slug>`).
-   - Runs the Deterministic 2-Pass AI Code Review (Pass 1 review, optional single-turn defect fix, Pass 2 final verification; hard stop with max 2 reviews, max 1 fix).
-   - Updates the PR description (`gh pr edit`) and posts a PR summary comment (`gh pr comment`) detailing review passes, findings, and applied defect fixes.
-   - Once clean, marks the phase PR ready (`gh pr ready`).
+3. **Phase Execution via `/dev-loop` (Context-Shielded Delivery):**
+   - Delegates the active phase directly to `/dev-loop` targeting base branch `feat/<plan-slug>`.
+   - In subagent environments (Antigravity), spawns an isolated subagent to shield the orchestrator's context from intermediate compilation and test logs.
+   - `/dev-loop` creates `feat/<plan-slug>-phase-<N>`, implements tasks with TDD, commits atomically, checks off `- [x] Task N.M` in the plan doc, runs pre-commit gates, opens a draft PR, executes the Deterministic 2-Pass AI Code Review, updates PR review status & comments, and marks the PR ready (`gh pr ready`).
 4. **Full-Branch Final Audit (Pre-Merge to `main`):**
    - Once all phases are marked `- [x]`, switches to `feat/<plan-slug>`.
    - Spawns an isolated **Plan Auditor** subagent to inspect the complete diff against `main`:
@@ -131,15 +123,15 @@ flowchart TD
 
 ### 3. `/dev-loop` (The Delivery Engine)
 
-**Purpose:** Autonomous inner implementation, quality assurance, draft PR opening, and peer review cycle for a single task.
+**Purpose:** Autonomous inner implementation, quality assurance, draft PR opening, and peer review cycle for a standalone task or plan phase driven by `/execute-plan`.
 
 #### Operational Flow:
 1. **Target & Base Branch Resolution:**
-   - Dynamically identifies the currently checked out branch as `BASE_BRANCH` (supports version branches like `1.7.0` as well as `main`).
-   - Creates a clean feature branch: `feat/<task-slug>`.
+   - Dynamically identifies base branch as `BASE_BRANCH` (supports version branches like `1.7.0`, epic branches like `feat/<plan-slug>`, or `main`).
+   - Creates a clean feature branch: `feat/<task-slug>` (or `feat/<plan-slug>-phase-<N>` for plan phases).
 2. **Implementation & Quality Gates:**
-   - Optional **Probe Investigator** subagent to isolate elusive bug causes or test minimal repros in isolation.
-   - Writes failing tests first for non-trivial logic (TDD).
+   - **For Plan Phases**: Loops through all unchecked tasks in the phase, implementing with TDD, committing atomically per task, and checking off `- [x] Task N.M` in the plan doc.
+   - **For Standalone Tasks**: Writes failing tests first (TDD), optional **Probe Investigator** subagent for elusive bugs.
    - Enforces project conventions from `AGENTS.md`.
    - Runs `lefthook run pre-commit` (or project linters and test suites).
    - Updates `CHANGELOG.md` under `## [Unreleased]`.

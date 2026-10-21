@@ -22,7 +22,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - Comprehensive `--help` / `-h` CLI flag and usage documentation in `sync.sh`.
 
 ### Changed
-- Tighten wording, eliminate brittle shell heredocs, and reduce token footprint by ~52% across bootstrap skills (`dev-loop`, `execute-plan`, `design-plan`), using deterministic FSM decision tables for the review loop and explicit continuous phase execution invariants.
+- Unify architecture by having `/execute-plan` delegate phase delivery directly to `/dev-loop` (single authoritative delivery engine for TDD, atomic commits, draft PR, 2-pass AI code review, and publish safety gate).
+- Tighten wording, eliminate brittle shell heredocs, and reduce token footprint across bootstrap skills (`dev-loop`, `execute-plan`, `design-plan`), using deterministic FSM decision tables for the review loop and explicit continuous phase execution invariants.
 - Update `/execute-plan` and `/dev-loop` skills to update the PR description (`gh pr edit`) and post a summary comment (`gh pr comment`) when the automated AI review and fix cycle completes, replacing the in-progress status with a clear summary of review passes, findings, and applied defect fixes.
 - Update `AGENTS.md` Part 1 `Plan-first` rule to require checking off completed tasks (`- [x]`) during execution.
 - Clarify `AGENTS.md` and `README.md` artifact rules to distinguish tool-specific ephemeral session state from official committed feature plan checklists.

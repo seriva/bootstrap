@@ -5,7 +5,7 @@ description: End-to-end autonomous development loop: implementation, quality gat
 
 # Autonomous Development Loop (dev-loop)
 
-Autonomously executes a task or bugfix from implementation to a verified, self-reviewed Pull Request ready for human inspection.
+Autonomously executes a standalone task or a plan phase from implementation to a verified, self-reviewed Pull Request ready for human inspection.
 
 > [!NOTE]
 > Invoking `/dev-loop` grants authorization to discover target repos, create branches, stage/commit code, run tests, and manage GitHub PRs.
@@ -20,32 +20,39 @@ Autonomously executes a task or bugfix from implementation to a verified, self-r
    - In umbrella workspace (e.g. `~/dev/`): resolve via prompt (`in <repo>: ...`), active editor tab, or immediate subdirectory with `.git` and `AGENTS.md`. Ask if ambiguous.
    - All subsequent commands and file edits MUST run in `$TARGET_REPO`.
 2. **Project Invariants**: Read `$TARGET_REPO/AGENTS.md` (Part 2) for stack, test commands, lint gates, and boundaries. Check for `lefthook.yml`.
-3. **Plan-First Requirement**: If task is non-trivial and no plan exists in `docs/v*/` or `docs/plans/`, draft a design plan first (`/design-plan`).
+3. **Plan-First Requirement**: If task is non-trivial, standalone, and no plan exists in `docs/v*/` or `docs/plans/`, draft a design plan first (`/design-plan`).
 
 ### Phase 2: Branch & TDD Implementation
 1. **Branch Resolution**:
-   - Ensure clean tree (`git status --porcelain`).
-   - `BASE_BRANCH`: User-specified base, or currently checked out branch (e.g. `main`, `1.7.0`). Fetch upstream.
-   - `WORKING_BRANCH`: If already on a feature branch, stay on it. Otherwise: `git checkout -b feat/<task-slug> $BASE_BRANCH`.
-2. **Investigation Probe (Optional for elusive bugs)**:
-   - Spawn subagent `Probe Investigator` (`self`, `inherit`) to isolate root causes with minimal reproducing tests.
-3. **Implementation & Quality Gates**:
-   - TDD: Write failing unit/integration tests first before writing implementation code.
-   - Update `$TARGET_REPO/CHANGELOG.md` under `## [Unreleased]`.
-   - Run verification: `lefthook run pre-commit` (or linter and test commands from `AGENTS.md`). All tests must pass.
-4. **Commit & Draft PR**:
-   - Atomic commit: `git commit -m "<type>(<scope>): <summary>"`.
+   - Ensure clean working tree (`git status --porcelain`).
+   - `BASE_BRANCH`: User/caller-specified base (e.g. `feat/<plan-slug>` when called from `/execute-plan`, or explicit branch like `1.7.0`), otherwise currently checked out branch. Fetch upstream.
+   - `WORKING_BRANCH`:
+     - **Plan Phase**: `feat/<plan-slug>-phase-<N>`.
+     - **Standalone Task**: If already on feature branch, stay on it; otherwise `git checkout -b feat/<task-slug> $BASE_BRANCH`.
+2. **Implementation Protocol**:
+   - **Case A: Plan Phase (`Phase N from <PLAN_FILE>`)**:
+     - Loop continuously through EVERY unchecked task (`- [ ] Task N.M`) in Phase N without pausing:
+       1. Write failing unit/integration tests first (TDD).
+       2. Implement changes strictly within boundaries in `AGENTS.md`.
+       3. Run `lefthook run pre-commit` (or test/lint commands from `AGENTS.md`). All tests must pass.
+       4. Update `$PLAN_FILE` (`- [x] Task N.M`) and `$TARGET_REPO/CHANGELOG.md`.
+       5. Atomic commit: `git commit -m "feat(<scope>): <summary> (Task N.M)"`.
+   - **Case B: Standalone Task (`$TASK`)**:
+     - Optional `Probe Investigator` subagent (`self`, `inherit`) to isolate elusive root causes with minimal reproducing tests.
+     - Write failing tests first (TDD), implement within `AGENTS.md` boundaries, update `CHANGELOG.md`, and verify with `lefthook run pre-commit`.
+     - Atomic commit: `git commit -m "<type>(<scope>): <summary>"`.
+3. **Draft PR**:
    - Push: `git push -u origin HEAD`.
-   - Open Draft PR:
+   - Open Draft PR targeted at `$BASE_BRANCH`:
      ```bash
-     gh pr create --draft --base "$BASE_BRANCH" --title "<type>(<scope>): <summary>" --body "$PR_BODY"
+     gh pr create --draft --base "$BASE_BRANCH" --title "$PR_TITLE" --body "$PR_BODY"
      ```
-     *Initial PR Body must include: Summary, Quality Gates checklist, and `## Status: *Automated AI review & fix cycle in progress...*`.*
+     *(PR Body must include: Summary, Completed Tasks/Quality Gates checklist, and `## Status: *Automated AI review & fix cycle in progress...*`)*.
 
 ### Phase 3: Deterministic 2-Pass AI Code Review
-Run an isolated review cycle. Hard invariants: max 2 review passes, max 1 fix turn. Low-severity nits NEVER block approval or trigger fixes.
+Run an isolated review cycle against `$BASE_BRANCH`. Invariants: max 2 review passes, max 1 fix turn. Low-severity nits NEVER block approval or trigger fixes.
 
-| Step | Role | Context | Prompt / Objective | Outcome & Transition |
+| Step | Role | Context | Objective | Outcome & Transition |
 |---|---|---|---|---|
 | **Pass 1** | `Code Reviewer` (`self`, `inherit`) | Zero prior history; `git diff <BASE>...HEAD` | Inspect diff and AGENTS.md. Probe for crashes, logic bugs, boundary leaks, regressions. Group findings: `### High`, `### Medium`, `### Low`. | • **Zero High/Medium**: Reviewer replies "LGTM" $\rightarrow$ `REVIEW_STATUS=PASSED` (Proceed to Phase 4).<br>• **High/Medium found**: Proceed to Fix Turn. |
 | **Fix Turn** (Max 1) | `Defect Fixer` (`self`, `inherit`) | Pass 1 findings | Fix ONLY High/Medium items with minimal footprint. Re-run tests/lint green. Commit: `fix(<scope>): address review feedback`. Push. | Proceed to Pass 2. |
