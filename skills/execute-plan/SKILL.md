@@ -187,12 +187,62 @@ Execute the active phase (e.g. `Phase N: <Phase Name>`):
      - If High or Medium defects persist: `REVIEW_STATUS=BLOCKED_BY_DEFECTS`.
      - **HARD INVARIANT**: Review permanently terminates after Pass 2. Do NOT run a 3rd review or spawn a 2nd fixer.
 
-3. **Phase PR Safety Gate**:
-   - **If `REVIEW_STATUS == PASSED`**:
-     - `gh pr ready`
-     - Report phase PR is ready for human review. Note: once merged into `<PLAN_BRANCH>`, run `/execute-plan` again to proceed to the next phase.
-   - **If `REVIEW_STATUS == BLOCKED_BY_DEFECTS`**:
-     - Leave PR in Draft mode. Alert the user with unresolved findings.
+3. **Update PR Review Summary & Phase Safety Gate**:
+   - **Update PR Body & Status**:
+     Replace the pending `*Automated AI review & fix cycle in progress...*` section in the PR description with the review summary and fixes applied:
+     ```bash
+     PR_BODY=$(cat <<EOF
+     ## Summary
+     Execution of **$PHASE_NAME** from plan \`$PLAN_FILE\`.
+
+     ### Completed Tasks
+     $(sed -E -n "/^### Phase $PHASE_NUM[: ]/,/^(### Phase|## )/p" "$PLAN_FILE" | grep -E "^- \[x\]" | sed 's/^- \[x\] \*\*/- /' | sed 's/\*\*//' || echo "- Completed phase tasks")
+
+     ## Quality Gates
+     - [x] All task unit/integration tests passing
+     - [x] lefthook run pre-commit passed
+     - [x] Plan checklist updated (- [x])
+     - [x] CHANGELOG.md updated
+
+     ## Review Status
+     - **Review Gate**: \`$REVIEW_STATUS\`
+     - **Protocol**: Deterministic 2-Pass AI Code Review
+     - **Pass 1**: <Pass 1 summary: clean LGTM or list of findings>
+     - **Defect Fixes**: <Commit hash & bullet points of fixes applied, or 'None required'>
+     - **Pass 2 (Verification)**: <Pass 2 outcome: clean LGTM or remaining defects>
+     EOF
+     )
+
+     gh pr edit "$PHASE_BRANCH" --body "$PR_BODY"
+     ```
+   - **Post Review Comment to PR**:
+     Post a concise review summary comment so collaborators/reviewers receive notification in the PR timeline:
+     ```bash
+     PR_COMMENT=$(cat <<EOF
+     ### 🤖 Automated AI Review & Fix Cycle Complete
+
+     **Status**: \`$REVIEW_STATUS\`
+     **Review Protocol**: 2-Pass Deterministic AI Code Review
+
+     #### Findings & Fixes
+     - **Pass 1**: <Findings summary or 'Clean pass, zero blocking defects found'>
+     - **Fix Turn**: <Fixes applied with commit hash, or 'None required'>
+     - **Pass 2 (Verification)**: <Verification outcome or 'N/A (clean on Pass 1)'>
+
+     #### Quality Gates
+     - [x] All task unit/integration tests passing
+     - [x] Pre-commit quality gate passed
+     EOF
+     )
+
+     gh pr comment "$PHASE_BRANCH" --body "$PR_COMMENT"
+     ```
+   - **Safety Gate Evaluation**:
+     - **If `REVIEW_STATUS == PASSED`**:
+       - `gh pr ready "$PHASE_BRANCH"`
+       - Report phase PR is ready for human review. Note: once merged into `<PLAN_BRANCH>`, run `/execute-plan` again to proceed to the next phase.
+     - **If `REVIEW_STATUS == BLOCKED_BY_DEFECTS`**:
+       - Leave PR in Draft mode. Alert the user with unresolved findings.
    - Switch back to `PLAN_BRANCH`:
      ```bash
      git -C "$TARGET_REPO" checkout "$PLAN_BRANCH"

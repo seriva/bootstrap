@@ -227,11 +227,57 @@ When the Defect Fixer finishes, proceed directly to **Pass 2: Final Verification
 
 ### Phase 4: Finalize PR & Safety Gate
 
-1. **Safety Gate Evaluation**:
+1. **Update PR Review Summary & Comment**:
+   - Update the PR body (replacing the pending `*Automated AI review & fix cycle in progress...*` status) with the review summary:
+     ```bash
+     PR_BODY=$(cat <<EOF
+     ## Summary
+     - Implementation for: $TASK
+     - Base branch: $BASE_BRANCH
+
+     ## Quality Gates
+     - [x] Pre-commit quality gate passed
+     - [x] Unit/integration tests passing
+     - [x] CHANGELOG.md updated
+
+     ## Review Status
+     - **Review Gate**: \`$REVIEW_STATUS\`
+     - **Protocol**: Deterministic 2-Pass AI Code Review
+     - **Pass 1**: <Pass 1 summary: clean LGTM or list of findings>
+     - **Defect Fixes**: <Commit hash & bullet points of fixes applied, or 'None required'>
+     - **Pass 2 (Verification)**: <Pass 2 outcome: clean LGTM or remaining defects>
+     EOF
+     )
+
+     gh pr edit "$WORKING_BRANCH" --body "$PR_BODY"
+     ```
+   - Post a concise review summary comment to the PR:
+     ```bash
+     PR_COMMENT=$(cat <<EOF
+     ### 🤖 Automated AI Review & Fix Cycle Complete
+
+     **Status**: \`$REVIEW_STATUS\`
+     **Review Protocol**: 2-Pass Deterministic AI Code Review
+
+     #### Findings & Fixes
+     - **Pass 1**: <Findings summary or 'Clean pass, zero blocking defects found'>
+     - **Fix Turn**: <Fixes applied with commit hash, or 'None required'>
+     - **Pass 2 (Verification)**: <Verification outcome or 'N/A (clean on Pass 1)'>
+
+     #### Quality Gates
+     - [x] Pre-commit quality gate passed
+     - [x] Unit/integration tests passing
+     EOF
+     )
+
+     gh pr comment "$WORKING_BRANCH" --body "$PR_COMMENT"
+     ```
+
+2. **Safety Gate Evaluation**:
    - **If `REVIEW_STATUS == PASSED`**:
      - Convert the PR out of draft mode:
        ```bash
-       gh pr ready
+       gh pr ready "$WORKING_BRANCH"
        ```
      - Output confirmation that the PR is published and ready for human review against `$BASE_BRANCH`.
    - **If `REVIEW_STATUS == BLOCKED_BY_DEFECTS`** (unresolved High/Medium defects remain after Pass 2):
@@ -239,7 +285,7 @@ When the Defect Fixer finishes, proceed directly to **Pass 2: Final Verification
      - Leave the PR in **Draft** mode to prevent team notification spam or accidental merging.
      - Post a prominent alert highlighting the specific unresolved High/Medium defects that require human attention.
 
-2. **Final Summary**:
+3. **Final Summary**:
    Post a clear markdown summary for the user containing:
    - **Target Repository**: `<TARGET_REPO>`.
    - **Base Branch & Working Branch**: `base: <BASE_BRANCH>`, `branch: <WORKING_BRANCH>`.

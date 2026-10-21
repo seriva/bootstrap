@@ -109,6 +109,7 @@ flowchart TD
      - Shields the orchestrator's context from token exhaustion across multi-task phases.
    - Opens a **draft PR** targeted at the epic branch (`feat/<plan-slug>`).
    - Runs the Deterministic 2-Pass AI Code Review (Pass 1 review, optional single-turn defect fix, Pass 2 final verification; hard stop with max 2 reviews, max 1 fix).
+   - Updates the PR description (`gh pr edit`) and posts a PR summary comment (`gh pr comment`) detailing review passes, findings, and applied defect fixes.
    - Once clean, marks the phase PR ready (`gh pr ready`).
 4. **Full-Branch Final Audit (Pre-Merge to `main`):**
    - Once all phases are marked `- [x]`, switches to `feat/<plan-slug>`.
@@ -151,7 +152,8 @@ flowchart TD
    - If clean or zero High/Medium defects: returns `"Looks Good"` / `"LGTM"` and passes immediately.
    - If High or Medium defects found: spawns a fixer subagent for a single fix turn, re-verifies, and pushes fixes.
    - Runs Pass 2 final verification review. Unconditionally halts after Pass 2 (hard invariant: max 2 reviews, max 1 fix turn; zero infinite loops). Low-severity cosmetic nits never block approval.
-5. **Safety Gate on Publish:**
+5. **PR Review Summary & Publish Safety Gate:**
+   - Updates the PR description (`gh pr edit`) and posts a PR summary comment (`gh pr comment`) detailing review passes, findings, and applied defect fixes.
    - If review passes cleanly: runs `gh pr ready`.
    - If unresolved `High` or `Medium` defects persist after Pass 2: leaves the PR in **Draft** mode to prevent accidental merging and notifies you.
 

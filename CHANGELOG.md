@@ -22,6 +22,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - Comprehensive `--help` / `-h` CLI flag and usage documentation in `sync.sh`.
 
 ### Changed
+- Update `/execute-plan` and `/dev-loop` skills to update the PR description (`gh pr edit`) and post a summary comment (`gh pr comment`) when the automated AI review and fix cycle completes, replacing the in-progress status with a clear summary of review passes, findings, and applied defect fixes.
 - Update `AGENTS.md` Part 1 `Plan-first` rule to require checking off completed tasks (`- [x]`) during execution.
 - Clarify `AGENTS.md` and `README.md` artifact rules to distinguish tool-specific ephemeral session state from official committed feature plan checklists.
 - Clarify plan archiving for unversioned projects: move completed plans to `docs/plans/archive/` (marking status Completed with date and updating roadmap links).
