@@ -14,6 +14,7 @@ Generic project scaffold for agentic development.
 ### 1. Global Toolkit & Workflows (Machine-Wide)
 | File | Purpose |
 |---|---|
+| `AGENTS.md` | Agent guide for `bootstrap` itself (Part 1 synced from `scaffold/AGENTS.md`) |
 | `install.sh` | Global installer: conditionally deploys skills to detected AI tools (Antigravity, Claude Code, Codex, Cursor, Copilot) |
 | `sync.sh` | Synchronizes `scaffold/AGENTS.md` Part 1 and bridge files to sibling projects |
 | `skills/design-plan/SKILL.md` | Empirical design planning workflow: active probe audit, boundary matrix, and exhaustive plan drafting |
@@ -28,10 +29,12 @@ Generic project scaffold for agentic development.
 | `scaffold/CHANGELOG.md` | Clean starter changelog template for the new project |
 | `scaffold/CLAUDE.md` | `@AGENTS.md` — do not edit |
 | `scaffold/.cursorrules` | Points to `AGENTS.md` — do not edit |
+| `scaffold/.github/copilot-instructions.md` | Points to `AGENTS.md` — do not edit |
+| `scaffold/.github/dependabot.yml` | Automated monthly dependency & GitHub Actions updates |
 | `scaffold/lefthook.yml` | Pre-commit hook config (format → lint → test, formatted files auto-restaged) — fill in commands |
 | `scaffold/.github/workflows/ci.yml` | Fill in runtime setup, lint, test, build/deploy steps |
 | `scaffold/.gitignore` | Common ignores + agentic artifact ignores pre-configured |
-| `scaffold/docs/roadmap.md` | Release planning template |
+| `scaffold/docs/roadmap.md` | Release planning template (supports versioned and continuous layouts) |
 | `scaffold/docs/feature-plan-template.md` | Design plan format: Goal → Boundary Matrix → Gaps Audit → Tasks → Test Plan |
 
 ## Scaffolding a New Project
@@ -46,9 +49,15 @@ To scaffold a new project with the agentic standard:
 3. Install lefthook in the new project: `brew install lefthook` or `npm install --save-dev lefthook`, then `lefthook install`.
 4. (One-time machine setup) Run `./install.sh` in `bootstrap/` to deploy global autonomous workflows (`/design-plan`, `/execute-plan`, `/dev-loop`) to your AI tools.
 
+### Unversioned / Continuous Applications
+For web apps, websites, or services without semantic release versions:
+- Create feature plans in `docs/plans/<feature>-plan.md` with `**Version:** continuous`.
+- Use the `## Upcoming` and `## Completed` tables in `docs/roadmap.md` instead of `## [vX.Y.Z]` sections.
+- When a plan completes, move it to `docs/plans/archive/<feature>-plan.md` and update the link in `docs/roadmap.md`.
+
 ## Plan Docs
 
-When starting a non-trivial feature, create `docs/v1.2.3/my-feature-plan.md` using `docs/feature-plan-template.md` as the starting point. Name the directory after the release version it targets. Track execution progress by checking off tasks (`- [x]`) as they land. Persists as the architectural record of *why* the code is the way it is.
+When starting a non-trivial feature, create `docs/v1.2.3/my-feature-plan.md` (or `docs/plans/my-feature-plan.md` for continuous projects) using `docs/feature-plan-template.md` as the starting point. Track execution progress by checking off tasks (`- [x]`) as they land. Persists as the architectural record of *why* the code is the way it is.
 
 Example structure after a few releases:
 
@@ -88,9 +97,9 @@ Use this for standalone tasks or targeted bugfixes:
 - **Implementation & TDD**: Writes failing tests first, implements code, and updates `CHANGELOG.md`.
 - **Quality Gates**: Runs `lefthook run pre-commit` verification.
 - **Draft PR**: Opens a draft pull request via `gh pr create --draft`.
-- **Fresh Reviewer Subagent**: Spawns an isolated review subagent to review diffs and run active verification probes.
-- **Fix Loop**: A defect fixer subagent patches High/Medium defects and pushes (max 2 rounds).
-- **Publish Gate**: Converts draft to ready (`gh pr ready`) only if verified clean.
+- **Fresh Reviewer Subagent**: Spawns an isolated review subagent to review diffs and run active verification probes (Deterministic 2-Pass Review Protocol).
+- **Fix Loop**: A defect fixer subagent patches High/Medium defects in a single fix turn before Pass 2 final verification (hard cap: max 2 review passes, max 1 fix turn).
+- **Publish Gate**: Updates the PR description with the review summary and converts draft to ready (`gh pr ready`) only if verified clean.
 
 ## What Stays Out of the Repo
 

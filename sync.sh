@@ -52,7 +52,7 @@ done
 if [[ ${#TARGETS[@]} -eq 0 ]]; then
   for dir in "$DEV_DIR"/*/; do
     dir="${dir%/}"
-    if [[ "$dir" != "$SCRIPT_DIR" && -f "$dir/AGENTS.md" ]]; then
+    if [[ -f "$dir/AGENTS.md" ]]; then
       TARGETS+=("$dir")
     fi
   done
@@ -79,6 +79,7 @@ import re
 import sys
 
 canonical_path = "$BOOTSTRAP_AGENTS"
+self_dir = "$SCRIPT_DIR"
 check_mode = ("$CHECK" == "true")
 dry_run = ("$DRY_RUN" == "true")
 has_drift = False
@@ -139,6 +140,9 @@ for target_dir in targets:
                 with open(agents_path, "w", encoding="utf-8") as f:
                     f.write(new_target_text)
                 print("  - AGENTS.md Part 1: UPDATED")
+
+    if os.path.abspath(target_dir) == os.path.abspath(self_dir):
+        continue
 
     # Bridge files
     for rel_path, content in bridges.items():

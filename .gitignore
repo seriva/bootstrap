@@ -68,3 +68,10 @@ docs/superpowers/
 .tabnine/
 # generic agent session files
 *.agent-session
+
+# Tool-specific session & memory directories
+.claude/
+.agents/
+_agents/
+.gemini/
+.codex/

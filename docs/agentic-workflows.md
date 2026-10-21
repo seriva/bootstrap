@@ -35,14 +35,14 @@ flowchart TD
         DL["/dev-loop &lt;task&gt; / Phase Implementer"]
         TDD["Implementation with TDD"]
         Gate["Quality Gate (lefthook pre-commit)"]
-        Review["Fresh-Context AI Review\n(Probes diff for High/Med/Low defects)"]
-        Fix["Defect Fixer Subagent\n(Max 2 rounds)"]
+        Review["Fresh-Context AI Review\n(Deterministic 2-Pass Protocol)"]
+        Fix["Defect Fixer Subagent\n(Max 1 fix turn)"]
         PR["Ready PR (gh pr ready)"]
 
-        PhaseLoop -.->|"spawns Phase Implementer"| DL
+        PhaseLoop -.->|"spawns Phase Delivery Engine"| DL
         DL --> TDD --> Gate --> Review
-        Review -- Defects found --> Fix --> Gate
-        Review -- Looks Good --> PR
+        Review -- "Pass 1: High/Med found" --> Fix --> Gate
+        Review -- "Pass 1 or 2: LGTM" --> PR
     end
 ```
 

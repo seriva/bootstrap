@@ -25,7 +25,6 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - Consolidate `/dev-loop` AI code review outcome directly into the initial PR description (`gh pr edit`), removing redundant PR timeline comments (`gh pr comment`).
 - Unify architecture by having `/execute-plan` delegate phase delivery directly to `/dev-loop` (single authoritative delivery engine for TDD, atomic commits, draft PR, 2-pass AI code review, and publish safety gate).
 - Tighten wording, eliminate brittle shell heredocs, and reduce token footprint across bootstrap skills (`dev-loop`, `execute-plan`, `design-plan`), using deterministic FSM decision tables for the review loop and explicit continuous phase execution invariants.
-- Update `/execute-plan` and `/dev-loop` skills to update the PR description (`gh pr edit`) and post a summary comment (`gh pr comment`) when the automated AI review and fix cycle completes, replacing the in-progress status with a clear summary of review passes, findings, and applied defect fixes.
 - Update `AGENTS.md` Part 1 `Plan-first` rule to require checking off completed tasks (`- [x]`) during execution.
 - Clarify `AGENTS.md` and `README.md` artifact rules to distinguish tool-specific ephemeral session state from official committed feature plan checklists.
 - Clarify plan archiving for unversioned projects: move completed plans to `docs/plans/archive/` (marking status Completed with date and updating roadmap links).
@@ -34,11 +33,10 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - Add lifecycle status headers (`Draft | In Progress | Completed (YYYY-MM-DD)`) to `feature-plan-template.md`.
 - Add `--check` mode to `sync.sh` that exits with code 1 if workflow drift is detected.
 - Document the Unversioned / Continuous Applications setup checklist in `README.md`.
-
-### Removed
-- Remove redundant unpopulated root `AGENTS.md` leftover, establishing `scaffold/AGENTS.md` as the sole canonical source.
+- Populate root `AGENTS.md` Part 2 for `bootstrap` itself and keep Part 1 synchronized from `scaffold/AGENTS.md` via `sync.sh`.
 
 ### Fixed
+- Prevent shell expansion and duplicate YAML frontmatter when `install.sh` generates Cursor `.mdc` and Copilot `.prompt.md` files.
 - Fix branch fallback typo in `/dev-loop` when working branch already exists (`checkout` instead of duplicate `checkout -b`).
 - Harden phase task extraction regex in `/execute-plan` to stop at `^###? (Phase|##)` so the final phase does not swallow subsequent document sections.
 - Ensure untracked files are captured via `git add -A` before committing in `/dev-loop` defect fixes and `/execute-plan` plan completion.
