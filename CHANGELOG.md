@@ -37,6 +37,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - Populate root `AGENTS.md` Part 2 for `bootstrap` itself and keep Part 1 synchronized from `scaffold/AGENTS.md` via `sync.sh`.
 
 ### Fixed
+- Enforce Proof-of-Review in `/dev-loop` and `/execute-plan`: mandate reading `dev-loop/SKILL.md` in subagent prompts, explicitly forbid self-review without `invoke_subagent`, require recording the Reviewer Subagent `conversationId` and review breakdown in the PR body, and add an orchestrator verification fallback in `/execute-plan`.
 - Prevent shell expansion and duplicate YAML frontmatter when `install.sh` generates Cursor `.mdc` and Copilot `.prompt.md` files.
 - Fix branch fallback typo in `/dev-loop` when working branch already exists (`checkout` instead of duplicate `checkout -b`).
 - Harden phase task extraction regex in `/execute-plan` to stop at `^###? (Phase|##)` so the final phase does not swallow subsequent document sections.

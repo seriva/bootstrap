@@ -40,14 +40,15 @@ Autonomously orchestrates execution of an approved design plan phase-by-phase. M
 2. **Delegate Phase Delivery to `/dev-loop`**:
    - In subagent-capable environments (Antigravity):
      Spawn subagent `Phase Delivery Engine` (`TypeName: "self"`, `Workspace: "inherit"`, `Model: "inherit"`):
-     > Prompt: `Execute /dev-loop in $TARGET_REPO on base branch $PLAN_BRANCH for Phase $PHASE_NUM ($PHASE_NAME) from $PLAN_FILE.`
+     > Prompt: `First read the dev-loop skill file (SKILL.md) in full. Then execute /dev-loop in $TARGET_REPO on base branch $PLAN_BRANCH for Phase $PHASE_NUM ($PHASE_NAME) from $PLAN_FILE. HARD REQUIREMENT: In Phase 3 of /dev-loop, you MUST spawn a separate fresh-context Code Reviewer subagent via invoke_subagent (self-review is forbidden). Return the PR URL, REVIEW_STATUS, and the Reviewer Subagent conversationId(s).`
      *(Shields orchestrator context from task compilation, tests, and diffs).*
    - In single-session environments (Claude Code / Cursor):
-     Run the `/dev-loop` workflow directly targeting `BASE_BRANCH="$PLAN_BRANCH"` for Phase N.
-3. **Phase PR Gate & Continuation**:
+     Read and run the `/dev-loop` workflow targeting `BASE_BRANCH="$PLAN_BRANCH"` for Phase N.
+3. **Phase PR Gate & Proof-of-Review Verification**:
+   - **Verify Proof-of-Review**: Confirm that a fresh `Code Reviewer` subagent was actually invoked (valid Reviewer `conversationId` returned and recorded in the PR body under `## Review Status`). If the `Phase Delivery Engine` skipped spawning the reviewer subagent, immediately spawn `Code Reviewer (Pass 1)` via `invoke_subagent` on `git diff $PLAN_BRANCH...feat/<plan-slug>-phase-$PHASE_NUM` and complete Phase 3–4 of `/dev-loop` before proceeding!
    - **Circuit Breaker (`REVIEW_STATUS == BLOCKED_BY_DEFECTS` or failed gate)**:
-     - Unconditionally halt execution (even in `--auto` mode). Leave phase PR in **Draft** and alert user with unresolved findings.
-   - **When `REVIEW_STATUS == PASSED` (Phase PR marked ready)**:
+     - Unconditionally halt execution (even in `--auto` mode). Leave phase PR in **Draft** (or convert back with `gh pr ready --undo`) and alert user with unresolved findings.
+   - **When `REVIEW_STATUS == PASSED` (Verified Proof-of-Review & Phase PR marked ready)**:
      - **If `AUTO_MODE=false` (Default)**: Report phase PR URL to user and stop. Once merged into `$PLAN_BRANCH`, running `/execute-plan` again resumes at the next phase.
      - **If `AUTO_MODE=true` (`--auto`)**:
        1. Checkout epic branch: `git checkout "$PLAN_BRANCH"`.
