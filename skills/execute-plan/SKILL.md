@@ -50,8 +50,8 @@ Autonomously orchestrates execution of an approved design plan phase-by-phase. M
    - **When `REVIEW_STATUS == PASSED` (Phase PR marked ready)**:
      - **If `AUTO_MODE=false` (Default)**: Report phase PR URL to user and stop. Once merged into `$PLAN_BRANCH`, running `/execute-plan` again resumes at the next phase.
      - **If `AUTO_MODE=true` (`--auto`)**:
-       1. Merge phase PR into `$PLAN_BRANCH`: `gh pr merge "feat/<plan-slug>-phase-$PHASE_NUM" --squash --delete-branch`.
-       2. Sync `$PLAN_BRANCH`: `git checkout "$PLAN_BRANCH" && git pull`.
+       1. Checkout epic branch: `git checkout "$PLAN_BRANCH"`.
+       2. Merge phase PR & sync: `gh pr merge "feat/<plan-slug>-phase-$PHASE_NUM" --squash --delete-branch && git pull`.
        3. Loop back to **Phase 2** to execute the next unchecked phase (or transition directly to **Phase 4** once all phases are `- [x]`).
 
 ### Phase 4: Full-Branch Final Audit & Merge Preparation

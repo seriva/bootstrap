@@ -27,7 +27,7 @@ Autonomously executes a standalone task or a plan phase from implementation to a
    - Ensure clean working tree (`git status --porcelain`).
    - `BASE_BRANCH`: User/caller-specified base (e.g. `feat/<plan-slug>` when called from `/execute-plan`, or explicit branch like `1.7.0`), otherwise currently checked out branch. Fetch upstream.
    - `WORKING_BRANCH`:
-     - **Plan Phase**: `feat/<plan-slug>-phase-<N>`.
+     - **Plan Phase**: `feat/<plan-slug>-phase-<N>` (`git checkout -b feat/<plan-slug>-phase-<N> $BASE_BRANCH`, or `git checkout` if resuming).
      - **Standalone Task**: If already on feature branch, stay on it; otherwise `git checkout -b feat/<task-slug> $BASE_BRANCH`.
 2. **Implementation Protocol**:
    - **Case A: Plan Phase (`Phase N from <PLAN_FILE>`)**:
