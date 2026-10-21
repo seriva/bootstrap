@@ -36,11 +36,11 @@ Autonomously executes a standalone task or a plan phase from implementation to a
        2. Implement changes strictly within boundaries in `AGENTS.md`.
        3. Run `lefthook run pre-commit` (or test/lint commands from `AGENTS.md`). All tests must pass.
        4. Update `$PLAN_FILE` (`- [x] Task N.M`) and `$TARGET_REPO/CHANGELOG.md`.
-       5. Atomic commit: `git commit -m "feat(<scope>): <summary> (Task N.M)"`.
+       5. Atomic commit: `git add -A && git commit -m "feat(<scope>): <summary> (Task N.M)"`.
    - **Case B: Standalone Task (`$TASK`)**:
      - Optional `Probe Investigator` subagent (`self`, `inherit`) to isolate elusive root causes with minimal reproducing tests.
      - Write failing tests first (TDD), implement within `AGENTS.md` boundaries, update `CHANGELOG.md`, and verify with `lefthook run pre-commit`.
-     - Atomic commit: `git commit -m "<type>(<scope>): <summary>"`.
+     - Atomic commit: `git add -A && git commit -m "<type>(<scope>): <summary>"`.
 3. **Draft PR**:
    - Push: `git push -u origin HEAD`.
    - Open Draft PR targeted at `$BASE_BRANCH`:
@@ -55,7 +55,7 @@ Run an isolated review cycle against `$BASE_BRANCH`. Invariants: max 2 review pa
 | Step | Role | Context | Objective | Outcome & Transition |
 |---|---|---|---|---|
 | **Pass 1** | `Code Reviewer` (`self`, `inherit`) | Zero prior history; `git diff <BASE>...HEAD` | Inspect diff and AGENTS.md. Probe for crashes, logic bugs, boundary leaks, regressions. Group findings: `### High`, `### Medium`, `### Low`. | • **Zero High/Medium**: Reviewer replies "LGTM" $\rightarrow$ `REVIEW_STATUS=PASSED` (Proceed to Phase 4).<br>• **High/Medium found**: Proceed to Fix Turn. |
-| **Fix Turn** (Max 1) | `Defect Fixer` (`self`, `inherit`) | Pass 1 findings | Fix ONLY High/Medium items with minimal footprint. Re-run tests/lint green. Commit: `fix(<scope>): address review feedback`. Push. | Proceed to Pass 2. |
+| **Fix Turn** (Max 1) | `Defect Fixer` (`self`, `inherit`) | Pass 1 findings | Fix ONLY High/Medium items with minimal footprint. Re-run tests/lint green. Stage & commit (`git add -A && git commit -m "fix(<scope>): address review feedback"`, no amend/force-push). Push. | Proceed to Pass 2. |
 | **Pass 2** (Terminal) | `Code Reviewer` (`self`, `inherit`) | Zero implementation history; `git diff <BASE>...HEAD` | Verify if Pass 1 High/Medium defects are resolved without new regressions. Disregard Low nits. | • **Resolved**: Reviewer replies "LGTM" $\rightarrow$ `REVIEW_STATUS=PASSED`.<br>• **Unresolved**: `REVIEW_STATUS=BLOCKED_BY_DEFECTS`.<br>**TERMINAL STOP**: No 3rd review, no 2nd fix. |
 
 ### Phase 4: Finalize PR & Safety Gate

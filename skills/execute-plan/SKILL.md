@@ -55,7 +55,7 @@ When all phases in `$PLAN_FILE` are checked off (`- [x]`):
    - **If `PLAN_VERIFIED_LGTM`**:
      - Update `$PLAN_FILE` header: `**Status:** Completed (YYYY-MM-DD)`.
      - If unversioned standalone plan, move to `docs/plans/archive/` and update `docs/roadmap.md`.
-     - Commit status: `git commit -am "docs(<plan-slug>): mark plan completed and update roadmap" && git push`.
+     - Stage & commit status: `git add -A && git commit -m "docs(<plan-slug>): mark plan completed and update roadmap" && git push`.
      - Open final PR from `$PLAN_BRANCH` into `$BASE_BRANCH`:
        `gh pr create --draft --base "$BASE_BRANCH" --head "$PLAN_BRANCH" --title "feat(<plan-slug>): complete plan implementation" --body "All phases verified against $PLAN_FILE. Full-branch audit passed." && gh pr ready`.
      - Report final PR link to merge back into `$BASE_BRANCH`.

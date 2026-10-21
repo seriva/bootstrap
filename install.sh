@@ -67,6 +67,10 @@ copy_skill() {
   fi
 }
 
+strip_frontmatter() {
+  awk 'BEGIN{c=0} /^---$/{if(c<2){c++; next}} c>=2{print}' "$1"
+}
+
 for skill_path in "$SKILLS_SRC"/*/; do
   [ -e "$skill_path" ] || continue
   skill_name="$(basename "$skill_path")"
@@ -110,15 +114,10 @@ EOF
   if [ "$HAS_CURSOR" = true ]; then
     cursor_rules_dir="$HOME/.cursor/rules"
     mkdir -p "$cursor_rules_dir"
-    cat << EOF > "$cursor_rules_dir/$skill_name.mdc"
----
-description: $skill_desc
-globs: *
-alwaysApply: false
----
-
-$(cat "$skill_file")
-EOF
+    {
+      printf -- '---\ndescription: %s\nglobs: *\nalwaysApply: false\n---\n' "$skill_desc"
+      strip_frontmatter "$skill_file"
+    } > "$cursor_rules_dir/$skill_name.mdc"
     echo "  -> [Cursor] Installed rule to ~/.cursor/rules/$skill_name.mdc"
   fi
 
@@ -135,14 +134,10 @@ EOF
       parent_dir="$(dirname "$pdir")"
       if [ -d "$parent_dir" ]; then
         mkdir -p "$pdir"
-        cat << EOF > "$pdir/$skill_name.prompt.md"
----
-name: $skill_name
-description: $skill_desc
----
-
-$(cat "$skill_file")
-EOF
+        {
+          printf -- '---\nname: %s\ndescription: %s\n---\n' "$skill_name" "$skill_desc"
+          strip_frontmatter "$skill_file"
+        } > "$pdir/$skill_name.prompt.md"
         echo "  -> [Copilot] Installed prompt to $pdir/$skill_name.prompt.md"
       fi
     done
