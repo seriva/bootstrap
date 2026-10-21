@@ -28,7 +28,7 @@ Autonomously executes a standalone task or a plan phase from implementation to a
    - `BASE_BRANCH`: User/caller-specified base (e.g. `feat/<plan-slug>` when called from `/execute-plan`, or explicit branch like `1.7.0`), otherwise currently checked out branch. Fetch upstream.
    - `WORKING_BRANCH`:
      - **Plan Phase**: `feat/<plan-slug>-phase-<N>` (`git checkout -b feat/<plan-slug>-phase-<N> $BASE_BRANCH`, or `git checkout` if resuming).
-     - **Standalone Task**: If already on feature branch, stay on it; otherwise `git checkout -b feat/<task-slug> $BASE_BRANCH`.
+     - **Standalone Task**: If already on feature/fix branch, stay on it; otherwise `git checkout -b <type>/<task-slug> $BASE_BRANCH` (e.g. `feat/<task-slug>` or `fix/<task-slug>`).
 2. **Implementation Protocol**:
    - **Case A: Plan Phase (`Phase N from <PLAN_FILE>`)**:
      - Loop continuously through EVERY unchecked task (`- [ ] Task N.M`) in Phase N without pausing:
@@ -36,14 +36,14 @@ Autonomously executes a standalone task or a plan phase from implementation to a
        2. Implement changes strictly within boundaries in `AGENTS.md`.
        3. Run `lefthook run pre-commit` (or test/lint commands from `AGENTS.md`). All tests must pass.
        4. Update `$PLAN_FILE` (`- [x] Task N.M`) and `$TARGET_REPO/CHANGELOG.md`.
-       5. Atomic commit: `git add -A && git commit -m "feat(<scope>): <summary> (Task N.M)"`.
+       5. Atomic commit: `git add -A && git commit -m "feat(<plan-slug>): <summary> (Task N.M)"`.
    - **Case B: Standalone Task (`$TASK`)**:
      - Optional `Probe Investigator` subagent (`self`, `inherit`) to isolate elusive root causes with minimal reproducing tests.
      - Write failing tests first (TDD), implement within `AGENTS.md` boundaries, update `CHANGELOG.md`, and verify with `lefthook run pre-commit`.
      - Atomic commit: `git add -A && git commit -m "<type>(<scope>): <summary>"`.
 3. **Draft PR**:
    - Push: `git push -u origin HEAD`.
-   - Open Draft PR targeted at `$BASE_BRANCH`:
+   - Open Draft PR targeted at `$BASE_BRANCH` (`PR_TITLE`: `feat(<plan-slug>): phase <N> - <phase-name>` for plan phases, or `<type>(<scope>): <summary>` for standalone tasks):
      ```bash
      gh pr create --draft --base "$BASE_BRANCH" --title "$PR_TITLE" --body "$PR_BODY"
      ```

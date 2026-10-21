@@ -7,7 +7,7 @@ Generic project scaffold for agentic development.
 1. **`AGENTS.md` is the single source of truth** — tool-specific bridge files are thin shims that point here and nothing more.
 2. **No session artifacts in the repo** — tool-specific scratchpads, worktree dirs, and ephemeral session state do not belong in git.
 3. **Explicit quality gates** — pre-commit hook + CI block on lint/test failure, independent of which tool wrote the code.
-4. **Docs-first planning** — `docs/vX.Y.Z/<feature>-plan.md` before any non-trivial code. Structured design with implementation tasks checked off as they land.
+4. **Docs-first planning** — `docs/vX.Y.Z/<plan-slug>-plan.md` before any non-trivial code. Structured design with implementation tasks checked off as they land.
 
 ## Structure
 
@@ -51,9 +51,9 @@ To scaffold a new project with the agentic standard:
 
 ### Unversioned / Continuous Applications
 For web apps, websites, or services without semantic release versions:
-- Create feature plans in `docs/plans/<feature>-plan.md` with `**Version:** continuous`.
+- Create feature plans in `docs/plans/<plan-slug>-plan.md` with `**Version:** continuous`.
 - Use the `## Upcoming` and `## Completed` tables in `docs/roadmap.md` instead of `## [vX.Y.Z]` sections.
-- When a plan completes, move it to `docs/plans/archive/<feature>-plan.md` and update the link in `docs/roadmap.md`.
+- When a plan completes, move it to `docs/plans/archive/<plan-slug>-plan.md` and update the link in `docs/roadmap.md`.
 
 ## Plan Docs
 
@@ -81,7 +81,7 @@ Use this to author comprehensive, empirical design plans before writing non-triv
 - **Audits Codebase with Probes**: Never assumes; inspects code and writes probes to prove current limitations.
 - **Constructs Verified Gaps Matrix**: Documents every finding with exact file/line citations and probe evidence.
 - **Establishes Scope & Boundary Rules**: Classifies items into In-Scope Core, Target-Specific, Excluded, and Deferred.
-- **Drafts Full Plan**: Creates `docs/vX.Y.Z/<feature>-plan.md` (or `docs/plans/<feature>-plan.md`) following `feature-plan-template.md`.
+- **Drafts Full Plan**: Creates `docs/vX.Y.Z/<plan-slug>-plan.md` (or `docs/plans/<plan-slug>-plan.md`) following `feature-plan-template.md`.
 - **Links Roadmap**: Automatically links the newly drafted plan in `docs/roadmap.md`.
 
 ### 2. `/execute-plan [--auto] <plan-path>`

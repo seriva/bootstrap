@@ -23,7 +23,7 @@ Autonomously orchestrates execution of an approved design plan phase-by-phase. M
    - In git repo: root is `git rev-parse --show-toplevel`.
    - In umbrella workspace (e.g. `~/dev/`): resolve via prompt (`in <repo>: ...`), active tab, or subdirectory with `AGENTS.md`.
 3. **Target Plan (`PLAN_FILE`)**:
-   - Use explicit path, or find active plan (`Status: Draft` or `In Progress`) in `docs/v*/` or `docs/plans/`. Extract `<plan-slug>`.
+   - Use explicit path, or find active plan (`Status: Draft` or `In Progress`) in `docs/v*/` or `docs/plans/`. Derive `<plan-slug>` by stripping `.md` and any trailing `-plan` suffix from the filename.
 4. **Branch Hierarchy**:
    - `BASE_BRANCH`: Currently checked out branch if on `main`/version branch; otherwise default branch. Fetch origin.
    - `PLAN_BRANCH`: `feat/<plan-slug>`. Checkout off `BASE_BRANCH` and push tracking branch.

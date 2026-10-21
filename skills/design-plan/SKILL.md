@@ -37,8 +37,8 @@ Never draft a plan from assumptions alone. Conduct an active baseline audit:
 
 ### Phase 4: Draft the Design Plan
 1. **Location**:
-   - Versioned: `$TARGET_REPO/docs/vX.Y.Z/<feature-slug>-plan.md`.
-   - Continuous/Unversioned: `$TARGET_REPO/docs/plans/<feature-slug>-plan.md`.
+   - Versioned: `$TARGET_REPO/docs/vX.Y.Z/<plan-slug>-plan.md`.
+   - Continuous/Unversioned: `$TARGET_REPO/docs/plans/<plan-slug>-plan.md`.
 2. **Sections** (from `feature-plan-template.md`):
    - Header, Continuity, Goal & Done Means, Scope Matrix, Verified Gaps, Out of Scope, Architecture & Invariants.
    - **Implementation Tasks (The Dev-Loop Contract)**:

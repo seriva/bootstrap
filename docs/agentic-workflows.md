@@ -13,7 +13,7 @@ flowchart TD
     subgraph Tier1 ["Tier 1: Architect"]
         DP["/design-plan &lt;feature&gt;"]
         Audit["Empirical Probe Audit\n(Prove bugs, inspect AST/code)"]
-        PlanDoc["docs/vX.Y.Z/&lt;feature&gt;-plan.md\n(Checklist: - [ ] Task N.M)"]
+        PlanDoc["docs/vX.Y.Z/&lt;plan-slug&gt;-plan.md\n(Checklist: - [ ] Task N.M)"]
         DP --> Audit --> PlanDoc
     end
 
@@ -48,7 +48,7 @@ flowchart TD
 
 | Tier | Skill | Role | When to Use | Output |
 | :--- | :--- | :--- | :--- | :--- |
-| **1. Architect** | [`/design-plan`](#1-design-plan-the-architect) | **Pre-implementation** | Complex features, architectural migrations, multi-component refactors | Exhaustive plan document (`docs/vX.Y.Z/<feature>-plan.md`) with probe evidence & task checklist |
+| **1. Architect** | [`/design-plan`](#1-design-plan-the-architect) | **Pre-implementation** | Complex features, architectural migrations, multi-component refactors | Exhaustive plan document (`docs/vX.Y.Z/<plan-slug>-plan.md`) with probe evidence & task checklist |
 | **2. Orchestrator** | [`/execute-plan`](#2-execute-plan-the-orchestrator) | **Multi-phase execution** | Once a design plan is approved | Creates epic branch, coordinates phased PRs, updates `- [x]`, conducts pre-merge branch audit |
 | **3. Delivery Unit** | [`/dev-loop`](#3-dev-loop-the-delivery-engine) | **Single-task execution** | Targeted bugfixes, standalone tasks, or driven by `/execute-plan` | Feature branch, TDD, quality gate, draft PR, isolated AI review & fix, published PR |
 
@@ -76,7 +76,7 @@ flowchart TD
    - Prevents mega-phases by decoupling orthogonal subsystems into separate sequential phases.
    - Enforces the 3-point task contract on every task: `Files:` (1–3 files), `Test:` (failing test first), `Done when:` (observable completion).
 6. **Plan Generation & Roadmap Sync:**
-   - Populates `docs/vX.Y.Z/<feature>-plan.md` following `docs/feature-plan-template.md`.
+   - Populates `docs/vX.Y.Z/<plan-slug>-plan.md` (or `docs/plans/<plan-slug>-plan.md`) following `docs/feature-plan-template.md`.
    - Links the new plan directly into `docs/roadmap.md`.
 
 #### Invocations:
@@ -132,7 +132,7 @@ flowchart TD
 #### Operational Flow:
 1. **Target & Base Branch Resolution:**
    - Dynamically identifies base branch as `BASE_BRANCH` (supports version branches like `1.7.0`, epic branches like `feat/<plan-slug>`, or `main`).
-   - Creates a clean feature branch: `feat/<task-slug>` (or `feat/<plan-slug>-phase-<N>` for plan phases).
+   - Creates a clean working branch: `<type>/<task-slug>` (e.g. `feat/<task-slug>` or `fix/<task-slug>`, or `feat/<plan-slug>-phase-<N>` for plan phases).
 2. **Implementation & Quality Gates:**
    - **For Plan Phases**: Loops through all unchecked tasks in the phase, implementing with TDD, committing atomically per task, and checking off `- [x] Task N.M` in the plan doc.
    - **For Standalone Tasks**: Writes failing tests first (TDD), optional **Probe Investigator** subagent for elusive bugs.
