@@ -101,7 +101,7 @@ flowchart TD
    - `main` remains untouched and releasable while the feature develops.
 3. **Phase Execution via `/dev-loop` (Context-Shielded Delivery):**
    - Delegates the active phase directly to `/dev-loop` targeting base branch `feat/<plan-slug>`.
-   - In subagent environments (Antigravity), spawns an isolated subagent to shield the orchestrator's context from intermediate compilation and test logs.
+   - In subagent environments (Antigravity `invoke_subagent`, Claude Code `Agent` tool), spawns an isolated subagent to shield the orchestrator's context from intermediate compilation and test logs. Claude Code subagents cannot spawn subagents, so there the orchestrator runs the review cycle itself after the subagent opens the draft PR.
    - `/dev-loop` creates `feat/<plan-slug>-phase-<N>`, implements tasks with TDD, commits atomically, checks off `- [x] Task N.M` in the plan doc, runs pre-commit gates, opens a draft PR, executes the Deterministic 2-Pass AI Code Review, updates the PR description with the review outcome, and marks the PR ready (`gh pr ready`).
    - **Execution Modes (Default vs. `--auto`)**:
      - **Default (Interactive Phase Gate)**: Pauses after each phase PR is marked ready so you can inspect and merge it into `feat/<plan-slug>`. Re-running `/execute-plan` advances to the next phase.
@@ -175,6 +175,13 @@ flowchart TD
     Canonical -->|"install.sh"| Cursor["Cursor IDE\n(~/.cursor/rules/*.mdc)"]
     Canonical -->|"install.sh"| Copilot["GitHub Copilot / VS Code\n(User Prompts / .prompt.md)"]
 ```
+
+### Tested Environments
+| Tool | Status | Subagent Execution |
+|---|---|---|
+| Google Antigravity (`agy`) | **Tested** | `invoke_subagent`; nested spawning supported, so the Phase Delivery Engine runs the full `/dev-loop` including review. |
+| Claude Code (`claude`) | **Tested** | `Agent` tool (`general-purpose`); no nested spawning, so `/execute-plan` runs the `/dev-loop` review cycle itself after the Phase Delivery Engine opens the draft PR. |
+| Codex, Cursor, Copilot | Installed, untested | No subagent tool assumed; workflows run inline (single-session fallback). |
 
 ### Installation
 Running `./install.sh` from `bootstrap`:

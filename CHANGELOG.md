@@ -8,6 +8,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 ## [Unreleased]
 
 ### Added
+- Tested Environments table in `docs/agentic-workflows.md` (and README note) documenting Antigravity and Claude Code as tested, with per-tool subagent behavior.
 - Support `--auto` (`--auto-merge`) flag in `/execute-plan` to automatically squash-merge passing phase PRs into `feat/<plan-slug>` and loop through all phases up to the final full-branch audit (with circuit-breaker halt on `BLOCKED_BY_DEFECTS`), while preserving interactive per-phase review as the default.
 - Phase Implementer subagent execution in `/execute-plan` providing context shielding for the orchestrator during multi-task phases.
 - Optional Probe Investigator subagent in `/dev-loop` for isolating tricky root causes with minimal reproducing test cases.
@@ -23,6 +24,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - Comprehensive `--help` / `-h` CLI flag and usage documentation in `sync.sh`.
 
 ### Changed
+- Treat Claude Code as subagent-capable in `/dev-loop` and `/execute-plan`: shared Subagent Dispatch table maps spawns to Antigravity `invoke_subagent` (`conversationId`) or Claude Code `Agent` tool (`agentId`), with a `PENDING_CALLER_REVIEW` hand-off so the orchestrator runs the review cycle where nested subagents are unavailable.
 - Consolidate `/dev-loop` AI code review outcome directly into the initial PR description (`gh pr edit`), removing redundant PR timeline comments (`gh pr comment`).
 - Unify architecture by having `/execute-plan` delegate phase delivery directly to `/dev-loop` (single authoritative delivery engine for TDD, atomic commits, draft PR, 2-pass AI code review, and publish safety gate).
 - Tighten wording, eliminate brittle shell heredocs, and reduce token footprint across bootstrap skills (`dev-loop`, `execute-plan`, `design-plan`), using deterministic FSM decision tables for the review loop and explicit continuous phase execution invariants.

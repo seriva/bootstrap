@@ -10,6 +10,15 @@ Autonomously orchestrates execution of an approved design plan phase-by-phase. M
 > [!NOTE]
 > Invoking `/execute-plan` grants authorization to manage plan branches, delegate phase execution to `/dev-loop`, and conduct the final full-branch audit.
 
+## Subagent Dispatch
+"Spawn subagent `<Role>`" = fresh-context agent (zero chat history) via host's subagent tool. Its returned ID = `SUBAGENT_ID` (proof-of-review).
+
+| Environment | Spawn call | `SUBAGENT_ID` | Nested spawning |
+|---|---|---|---|
+| Antigravity | `invoke_subagent` (`TypeName: "self"`, `Workspace: "inherit"`, `Model: "inherit"`) | `conversationId` | Yes |
+| Claude Code | `Agent` tool (`subagent_type: "general-purpose"`, `description: "<Role>"`, omit `model` to inherit). Never `subagent_type: "fork"` (inherits context = not fresh). Wait for its result before continuing. | `agentId` | No (subagents cannot spawn subagents) |
+| No subagent tool (e.g. Cursor) | Run step inline. | — | — |
+
 ---
 
 ## Operational Workflow
@@ -38,14 +47,15 @@ Autonomously orchestrates execution of an approved design plan phase-by-phase. M
 1. **Sync Epic Branch**:
    - Ensure `$PLAN_BRANCH` is checked out and up-to-date: `git checkout $PLAN_BRANCH && git pull`.
 2. **Delegate Phase Delivery to `/dev-loop`**:
-   - In subagent-capable environments (Antigravity):
-     Spawn subagent `Phase Delivery Engine` (`TypeName: "self"`, `Workspace: "inherit"`, `Model: "inherit"`):
-     > Prompt: `First read the dev-loop skill file (SKILL.md) in full. Then execute /dev-loop in $TARGET_REPO on base branch $PLAN_BRANCH for Phase $PHASE_NUM ($PHASE_NAME) from $PLAN_FILE. HARD REQUIREMENT: In Phase 3 of /dev-loop, you MUST spawn a separate fresh-context Code Reviewer subagent via invoke_subagent (self-review is forbidden). Return the PR URL, REVIEW_STATUS, and the Reviewer Subagent conversationId(s).`
+   - In subagent-capable environments (Antigravity / Claude Code):
+     Spawn subagent `Phase Delivery Engine` per **Subagent Dispatch**:
+     > Prompt: `First read the dev-loop skill file (SKILL.md) in full. Then execute /dev-loop in $TARGET_REPO on base branch $PLAN_BRANCH for Phase $PHASE_NUM ($PHASE_NAME) from $PLAN_FILE. HARD REQUIREMENT: In Phase 3 of /dev-loop, you MUST spawn a separate fresh-context Code Reviewer subagent per its Subagent Dispatch table (self-review is forbidden). If you have no subagent tool, follow the dev-loop fallback: stop after Phase 2 and return REVIEW_STATUS=PENDING_CALLER_REVIEW. Return the PR URL, WORKING_BRANCH, REVIEW_STATUS, and the Reviewer SUBAGENT_ID(s).`
      *(Shields orchestrator context from task compilation, tests, and diffs).*
-   - In single-session environments (Claude Code / Cursor):
+     - **Claude Code** (no nested spawning): Engine returns `PENDING_CALLER_REVIEW` after Phase 2 → orchestrator runs `/dev-loop` Phase 3–4 itself (spawning `Code Reviewer` / `Defect Fixer` subagents) on `feat/<plan-slug>-phase-$PHASE_NUM` against `$PLAN_BRANCH`.
+   - In single-session environments (no subagent tool, e.g. Cursor):
      Read and run the `/dev-loop` workflow targeting `BASE_BRANCH="$PLAN_BRANCH"` for Phase N.
 3. **Phase PR Gate & Proof-of-Review Verification**:
-   - **Verify Proof-of-Review**: Confirm that a fresh `Code Reviewer` subagent was actually invoked (valid Reviewer `conversationId` returned and recorded in the PR body under `## Review Status`). If the `Phase Delivery Engine` skipped spawning the reviewer subagent, immediately spawn `Code Reviewer (Pass 1)` via `invoke_subagent` on `git diff $PLAN_BRANCH...feat/<plan-slug>-phase-$PHASE_NUM` and complete Phase 3–4 of `/dev-loop` before proceeding!
+   - **Verify Proof-of-Review**: Confirm that a fresh `Code Reviewer` subagent was actually invoked (valid Reviewer `SUBAGENT_ID` returned and recorded in the PR body under `## Review Status`). If the `Phase Delivery Engine` skipped spawning the reviewer subagent, immediately spawn subagent `Code Reviewer (Pass 1)` on `git diff $PLAN_BRANCH...feat/<plan-slug>-phase-$PHASE_NUM` and complete Phase 3–4 of `/dev-loop` before proceeding!
    - **Circuit Breaker (`REVIEW_STATUS == BLOCKED_BY_DEFECTS` or failed gate)**:
      - Unconditionally halt execution (even in `--auto` mode). Leave phase PR in **Draft** (or convert back with `gh pr ready --undo`) and alert user with unresolved findings.
    - **When `REVIEW_STATUS == PASSED` (Verified Proof-of-Review & Phase PR marked ready)**:
@@ -59,7 +69,7 @@ Autonomously orchestrates execution of an approved design plan phase-by-phase. M
 When all phases in `$PLAN_FILE` are checked off (`- [x]`):
 1. **Sync & Test**: Checkout `$PLAN_BRANCH`. Pull latest merges. Run full project test and linter suite.
 2. **Comprehensive AI Audit Subagent**:
-   - Spawn subagent `Plan Auditor` (`self`, `inherit`) with `$PLAN_FILE` and diff `git diff origin/$BASE_BRANCH...$PLAN_BRANCH`.
+   - Spawn subagent `Plan Auditor` per **Subagent Dispatch** with `$PLAN_FILE` and diff `git diff origin/$BASE_BRANCH...$PLAN_BRANCH`.
    - Audit diff against: 1) "Done means" checklist, 2) Scope Rule & Boundary Matrix, 3) Out-of-Scope zero leaks, 4) Test coverage.
    - Returns `PLAN_VERIFIED_LGTM` or structured discrepancy report.
 3. **Final Merge PR**:

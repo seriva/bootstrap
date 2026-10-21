@@ -74,7 +74,7 @@ docs/
 
 > For full architectural diagrams, interaction models, and multi-vendor setup, see the complete guide in [docs/agentic-workflows.md](docs/agentic-workflows.md).
 
-Run `./install.sh` once on your workstation to install the autonomous skills. It conditionally detects which AI tools are installed on your machine (`agy`, `claude`, `codex`, `cursor`, `copilot`) and installs the skills globally into their user configuration directories.
+Run `./install.sh` once on your workstation to install the autonomous skills. It conditionally detects which AI tools are installed on your machine (`agy`, `claude`, `codex`, `cursor`, `copilot`) and installs the skills globally into their user configuration directories. Tested on Antigravity (`agy`) and Claude Code (`claude`); other tools are installed but untested (see [Tested Environments](docs/agentic-workflows.md#tested-environments)).
 
 ### 1. `/design-plan <feature description>`
 Use this to author comprehensive, empirical design plans before writing non-trivial code.
