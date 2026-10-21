@@ -5,290 +5,59 @@ description: End-to-end autonomous development loop: implementation, quality gat
 
 # Autonomous Development Loop (dev-loop)
 
-Use this skill to autonomously take a task or feature description from implementation to a verified, self-reviewed Pull Request ready for human inspection.
+Autonomously executes a task or bugfix from implementation to a verified, self-reviewed Pull Request ready for human inspection.
 
 > [!NOTE]
-> Invoking `/dev-loop` grants the agent explicit authorization to resolve the target repository, create branches, stage and commit changes, and push pull requests for the requested task.
+> Invoking `/dev-loop` grants authorization to discover target repos, create branches, stage/commit code, run tests, and manage GitHub PRs.
 
 ---
 
-## Instructions for the Agent
+## Operational Workflow
 
-When this skill is invoked with a task description `$TASK`:
+### Phase 1: Target Discovery & Context
+1. **Target Repository (`TARGET_REPO`)**:
+   - In git repo: root is `git rev-parse --show-toplevel`.
+   - In umbrella workspace (e.g. `~/dev/`): resolve via prompt (`in <repo>: ...`), active editor tab, or immediate subdirectory with `.git` and `AGENTS.md`. Ask if ambiguous.
+   - All subsequent commands and file edits MUST run in `$TARGET_REPO`.
+2. **Project Invariants**: Read `$TARGET_REPO/AGENTS.md` (Part 2) for stack, test commands, lint gates, and boundaries. Check for `lefthook.yml`.
+3. **Plan-First Requirement**: If task is non-trivial and no plan exists in `docs/v*/` or `docs/plans/`, draft a design plan first (`/design-plan`).
 
-### Phase 1: Target Repository & Environment Discovery
-
-1. **Resolve Target Repository (`TARGET_REPO`)**:
-   - Check if current directory is inside a git repository:
-     ```bash
-     git rev-parse --is-inside-work-tree 2>/dev/null
-     ```
-   - **If inside a repository**: Set `TARGET_REPO` to the repository root (`git rev-parse --show-toplevel`).
-   - **If NOT inside a repository** (e.g., umbrella multi-repo workspace like `~/dev/`):
-     - Identify the target repo using the following precedence:
-       1. Explicit repo specified in prompt: e.g., `/dev-loop in gofront: ...` or `/dev-loop [gofront] ...`.
-       2. Active/focused file in the editor (e.g. file path contains `/gofront/`).
-       3. Scan immediate subdirectories containing `.git` and `AGENTS.md`.
-     - If ambiguous, ask the user to clarify which repository to target.
-     - Set `TARGET_REPO` to the resolved directory path.
-   - **CRITICAL**: All subsequent `git`, `gh`, test, lint, and build commands MUST execute within `TARGET_REPO` (e.g., `cd "$TARGET_REPO"` or `git -C "$TARGET_REPO"`).
-
-2. **Discover Project Conventions (`AGENTS.md` & `lefthook`)**:
-   - Read `$TARGET_REPO/AGENTS.md` (specifically Part 2: Project Context) to determine:
-     - Tech stack, runtime, package manager.
-     - Linter/formatter commands.
-     - Test runner and test paths.
-     - Architecture boundaries and invariants.
-   - Check if `$TARGET_REPO/lefthook.yml` exists.
-
-3. **Plan-First Requirement**:
-   - Check if the task is non-trivial (multi-component, architecture-altering, or high-risk).
-   - If non-trivial: Check if a plan exists in `$TARGET_REPO/docs/vX.Y.Z/` or `$TARGET_REPO/docs/plans/`.
-   - If no plan exists, generate one following `$TARGET_REPO/docs/feature-plan-template.md` before writing non-trivial code.
-
----
-
-### Phase 2: Branch Resolution, Implementation & Quality Gates
-
-1. **Base Branch & Working Branch Resolution**:
-   - In `$TARGET_REPO`, ensure working tree is clean (`git status --porcelain`). If untracked/dirty changes exist, ask user before proceeding.
-   - **Determine Base Branch (`BASE_BRANCH`)**:
-     - Check the currently checked out branch:
-       ```bash
-       CURRENT_BRANCH=$(git -C "$TARGET_REPO" branch --show-current)
-       ```
-     - If the user explicitly specified a base in the prompt (e.g., `on 1.7.0:` or `off 1.7.0:`), use that.
-     - Otherwise, **use the currently checked out branch as `BASE_BRANCH`** (e.g., `1.7.0`, `main`, `release/v2`).
-     - Fetch latest upstream changes for `BASE_BRANCH`:
-       ```bash
-       git -C "$TARGET_REPO" fetch origin "$BASE_BRANCH" 2>/dev/null || true
-       ```
-   - **Determine Working Branch (`WORKING_BRANCH`)**:
-     - If `BASE_BRANCH` is already a task branch (e.g. starts with `feat/` or `fix/`), stay on it: `WORKING_BRANCH="$BASE_BRANCH"`.
-     - Otherwise (e.g. on `1.7.0`, `main`, `master`, or version branch), create and checkout a new branch off `BASE_BRANCH`:
-       ```bash
-       WORKING_BRANCH="feat/<task-slug>" # or fix/<task-slug> for bug fixes
-       git -C "$TARGET_REPO" checkout -b "$WORKING_BRANCH" "$BASE_BRANCH" 2>/dev/null || git -C "$TARGET_REPO" checkout "$WORKING_BRANCH"
-       ```
-
-2. **Implementation & TDD**:
-   - **Root-Cause Probe Subagent (Optional for Ambiguous Bugs)**:
-     If `$TASK` involves an elusive bug, race condition, or unexplained failure, spawn an isolated subagent with role **"Probe Investigator"** (TypeName: `self`, Workspace: `inherit`, Model: `inherit`):
-     - Prompt: Write a minimal reproducing test probe or inspect compilation/AST outputs in `<TARGET_REPO>`, isolate the root cause, and return the exact file, line, and failing assertion.
-     - Keeps the main implementation conversation clean and focused.
-   - **TDD Implementation**:
-     - Write failing unit/integration tests first for non-trivial logic (TDD).
-     - Implement the feature/fix strictly within the scope of `$TASK`, respecting module boundaries in `AGENTS.md`.
-     - Update `$TARGET_REPO/CHANGELOG.md` under `## [Unreleased]`.
-     - If public APIs, configuration, or CLI arguments changed, update `$TARGET_REPO/README.md`.
-
-3. **Quality Gates & Self-Review**:
-   - Run verification in `$TARGET_REPO`:
-     ```bash
-     if [ -f "lefthook.yml" ]; then
-       lefthook run pre-commit
-     else
-       # Run linters, formatters, and test runner from AGENTS.md
-     fi
-     ```
-   - Self-review `git diff`: strip accidental changes, console logs, and debug probes.
-   - Ensure all tests pass with zero warnings or errors.
-
+### Phase 2: Branch & TDD Implementation
+1. **Branch Resolution**:
+   - Ensure clean tree (`git status --porcelain`).
+   - `BASE_BRANCH`: User-specified base, or currently checked out branch (e.g. `main`, `1.7.0`). Fetch upstream.
+   - `WORKING_BRANCH`: If already on a feature branch, stay on it. Otherwise: `git checkout -b feat/<task-slug> $BASE_BRANCH`.
+2. **Investigation Probe (Optional for elusive bugs)**:
+   - Spawn subagent `Probe Investigator` (`self`, `inherit`) to isolate root causes with minimal reproducing tests.
+3. **Implementation & Quality Gates**:
+   - TDD: Write failing unit/integration tests first before writing implementation code.
+   - Update `$TARGET_REPO/CHANGELOG.md` under `## [Unreleased]`.
+   - Run verification: `lefthook run pre-commit` (or linter and test commands from `AGENTS.md`). All tests must pass.
 4. **Commit & Draft PR**:
-   - Commit using Conventional Commits (`type(scope): subject` $\le 72$ chars, imperative mood, body explaining why):
+   - Atomic commit: `git commit -m "<type>(<scope>): <summary>"`.
+   - Push: `git push -u origin HEAD`.
+   - Open Draft PR:
      ```bash
-     git -C "$TARGET_REPO" add -A
-     git -C "$TARGET_REPO" commit -m "<type>(<scope>): <summary>"
+     gh pr create --draft --base "$BASE_BRANCH" --title "<type>(<scope>): <summary>" --body "$PR_BODY"
      ```
-   - Push to remote:
-     ```bash
-     git -C "$TARGET_REPO" push -u origin HEAD
-     ```
-   - Open a **draft** PR targeted at `BASE_BRANCH` with a structured description:
-     ```bash
-     PR_BODY=$(cat <<EOF
-     ## Summary
-     - Implementation for: $TASK
-     - Base branch: $BASE_BRANCH
+     *Initial PR Body must include: Summary, Quality Gates checklist, and `## Status: *Automated AI review & fix cycle in progress...*`.*
 
-     ## Quality Gates
-     - [x] Pre-commit quality gate passed
-     - [x] Unit/integration tests passing
-     - [x] CHANGELOG.md updated
+### Phase 3: Deterministic 2-Pass AI Code Review
+Run an isolated review cycle. Hard invariants: max 2 review passes, max 1 fix turn. Low-severity nits NEVER block approval or trigger fixes.
 
-     ## Status
-     *Automated AI review & fix cycle in progress...*
-     EOF
-     )
-
-     if gh pr view "$WORKING_BRANCH" >/dev/null 2>&1; then
-       echo "PR already exists for $WORKING_BRANCH; branch commits updated."
-     else
-       gh pr create --draft --base "$BASE_BRANCH" --title "<type>(<scope>): <summary>" --body "$PR_BODY" || echo "GH_PR_FAILED"
-     fi
-     ```
-   - **Fallback**: If `gh pr create` fails (e.g. unauthenticated or no remote), log a warning and proceed with local branch & commits intact.
-
----
-
-### Phase 3: Fresh-Context Code Review (Deterministic 2-Pass Protocol)
-
-> [!IMPORTANT]
-> **Strict Review Invariants (Zero Infinite Loops)**:
-> - **Pass 1**: Exactly one initial review pass.
-> - **Fix Turn**: At most ONE fix iteration (only runs if Pass 1 found High or Medium defects).
-> - **Pass 2**: Exactly one final verification review if a fix was applied.
-> - **TERMINAL STOP**: Under NO circumstances run a 3rd review or spawn a 2nd Defect Fixer.
-> - **Low-severity findings** (style, cosmetic nits, documentation typos, non-critical suggestions) are non-blocking and MUST NEVER trigger a fixer or prevent approval.
-
-#### Pass 1: Initial Isolated Review
-1. Spawn a subagent with role **"Code Reviewer"** (TypeName: `self`, Workspace: `inherit`, Model: `inherit`).
-   **Do NOT pass implementation conversation history** to guarantee fresh, unbiased review.
-
-   Reviewer Prompt:
-   ```text
-   You are an expert core code reviewer, not the implementing agent: do not create branches, edit or commit code.
-
-   Target repository: <TARGET_REPO>
-   Base branch: <BASE_BRANCH>
-
-   Run `git -C <TARGET_REPO> diff origin/<BASE_BRANCH>...HEAD` (or `git -C <TARGET_REPO> diff <BASE_BRANCH>...HEAD`) and inspect context in `<TARGET_REPO>/AGENTS.md`.
-
-   Review ONLY the current changes relative to <BASE_BRANCH> for:
-   - Logical bugs, nil/null safety, and error handling.
-   - Security vulnerabilities and performance regressions.
-   - Architectural anti-patterns and boundary violations.
-   - Reproduce claims where you can (run a probe or test in <TARGET_REPO>, not just read) and state which findings you verified.
-
-   Enforce strict change isolation. Flag scope creep, unnecessarily broad modifications, or any changes that risk cascading dependencies in adjacent modules.
-
-   Severity Standards:
-   - High: Security vulnerability, crash, data corruption, or broken core invariant.
-   - Medium: Functional logic error or regression in behavior.
-   - Low: Cosmetic styling, typo, or minor nit. (Non-blocking).
-
-   Output Format:
-   - Group findings under `### High`, `### Medium`, or `### Low`.
-   - If there are zero High and zero Medium defects, state clearly: "Looks Good" (or "LGTM").
-   ```
-
-2. **Pass 1 Evaluation**:
-   - **Condition 1A (Clean Pass)**: Reviewer stated `"Looks Good"` / `"LGTM"` OR reported zero High and zero Medium defects.
-     - Set `REVIEW_STATUS=PASSED`.
-     - **STOP REVIEW IMMEDIATELY.** Proceed directly to Phase 4.
-   - **Condition 1B (High/Medium Defects Found)**:
-     - Proceed to **Single-Turn Defect Fix**.
-
-#### Single-Turn Defect Fix (Runs at most ONCE)
-Spawn a subagent with role **"Defect Fixer"** (TypeName: `self`, Workspace: `inherit`, Model: `inherit`) with prompt:
-```text
-Address the following review findings in target repository <TARGET_REPO>.
-Fix ONLY High and Medium severity items. Ignore Low-severity nits and cosmetic suggestions:
-<PASS_1_REVIEWER_OUTPUT>
-
-Instructions:
-1. Apply fixes in <TARGET_REPO> with minimal change footprint (no scope creep).
-2. Re-run local verification (`lefthook run pre-commit` or test/lint commands from AGENTS.md).
-3. Verify all tests pass green.
-4. Commit and push:
-   git -C <TARGET_REPO> add -A
-   git -C <TARGET_REPO> commit -m "fix(<scope>): address review feedback"
-   git -C <TARGET_REPO> push
-```
-When the Defect Fixer finishes, proceed directly to **Pass 2: Final Verification Review**.
-
-#### Pass 2: Final Verification Review (Terminal Pass)
-1. Spawn a subagent with role **"Code Reviewer"** (TypeName: `self`, Workspace: `inherit`, Model: `inherit`, zero implementation history) with prompt:
-   ```text
-   You are an expert core code reviewer conducting the FINAL verification pass on applied defect fixes.
-
-   Target repository: <TARGET_REPO>
-   Base branch: <BASE_BRANCH>
-
-   Run `git -C <TARGET_REPO> diff origin/<BASE_BRANCH>...HEAD` (or `git -C <TARGET_REPO> diff <BASE_BRANCH>...HEAD`).
-
-   Verify if the previously reported High and Medium defects are resolved without new regressions:
-   - Only High or Medium defects can block approval.
-   - Disregard Low severity nits.
-   - If previous High/Medium defects are resolved, conclude with: "Looks Good" (or "LGTM").
-   ```
-
-2. **Pass 2 Evaluation & Terminal Stop (MANDATORY)**:
-   - **If reviewer says `"Looks Good"` / `"LGTM"` OR reports zero High/Medium defects**:
-     - Set `REVIEW_STATUS=PASSED`.
-   - **If High or Medium defects remain**:
-     - Set `REVIEW_STATUS=BLOCKED_BY_DEFECTS`.
-   - **CRITICAL**: The review phase is now **PERMANENTLY CLOSED**.
-     - **DO NOT** spawn another Defect Fixer.
-     - **DO NOT** launch a 3rd review pass.
-     - Proceed immediately to **Phase 4: Finalize PR & Safety Gate**.
-
----
+| Step | Role | Context | Prompt / Objective | Outcome & Transition |
+|---|---|---|---|---|
+| **Pass 1** | `Code Reviewer` (`self`, `inherit`) | Zero prior history; `git diff <BASE>...HEAD` | Inspect diff and AGENTS.md. Probe for crashes, logic bugs, boundary leaks, regressions. Group findings: `### High`, `### Medium`, `### Low`. | • **Zero High/Medium**: Reviewer replies "LGTM" $\rightarrow$ `REVIEW_STATUS=PASSED` (Proceed to Phase 4).<br>• **High/Medium found**: Proceed to Fix Turn. |
+| **Fix Turn** (Max 1) | `Defect Fixer` (`self`, `inherit`) | Pass 1 findings | Fix ONLY High/Medium items with minimal footprint. Re-run tests/lint green. Commit: `fix(<scope>): address review feedback`. Push. | Proceed to Pass 2. |
+| **Pass 2** (Terminal) | `Code Reviewer` (`self`, `inherit`) | Zero implementation history; `git diff <BASE>...HEAD` | Verify if Pass 1 High/Medium defects are resolved without new regressions. Disregard Low nits. | • **Resolved**: Reviewer replies "LGTM" $\rightarrow$ `REVIEW_STATUS=PASSED`.<br>• **Unresolved**: `REVIEW_STATUS=BLOCKED_BY_DEFECTS`.<br>**TERMINAL STOP**: No 3rd review, no 2nd fix. |
 
 ### Phase 4: Finalize PR & Safety Gate
-
-1. **Update PR Review Summary & Comment**:
-   - Update the PR body (replacing the pending `*Automated AI review & fix cycle in progress...*` status) with the review summary:
-     ```bash
-     PR_BODY=$(cat <<EOF
-     ## Summary
-     - Implementation for: $TASK
-     - Base branch: $BASE_BRANCH
-
-     ## Quality Gates
-     - [x] Pre-commit quality gate passed
-     - [x] Unit/integration tests passing
-     - [x] CHANGELOG.md updated
-
-     ## Review Status
-     - **Review Gate**: \`$REVIEW_STATUS\`
-     - **Protocol**: Deterministic 2-Pass AI Code Review
-     - **Pass 1**: <Pass 1 summary: clean LGTM or list of findings>
-     - **Defect Fixes**: <Commit hash & bullet points of fixes applied, or 'None required'>
-     - **Pass 2 (Verification)**: <Pass 2 outcome: clean LGTM or remaining defects>
-     EOF
-     )
-
-     gh pr edit "$WORKING_BRANCH" --body "$PR_BODY"
-     ```
-   - Post a concise review summary comment to the PR:
-     ```bash
-     PR_COMMENT=$(cat <<EOF
-     ### 🤖 Automated AI Review & Fix Cycle Complete
-
-     **Status**: \`$REVIEW_STATUS\`
-     **Review Protocol**: 2-Pass Deterministic AI Code Review
-
-     #### Findings & Fixes
-     - **Pass 1**: <Findings summary or 'Clean pass, zero blocking defects found'>
-     - **Fix Turn**: <Fixes applied with commit hash, or 'None required'>
-     - **Pass 2 (Verification)**: <Verification outcome or 'N/A (clean on Pass 1)'>
-
-     #### Quality Gates
-     - [x] Pre-commit quality gate passed
-     - [x] Unit/integration tests passing
-     EOF
-     )
-
-     gh pr comment "$WORKING_BRANCH" --body "$PR_COMMENT"
-     ```
-
+1. **Update PR Body & Publish Review Comment**:
+   - Update PR body via `gh pr edit "$WORKING_BRANCH" --body "$UPDATED_BODY"`: Replace `*Automated AI review...*` under `## Review Status` with:
+     - Review gate status (`PASSED` or `BLOCKED_BY_DEFECTS`)
+     - Passes executed (Pass 1 clean, or Pass 1 $\rightarrow$ Fix turn $\rightarrow$ Pass 2)
+     - Summary of findings addressed and commit hash of fixes (or "None required")
+   - Post timeline comment via `gh pr comment "$WORKING_BRANCH" --body "$PR_COMMENT"` detailing review outcome and quality gate pass.
 2. **Safety Gate Evaluation**:
-   - **If `REVIEW_STATUS == PASSED`**:
-     - Convert the PR out of draft mode:
-       ```bash
-       gh pr ready "$WORKING_BRANCH"
-       ```
-     - Output confirmation that the PR is published and ready for human review against `$BASE_BRANCH`.
-   - **If `REVIEW_STATUS == BLOCKED_BY_DEFECTS`** (unresolved High/Medium defects remain after Pass 2):
-     - **DO NOT run `gh pr ready`**.
-     - Leave the PR in **Draft** mode to prevent team notification spam or accidental merging.
-     - Post a prominent alert highlighting the specific unresolved High/Medium defects that require human attention.
-
-3. **Final Summary**:
-   Post a clear markdown summary for the user containing:
-   - **Target Repository**: `<TARGET_REPO>`.
-   - **Base Branch & Working Branch**: `base: <BASE_BRANCH>`, `branch: <WORKING_BRANCH>`.
-   - **Pull Request**: URL (or status if manual push needed).
-   - **Quality Gate**: Pre-commit verification status.
-   - **Review Protocol**: Passes executed (1 or 2), fixes applied (0 or 1), and final gate status (`PASSED` vs `BLOCKED_BY_DEFECTS`).
+   - **`REVIEW_STATUS == PASSED`**: Convert PR to ready: `gh pr ready "$WORKING_BRANCH"`. Report PR is ready for human review.
+   - **`REVIEW_STATUS == BLOCKED_BY_DEFECTS`**: Leave PR in **Draft** mode. Alert user with unresolved findings.
