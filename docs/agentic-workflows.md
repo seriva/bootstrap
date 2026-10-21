@@ -89,7 +89,7 @@ flowchart TD
 
 ### 2. `/execute-plan` (The Orchestrator)
 
-**Purpose:** Executes an approved design plan phase-by-phase without human babysitting, isolating changes on an epic branch and opening human-reviewable PRs per phase.
+**Purpose:** Executes an approved design plan phase-by-phase on an isolated epic branch (`feat/<plan-slug>`), supporting both **interactive per-phase review** (default) and **fully autonomous multi-phase auto-merge** (`--auto`).
 
 #### Operational Flow:
 1. **Durable State Machine:**
@@ -103,6 +103,9 @@ flowchart TD
    - Delegates the active phase directly to `/dev-loop` targeting base branch `feat/<plan-slug>`.
    - In subagent environments (Antigravity), spawns an isolated subagent to shield the orchestrator's context from intermediate compilation and test logs.
    - `/dev-loop` creates `feat/<plan-slug>-phase-<N>`, implements tasks with TDD, commits atomically, checks off `- [x] Task N.M` in the plan doc, runs pre-commit gates, opens a draft PR, executes the Deterministic 2-Pass AI Code Review, updates the PR description with the review outcome, and marks the PR ready (`gh pr ready`).
+   - **Execution Modes (Default vs. `--auto`)**:
+     - **Default (Interactive Phase Gate)**: Pauses after each phase PR is marked ready so you can inspect and merge it into `feat/<plan-slug>`. Re-running `/execute-plan` advances to the next phase.
+     - **Autonomous (`--auto` / `--auto-merge`)**: When a phase passes the 2-pass AI review (`REVIEW_STATUS == PASSED`), automatically squash-merges the phase PR into `feat/<plan-slug>` (`gh pr merge --squash --delete-branch`), pulls `feat/<plan-slug>`, and immediately starts the next phase. If any phase hits `BLOCKED_BY_DEFECTS`, the circuit breaker trips and halts immediately without merging.
 4. **Full-Branch Final Audit (Pre-Merge to `main`):**
    - Once all phases are marked `- [x]`, switches to `feat/<plan-slug>`.
    - Spawns an isolated **Plan Auditor** subagent to inspect the complete diff against `main`:
@@ -116,7 +119,8 @@ flowchart TD
 #### Invocations:
 ```text
 /execute-plan docs/v1.8.0/portable-go-plan.md
-/execute-plan in gofront
+/execute-plan --auto docs/v1.8.0/portable-go-plan.md
+/execute-plan --auto in gofront
 ```
 
 ---

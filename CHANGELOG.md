@@ -8,6 +8,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 ## [Unreleased]
 
 ### Added
+- Support `--auto` (`--auto-merge`) flag in `/execute-plan` to automatically squash-merge passing phase PRs into `feat/<plan-slug>` and loop through all phases up to the final full-branch audit (with circuit-breaker halt on `BLOCKED_BY_DEFECTS`), while preserving interactive per-phase review as the default.
 - Phase Implementer subagent execution in `/execute-plan` providing context shielding for the orchestrator during multi-task phases.
 - Optional Probe Investigator subagent in `/dev-loop` for isolating tricky root causes with minimal reproducing test cases.
 - Isolated project starter kit in `scaffold/` containing pristine, blank templates (`AGENTS.md`, clean `CHANGELOG.md`, `lefthook.yml`, `.github/`, `docs/`) decoupled from bootstrap's internal tooling.

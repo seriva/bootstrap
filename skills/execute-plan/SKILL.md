@@ -15,12 +15,16 @@ Autonomously orchestrates execution of an approved design plan phase-by-phase. M
 ## Operational Workflow
 
 ### Phase 1: Target Discovery & Epic Branch Setup
-1. **Target Repository (`TARGET_REPO`)**:
+1. **Execution Mode (`AUTO_MODE`)**:
+   - Check user invocation for `--auto` (or `--auto-merge`):
+     - **Default (`AUTO_MODE=false`)**: Interactive phase-by-phase mode. Executes one phase PR and pauses for human review/merge into `$PLAN_BRANCH`.
+     - **Autonomous (`AUTO_MODE=true`)**: Continuous mode. Automatically merges passing phase PRs into `$PLAN_BRANCH` (`gh pr merge --squash --delete-branch`) and loops through all remaining phases until Phase 4 (Full-Branch Final Audit), halting early only if a phase fails review (`BLOCKED_BY_DEFECTS`).
+2. **Target Repository (`TARGET_REPO`)**:
    - In git repo: root is `git rev-parse --show-toplevel`.
    - In umbrella workspace (e.g. `~/dev/`): resolve via prompt (`in <repo>: ...`), active tab, or subdirectory with `AGENTS.md`.
-2. **Target Plan (`PLAN_FILE`)**:
+3. **Target Plan (`PLAN_FILE`)**:
    - Use explicit path, or find active plan (`Status: Draft` or `In Progress`) in `docs/v*/` or `docs/plans/`. Extract `<plan-slug>`.
-3. **Branch Hierarchy**:
+4. **Branch Hierarchy**:
    - `BASE_BRANCH`: Currently checked out branch if on `main`/version branch; otherwise default branch. Fetch origin.
    - `PLAN_BRANCH`: `feat/<plan-slug>`. Checkout off `BASE_BRANCH` and push tracking branch.
 
@@ -40,9 +44,15 @@ Autonomously orchestrates execution of an approved design plan phase-by-phase. M
      *(Shields orchestrator context from task compilation, tests, and diffs).*
    - In single-session environments (Claude Code / Cursor):
      Run the `/dev-loop` workflow directly targeting `BASE_BRANCH="$PLAN_BRANCH"` for Phase N.
-3. **Phase PR Ready Gate**:
-   - Confirm `/dev-loop` completed: phase PR created, tested, AI-reviewed, and marked ready (`gh pr ready`).
-   - Report phase PR URL to user. Note: once merged into `$PLAN_BRANCH`, run `/execute-plan` again to proceed to the next phase.
+3. **Phase PR Gate & Continuation**:
+   - **Circuit Breaker (`REVIEW_STATUS == BLOCKED_BY_DEFECTS` or failed gate)**:
+     - Unconditionally halt execution (even in `--auto` mode). Leave phase PR in **Draft** and alert user with unresolved findings.
+   - **When `REVIEW_STATUS == PASSED` (Phase PR marked ready)**:
+     - **If `AUTO_MODE=false` (Default)**: Report phase PR URL to user and stop. Once merged into `$PLAN_BRANCH`, running `/execute-plan` again resumes at the next phase.
+     - **If `AUTO_MODE=true` (`--auto`)**:
+       1. Merge phase PR into `$PLAN_BRANCH`: `gh pr merge "feat/<plan-slug>-phase-$PHASE_NUM" --squash --delete-branch`.
+       2. Sync `$PLAN_BRANCH`: `git checkout "$PLAN_BRANCH" && git pull`.
+       3. Loop back to **Phase 2** to execute the next unchecked phase (or transition directly to **Phase 4** once all phases are `- [x]`).
 
 ### Phase 4: Full-Branch Final Audit & Merge Preparation
 When all phases in `$PLAN_FILE` are checked off (`- [x]`):

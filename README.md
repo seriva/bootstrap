@@ -84,11 +84,11 @@ Use this to author comprehensive, empirical design plans before writing non-triv
 - **Drafts Full Plan**: Creates `docs/vX.Y.Z/<feature>-plan.md` (or `docs/plans/<feature>-plan.md`) following `feature-plan-template.md`.
 - **Links Roadmap**: Automatically links the newly drafted plan in `docs/roadmap.md`.
 
-### 2. `/execute-plan <plan-path>`
+### 2. `/execute-plan [--auto] <plan-path>`
 Use this to autonomously execute an approved design plan phase-by-phase:
 - **Durable State Machine**: Tracks execution progress directly in the plan's `## Implementation Tasks` checklist.
-- **One PR per Phase**: Groups phase tasks into a single clean branch, implementing each with TDD and checking off `- [x]`.
-- **Quality Gates & Review**: Runs `lefthook run pre-commit`, opens draft PR, runs isolated AI review and fix loop, and marks ready.
+- **One PR per Phase**: Groups phase tasks into a single clean branch off `feat/<plan-slug>`, implementing each with TDD and checking off `- [x]`.
+- **Interactive (Default) or Autonomous (`--auto`)**: By default, pauses after each phase PR is ready for human review/merge into `feat/<plan-slug>`. With `--auto`, automatically squash-merges passing phase PRs into `feat/<plan-slug>` and continues through all phases until the final full-branch audit PR into `main` (halting early if any phase fails review).
 - **Resumable**: If interrupted, running `/execute-plan` resumes at the next unchecked task.
 
 ### 3. `/dev-loop <task description>`
