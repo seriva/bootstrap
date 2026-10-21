@@ -22,6 +22,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - Comprehensive `--help` / `-h` CLI flag and usage documentation in `sync.sh`.
 
 ### Changed
+- Consolidate `/dev-loop` AI code review outcome directly into the initial PR description (`gh pr edit`), removing redundant PR timeline comments (`gh pr comment`).
 - Unify architecture by having `/execute-plan` delegate phase delivery directly to `/dev-loop` (single authoritative delivery engine for TDD, atomic commits, draft PR, 2-pass AI code review, and publish safety gate).
 - Tighten wording, eliminate brittle shell heredocs, and reduce token footprint across bootstrap skills (`dev-loop`, `execute-plan`, `design-plan`), using deterministic FSM decision tables for the review loop and explicit continuous phase execution invariants.
 - Update `/execute-plan` and `/dev-loop` skills to update the PR description (`gh pr edit`) and post a summary comment (`gh pr comment`) when the automated AI review and fix cycle completes, replacing the in-progress status with a clear summary of review passes, findings, and applied defect fixes.

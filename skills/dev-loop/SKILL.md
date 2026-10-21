@@ -47,7 +47,7 @@ Autonomously executes a standalone task or a plan phase from implementation to a
      ```bash
      gh pr create --draft --base "$BASE_BRANCH" --title "$PR_TITLE" --body "$PR_BODY"
      ```
-     *(PR Body must include: Summary, Completed Tasks/Quality Gates checklist, and `## Status: *Automated AI review & fix cycle in progress...*`)*.
+     *(PR Body must include: Summary, Completed Tasks/Quality Gates checklist, and `## Review Status: *Automated AI review & fix cycle in progress...*`)*.
 
 ### Phase 3: Deterministic 2-Pass AI Code Review
 Run an isolated review cycle against `$BASE_BRANCH`. Invariants: max 2 review passes, max 1 fix turn. Low-severity nits NEVER block approval or trigger fixes.
@@ -59,12 +59,11 @@ Run an isolated review cycle against `$BASE_BRANCH`. Invariants: max 2 review pa
 | **Pass 2** (Terminal) | `Code Reviewer` (`self`, `inherit`) | Zero implementation history; `git diff <BASE>...HEAD` | Verify if Pass 1 High/Medium defects are resolved without new regressions. Disregard Low nits. | • **Resolved**: Reviewer replies "LGTM" $\rightarrow$ `REVIEW_STATUS=PASSED`.<br>• **Unresolved**: `REVIEW_STATUS=BLOCKED_BY_DEFECTS`.<br>**TERMINAL STOP**: No 3rd review, no 2nd fix. |
 
 ### Phase 4: Finalize PR & Safety Gate
-1. **Update PR Body & Publish Review Comment**:
+1. **Update PR Body with Review Outcome**:
    - Update PR body via `gh pr edit "$WORKING_BRANCH" --body "$UPDATED_BODY"`: Replace `*Automated AI review...*` under `## Review Status` with:
      - Review gate status (`PASSED` or `BLOCKED_BY_DEFECTS`)
      - Passes executed (Pass 1 clean, or Pass 1 $\rightarrow$ Fix turn $\rightarrow$ Pass 2)
      - Summary of findings addressed and commit hash of fixes (or "None required")
-   - Post timeline comment via `gh pr comment "$WORKING_BRANCH" --body "$PR_COMMENT"` detailing review outcome and quality gate pass.
 2. **Safety Gate Evaluation**:
    - **`REVIEW_STATUS == PASSED`**: Convert PR to ready: `gh pr ready "$WORKING_BRANCH"`. Report PR is ready for human review.
    - **`REVIEW_STATUS == BLOCKED_BY_DEFECTS`**: Leave PR in **Draft** mode. Alert user with unresolved findings.

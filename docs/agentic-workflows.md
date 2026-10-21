@@ -102,7 +102,7 @@ flowchart TD
 3. **Phase Execution via `/dev-loop` (Context-Shielded Delivery):**
    - Delegates the active phase directly to `/dev-loop` targeting base branch `feat/<plan-slug>`.
    - In subagent environments (Antigravity), spawns an isolated subagent to shield the orchestrator's context from intermediate compilation and test logs.
-   - `/dev-loop` creates `feat/<plan-slug>-phase-<N>`, implements tasks with TDD, commits atomically, checks off `- [x] Task N.M` in the plan doc, runs pre-commit gates, opens a draft PR, executes the Deterministic 2-Pass AI Code Review, updates PR review status & comments, and marks the PR ready (`gh pr ready`).
+   - `/dev-loop` creates `feat/<plan-slug>-phase-<N>`, implements tasks with TDD, commits atomically, checks off `- [x] Task N.M` in the plan doc, runs pre-commit gates, opens a draft PR, executes the Deterministic 2-Pass AI Code Review, updates the PR description with the review outcome, and marks the PR ready (`gh pr ready`).
 4. **Full-Branch Final Audit (Pre-Merge to `main`):**
    - Once all phases are marked `- [x]`, switches to `feat/<plan-slug>`.
    - Spawns an isolated **Plan Auditor** subagent to inspect the complete diff against `main`:
@@ -145,7 +145,7 @@ flowchart TD
    - If High or Medium defects found: spawns a fixer subagent for a single fix turn, re-verifies, and pushes fixes.
    - Runs Pass 2 final verification review. Unconditionally halts after Pass 2 (hard invariant: max 2 reviews, max 1 fix turn; zero infinite loops). Low-severity cosmetic nits never block approval.
 5. **PR Review Summary & Publish Safety Gate:**
-   - Updates the PR description (`gh pr edit`) and posts a PR summary comment (`gh pr comment`) detailing review passes, findings, and applied defect fixes.
+   - Updates the PR description (`gh pr edit`) with the complete review outcome (passes executed, findings addressed, fix commit hashes).
    - If review passes cleanly: runs `gh pr ready`.
    - If unresolved `High` or `Medium` defects persist after Pass 2: leaves the PR in **Draft** mode to prevent accidental merging and notifies you.
 
