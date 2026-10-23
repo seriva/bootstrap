@@ -2,32 +2,57 @@ pre-commit:
   commands:
     format:
       priority: 1
-      # Replace "true" with your formatter, then remove the "true" line.
+      # Replace the placeholder with your formatter.
       # Examples:
       #   run: npm run format
       #   run: ruff format .
       #   run: gofmt -w .
       #   run: cargo fmt
-      run: "true"
+      run: 'echo "lefthook: configure the format command in lefthook.yml" && exit 1'
       # Re-stage only the already-staged files after formatting (unlike `git add -u`, leaves unstaged hunks alone)
       stage_fixed: true
 
     lint:
       priority: 2
-      # Replace "true" with your linter, then remove the "true" line.
+      # Replace the placeholder with your linter.
       # Examples:
       #   run: npm run check
       #   run: ruff check .
       #   run: golangci-lint run
       #   run: cargo clippy
-      run: "true"
+      run: 'echo "lefthook: configure the lint command in lefthook.yml" && exit 1'
 
     test:
       priority: 3
-      # Replace "true" with your test runner — remove this command entirely if suite is too slow for commit-time.
+      # Replace the placeholder with your test runner — remove this command entirely if suite is too slow for commit-time.
       # Examples:
       #   run: npm test
       #   run: pytest
       #   run: go test ./...
       #   run: cargo test
-      run: "true"
+      run: 'echo "lefthook: configure the test command in lefthook.yml" && exit 1'
+
+    secrets:
+      priority: 4
+      # Blocks commits that contain API keys, tokens, or other secrets. Requires gitleaks >= 8.19
+      # (https://github.com/gitleaks/gitleaks#installing). CI skips this via LEFTHOOK_EXCLUDE.
+      run: gitleaks git --staged --redact --no-banner
+
+commit-msg:
+  commands:
+    conventional:
+      # Enforces Conventional Commits: `<type>(<scope>): <summary>`, subject ≤72 chars.
+      run: |
+        subject=$(head -n 1 {1})
+        case "$subject" in
+          "Merge "*|"Revert "*|"fixup! "*|"squash! "*) exit 0 ;;
+        esac
+        if ! printf '%s' "$subject" | grep -Eq '^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-z0-9._/-]+\))?!?: .+'; then
+          echo "commit-msg: subject must be '<type>(<scope>): <summary>' (Conventional Commits)"
+          echo "  got: $subject"
+          exit 1
+        fi
+        if [ "${#subject}" -gt 72 ]; then
+          echo "commit-msg: subject is ${#subject} chars; keep it ≤72"
+          exit 1
+        fi

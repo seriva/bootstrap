@@ -46,7 +46,7 @@ To scaffold a new project with the agentic standard:
    cp -a ~/dev/bootstrap/scaffold/. /path/to/your/project/
    ```
 2. Fill in all `[PLACEHOLDER]` sections in `AGENTS.md` and `ci.yml`. In `lefthook.yml`, replace `"true"` no-ops with your actual format/lint/test commands. Keep the `Commands` section of `AGENTS.md` matching them: the skills use it as their quality gate.
-3. Install lefthook in the new project: `brew install lefthook` or `npm install --save-dev lefthook`, then `lefthook install`.
+3. Install lefthook in the new project: `brew install lefthook` or `npm install --save-dev lefthook`, then `lefthook install`. Also install [gitleaks](https://github.com/gitleaks/gitleaks#installing) (≥ 8.19) for the pre-commit secret scan. The scaffold's lefthook commands fail until you fill them in, so an unconfigured gate can't pass silently. CI runs the same lefthook gate, so commands only need to live in `lefthook.yml`.
 4. (One-time machine setup) Run `./install.sh` in `bootstrap/` to deploy global autonomous workflows (`/design-plan`, `/execute-plan`, `/dev-loop`) to your AI tools.
 
 ### Unversioned / Continuous Applications
@@ -91,7 +91,7 @@ Use this to author comprehensive, empirical design plans before writing non-triv
 Use this to autonomously execute an approved design plan phase-by-phase:
 - **Durable State Machine**: Tracks execution progress directly in the plan's `## Implementation Tasks` checklist and marks the plan `In Progress` when it starts.
 - **One PR per Phase**: Groups phase tasks into a single clean branch off `feat/<plan-slug>`, implementing each with TDD and checking off `- [x]`.
-- **Interactive (Default) or Autonomous (`--auto`)**: By default, pauses after each phase PR is ready for human review/merge into `feat/<plan-slug>`. With `--auto`, automatically squash-merges passing phase PRs into `feat/<plan-slug>` and continues through all phases until the final full-branch audit PR into `main` (halting early if any phase fails review).
+- **Interactive (Default) or Autonomous (`--auto`)**: By default, pauses after each phase PR is ready for human review/merge into `feat/<plan-slug>`. With `--auto`, automatically merges phase PRs that pass review and CI into `feat/<plan-slug>` (merge commit, so per-task commits are kept) and continues through all phases until the final full-branch audit PR into `main` (halting early if any phase fails review or CI).
 - **Resumable**: If interrupted, running `/execute-plan` resumes at the next unchecked task.
 
 ### 3. `/dev-loop <task description>`
@@ -103,7 +103,7 @@ Use this for standalone tasks or targeted bugfixes:
 - **Draft PR**: Opens a draft pull request via `gh pr create --draft`.
 - **Fresh Reviewer Subagent**: Spawns an isolated review subagent to review diffs and run active verification probes (Deterministic 2-Pass Review Protocol).
 - **Fix Loop**: A defect fixer subagent patches High/Medium defects in a single fix turn before Pass 2 final verification (hard cap: max 2 review passes, max 1 fix turn).
-- **Publish Gate**: Updates the PR description with the review summary and converts draft to ready (`gh pr ready`) only if verified clean.
+- **Publish Gate**: Updates the PR description with the review summary and the reviewer's verification probes, waits for CI (`gh pr checks --watch`), and converts draft to ready (`gh pr ready`) only if review and CI are both clean.
 
 ## What Stays Out of the Repo
 

@@ -32,17 +32,18 @@ flowchart TD
     end
 
     subgraph Tier3 ["Tier 3: Delivery Engine"]
-        DL["/dev-loop &lt;task&gt; / Phase Delivery Engine"]
+        DL["/dev-loop &lt;task&gt; / Phase Implementer"]
         TDD["Implementation with TDD"]
         Gate["Quality Gate (AGENTS.md Commands)"]
         Review["Fresh-Context AI Review\n(Deterministic 2-Pass Protocol)"]
         Fix["Defect Fixer Subagent\n(Max 1 fix turn)"]
         PR["Ready PR (gh pr ready)"]
 
-        PhaseLoop -.->|"spawns Phase Delivery Engine"| DL
+        PhaseLoop -.->|"spawns Phase Implementer, then reviewers"| DL
         DL --> TDD --> Gate --> Review
         Review -- "Pass 1: High/Med found" --> Fix --> Gate
-        Review -- "Pass 1 or 2: LGTM" --> PR
+        CI["CI Gate (gh pr checks --watch)"]
+        Review -- "Pass 1 or 2: LGTM" --> CI --> PR
     end
 ```
 
@@ -102,12 +103,13 @@ flowchart TD
    - `main` remains untouched and releasable while the feature develops.
    - Marks the plan `**Status:** In Progress` on the epic branch.
 3. **Phase Execution via `/dev-loop` (Context-Shielded Delivery):**
-   - Delegates the active phase directly to `/dev-loop` targeting base branch `feat/<plan-slug>`.
-   - In subagent environments (Antigravity `invoke_subagent`, Claude Code `Agent` tool), spawns an isolated subagent to shield the orchestrator's context from intermediate compilation and test logs. Claude Code subagents cannot spawn subagents, so there the orchestrator runs the review cycle itself after the subagent opens the draft PR.
-   - `/dev-loop` creates `feat/<plan-slug>-phase-<N>`, implements tasks with TDD, commits atomically, checks off `- [x] Task N.M` in the plan doc, runs pre-commit gates, opens a draft PR, executes the Deterministic 2-Pass AI Code Review, updates the PR description with the review outcome, and marks the PR ready (`gh pr ready`).
+   - Runs the active phase through `/dev-loop` targeting base branch `feat/<plan-slug>`, with one flat flow on every host: the orchestrator spawns every subagent itself and subagents never spawn subagents.
+   - A **Phase Implementer** subagent runs `/dev-loop` in implement-only mode: creates `feat/<plan-slug>-phase-<N>`, implements tasks with TDD, commits atomically, checks off `- [x] Task N.M` in the plan doc, runs pre-commit gates, and opens a draft PR. This shields the orchestrator's context from compilation and test logs.
+   - The orchestrator then runs the `/dev-loop` review cycle (Deterministic 2-Pass AI Code Review), updates the PR description with the review outcome, waits for CI, and marks the PR ready (`gh pr ready`).
+   - If a phase PR is already open but not merged, re-running `/execute-plan` reports it instead of re-running the phase.
    - **Execution Modes (Default vs. `--auto`)**:
      - **Default (Interactive Phase Gate)**: Pauses after each phase PR is marked ready so you can inspect and merge it into `feat/<plan-slug>`. Re-running `/execute-plan` advances to the next phase.
-     - **Autonomous (`--auto` / `--auto-merge`)**: When a phase passes the 2-pass AI review (`REVIEW_STATUS == PASSED`), automatically squash-merges the phase PR into `feat/<plan-slug>` (`gh pr merge --squash --delete-branch`), pulls `feat/<plan-slug>`, and immediately starts the next phase. If any phase hits `BLOCKED_BY_DEFECTS`, the circuit breaker trips and halts immediately without merging.
+     - **Autonomous (`--auto` / `--auto-merge`)**: When a phase passes the 2-pass AI review (`REVIEW_STATUS == PASSED`), re-checks CI and merges the phase PR into `feat/<plan-slug>` with a merge commit (`gh pr merge --merge --delete-branch`) so per-task commits are kept, pulls `feat/<plan-slug>`, and immediately starts the next phase. If any phase is blocked by review defects or failing CI, the circuit breaker trips and halts immediately without merging.
 4. **Full-Branch Final Audit (Pre-Merge to `main`):**
    - Once all phases are marked `- [x]`, switches to `feat/<plan-slug>`.
    - Spawns an isolated **Plan Auditor** subagent to inspect the complete diff against `main`:
@@ -152,9 +154,9 @@ flowchart TD
    - If High or Medium defects found: spawns a fixer subagent for a single fix turn, re-verifies, and pushes fixes.
    - Runs Pass 2 final verification review. Unconditionally halts after Pass 2 (hard invariant: max 2 reviews, max 1 fix turn; zero infinite loops). Low-severity cosmetic nits never block approval.
 5. **PR Review Summary & Publish Safety Gate:**
-   - Updates the PR description (`gh pr edit`) with the complete review outcome (passes executed, findings addressed, fix commit hashes).
-   - If review passes cleanly: runs `gh pr ready`.
-   - If unresolved `High` or `Medium` defects persist after Pass 2: leaves the PR in **Draft** mode to prevent accidental merging and notifies you.
+   - Updates the PR description (`gh pr edit`) with the complete review outcome (passes executed, findings addressed, fix commit hashes, and the reviewer's verification probes with their results).
+   - If review passes cleanly: waits for CI (`gh pr checks --watch`), then runs `gh pr ready`.
+   - If unresolved `High` or `Medium` defects persist after Pass 2, or CI fails: leaves the PR in **Draft** mode to prevent accidental merging and notifies you.
 
 #### Invocations:
 ```text
@@ -182,8 +184,8 @@ flowchart TD
 ### Tested Environments
 | Tool | Status | Subagent Execution |
 |---|---|---|
-| Google Antigravity (`agy`) | **Tested** | `invoke_subagent`; nested spawning supported, so the Phase Delivery Engine runs the full `/dev-loop` including review. |
-| Claude Code (`claude`) | **Tested** | `Agent` tool (`general-purpose`); no nested spawning, so `/execute-plan` runs the `/dev-loop` review cycle itself after the Phase Delivery Engine opens the draft PR. |
+| Google Antigravity (`agy`) | **Tested** | `invoke_subagent`; `/execute-plan` spawns the Phase Implementer and reviewers directly. |
+| Claude Code (`claude`) | **Tested** | `Agent` tool (`general-purpose`); same flat flow, which fits Claude Code's rule that subagents cannot spawn subagents. |
 | Codex, Cursor, Copilot | Installed, untested | No subagent tool assumed; workflows run inline (single-session fallback). |
 
 ### Installation

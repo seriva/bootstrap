@@ -43,21 +43,15 @@ jobs:
         #   run: go mod download
         run: "[INSTALL_COMMAND]"
 
-      - name: Lint
-        # Examples:
-        #   run: npm run check
-        #   run: ruff check .
-        #   run: golangci-lint run
-        #   run: cargo clippy
-        run: "[LINT_COMMAND]"
+      # Runs the same format → lint → test gate as the pre-commit hook, so commands
+      # live only in lefthook.yml. Secret scanning stays local (needs staged files).
+      - name: Quality gate
+        env:
+          LEFTHOOK_EXCLUDE: secrets
+        run: npx --yes lefthook run pre-commit --all-files
 
-      - name: Test
-        # Examples:
-        #   run: npm test
-        #   run: pytest
-        #   run: go test ./...
-        #   run: cargo test
-        run: "[TEST_COMMAND]"
+      - name: Fail on unformatted files
+        run: git diff --exit-code HEAD  # HEAD: stage_fixed may have staged the fixes
 
   # Uncomment for GitHub Pages deployment:
   # deploy:

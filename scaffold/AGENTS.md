@@ -5,10 +5,11 @@
 > **IMMUTABLE SECTION:** Do not modify Part 1 unless explicitly instructed. This is a universal standard. Only adjust Part 2 (Project Context) for project-specific needs.
 
 ## 1. Context & Rules
-- **Caveman Speak:** Communicate in "caveman" style (extreme density, zero fluff, drop grammar, `->` for correlations). Exception: human-facing text (`README`, `CHANGELOG`, plans, PR descriptions, commit bodies) must remain readable.
+- **Caveman Speak:** Progress updates and tool-call narration use "caveman" style (extreme density, zero fluff, drop grammar, `->` for correlations). Explanations, answers to the user, and human-facing text (`README`, `CHANGELOG`, plans, PR descriptions, commit bodies) use normal readable prose.
+- **Skills Override:** While running a skill (`/design-plan`, `/execute-plan`, `/dev-loop`), its rules override **Blockers**, **Quality**, and **Branches** here.
 - **Plan-first:** Create `docs/vX.Y.Z/<plan-slug>-plan.md` (or `docs/plans/<plan-slug>-plan.md` for continuous/unversioned projects) & update roadmap for non-trivial (multi-component, arch-altering, risky) features. Track execution by checking off tasks (`- [x]`) as they land. Upon completion, move unversioned standalone plans to `docs/plans/archive/` and update roadmap links.
 - **TDD:** Write failing tests first for non-trivial logic (if applicable).
-- **Quality:** Run format/lint before every commit. Update `CHANGELOG.md` & `README.md` before commit/PR.
+- **Quality:** Run format/lint before every commit. Before opening a PR, update `CHANGELOG.md` & `README.md` when user-facing behavior changed.
 - **Changelog:** Write for humans, not reviewers: one short plain-language sentence per change saying what is different for the user and why it matters. No file paths, function names, flags, or internal jargon unless the reader needs them to act. Merge related task-level changes into one entry.
 - **Verify:** Run tests/compiler or ask user to visually verify before concluding/commit/PR. Never assume.
 - **Blockers:** Stop and ask user on ambiguity; do not guess.
@@ -44,13 +45,13 @@ Example: "A Go-to-JavaScript compiler built as a pure Node.js ESM project with z
 
 ## Commands
 
-[Exact commands to run. Skills and review subagents use these as the quality gate — keep them current.]
+[Exact commands to run. `lefthook.yml` is the source of truth: the gate below runs it, and the individual commands here must match it so reviewers can run one step at a time.]
 
 - **Test**: `[e.g. npm test]`
 - **Lint**: `[e.g. npx biome lint .]`
 - **Format**: `[e.g. npx biome format --write .]`
 - **Build**: `[e.g. npm run build, or "none"]`
-- **Pre-commit gate**: `[e.g. lefthook run pre-commit]` (format → lint → test)
+- **Pre-commit gate**: `lefthook run pre-commit --all-files` (format → lint → test → secrets; CI runs the same gate)
 
 ## Architecture
 

@@ -8,10 +8,11 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 ## [Unreleased]
 
 ### Added
+- New projects now reject commit messages that don't follow the Conventional Commits format, and block commits that contain secrets.
 - A Commands section in the project part of `AGENTS.md`, so agents and reviewers know exactly how to test, lint, and build each project.
 - Changelog writing rules: entries are now short plain-language sentences aimed at users, with an example in the starter changelog.
 - Tested Environments table in `docs/agentic-workflows.md` (and README note) documenting Antigravity and Claude Code as tested, with per-tool subagent behavior.
-- Support `--auto` (`--auto-merge`) flag in `/execute-plan` to automatically squash-merge passing phase PRs into `feat/<plan-slug>` and loop through all phases up to the final full-branch audit (with circuit-breaker halt on `BLOCKED_BY_DEFECTS`), while preserving interactive per-phase review as the default.
+- Support `--auto` (`--auto-merge`) flag in `/execute-plan` to automatically merge passing phase PRs into `feat/<plan-slug>` and loop through all phases up to the final full-branch audit (with circuit-breaker halt on `BLOCKED_BY_DEFECTS`), while preserving interactive per-phase review as the default.
 - Phase Implementer subagent execution in `/execute-plan` providing context shielding for the orchestrator during multi-task phases.
 - Optional Probe Investigator subagent in `/dev-loop` for isolating tricky root causes with minimal reproducing test cases.
 - Isolated project starter kit in `scaffold/` containing pristine, blank templates (`AGENTS.md`, clean `CHANGELOG.md`, `lefthook.yml`, `.github/`, `docs/`) decoupled from bootstrap's internal tooling.
@@ -26,6 +27,15 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - Comprehensive `--help` / `-h` CLI flag and usage documentation in `sync.sh`.
 
 ### Changed
+- Automated workflows now wait for CI to pass before marking a PR ready or auto-merging a phase, so a green AI review alone can no longer land broken code.
+- Re-running `/execute-plan` while a phase PR is still open now reports that PR instead of redoing the phase.
+- `/execute-plan` runs the same simple flow on every AI tool: it starts the implementer and reviewers itself, which removes the Claude Code special case.
+- Merged phases keep their per-task commits instead of being squashed into one.
+- The starter quality gate now fails until it is configured, and CI runs that same gate, so test and lint commands are written in one place.
+- Throwaway probe files from planning and review live in a dedicated ignored folder and are cleaned up, and workflows check what they stage so stray files don't get committed.
+- The plan template works for any kind of project: compiler-specific sections are now optional.
+- Agents only use terse "caveman" style for progress updates, and explanations stay readable; skills now explicitly take precedence when their rules differ from the general ones.
+- New projects can commit shared editor settings and Claude Code project settings; only personal and session files are ignored.
 - Running `/dev-loop` or `/execute-plan` now counts as permission to commit and open PRs, so agents no longer trip over the "never auto-commit" rule mid-workflow.
 - Plans no longer end with a separate phase just for tests, lint, and the changelog; that work already happens in every phase, so it saved a whole PR and review round.
 - The changelog is updated once per phase instead of once per task, giving fewer, more readable entries.
