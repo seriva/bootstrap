@@ -75,6 +75,7 @@ flowchart TD
    - Enforces **1 Phase = 1 Dev-Loop**: 3–5 tasks per phase, ~150–500 net LOC diff budget across 3–6 files.
    - Prevents mega-phases by decoupling orthogonal subsystems into separate sequential phases.
    - Enforces the 3-point task contract on every task: `Files:` (1–3 files), `Test:` (failing test first), `Done when:` (observable completion).
+   - No gate-only phases or tasks (just running tests/lint or updating the changelog): `/dev-loop` does those in every phase.
 6. **Plan Generation & Roadmap Sync:**
    - Populates `docs/vX.Y.Z/<plan-slug>-plan.md` (or `docs/plans/<plan-slug>-plan.md`) following `docs/feature-plan-template.md`.
    - Links the new plan directly into `docs/roadmap.md`.
@@ -99,6 +100,7 @@ flowchart TD
 2. **Epic Branch Isolation:**
    - Branches `feat/<plan-slug>` off `main` (or a release branch like `1.7.0`).
    - `main` remains untouched and releasable while the feature develops.
+   - Marks the plan `**Status:** In Progress` on the epic branch.
 3. **Phase Execution via `/dev-loop` (Context-Shielded Delivery):**
    - Delegates the active phase directly to `/dev-loop` targeting base branch `feat/<plan-slug>`.
    - In subagent environments (Antigravity `invoke_subagent`, Claude Code `Agent` tool), spawns an isolated subagent to shield the orchestrator's context from intermediate compilation and test logs. Claude Code subagents cannot spawn subagents, so there the orchestrator runs the review cycle itself after the subagent opens the draft PR.
@@ -133,6 +135,7 @@ flowchart TD
 1. **Target & Base Branch Resolution:**
    - Dynamically identifies base branch as `BASE_BRANCH` (supports version branches like `1.7.0`, epic branches like `feat/<plan-slug>`, or `main`).
    - Creates a clean working branch: `<type>/<task-slug>` (e.g. `feat/<task-slug>` or `fix/<task-slug>`, or `feat/<plan-slug>-phase-<N>` for plan phases).
+   - If a standalone task is non-trivial and has no plan, runs `/design-plan` and stops, pointing you to `/execute-plan`.
 2. **Implementation & Quality Gates:**
    - **For Plan Phases**: Loops through all unchecked tasks in the phase, implementing with TDD, committing atomically per task, and checking off `- [x] Task N.M` in the plan doc.
    - **For Standalone Tasks**: Writes failing tests first (TDD), optional **Probe Investigator** subagent for elusive bugs.
@@ -202,7 +205,7 @@ The installer automatically inspects your machine:
 ```text
 ~/dev/bootstrap/                     <-- Global Agentic Headquarters
 ├── install.sh                       <-- Installs /design-plan, /execute-plan, /dev-loop globally
-├── sync.sh                          <-- Syncs scaffold/AGENTS.md Part 1 to sibling projects
+├── sync.sh                          <-- Syncs scaffold/AGENTS.md Part 1 + plan template to sibling projects
 ├── skills/                          <-- Global skill definitions (never copied to projects)
 └── scaffold/                        <-- Pristine project starter kit (copied into new projects)
     ├── AGENTS.md
@@ -211,7 +214,7 @@ The installer automatically inspects your machine:
     └── docs/feature-plan-template.md
 
 ~/dev/gofront/                       <-- Sibling Project Repository
-├── AGENTS.md                        <-- Part 1 synced from bootstrap; Part 2 custom project context
+├── AGENTS.md                        <-- Part 1 synced from bootstrap; Part 2 project context + Commands
 ├── lefthook.yml                     <-- Pre-commit quality gate
 ├── CHANGELOG.md                     <-- Maintained by /dev-loop and /execute-plan
 └── docs/
@@ -221,5 +224,5 @@ The installer automatically inspects your machine:
 ```
 
 - **Clean Repositories:** Sibling projects (`gofront`, `simplefps`, etc.) contain zero tool-specific skill directories.
-- **Single Source of Truth:** `AGENTS.md` governs agent behavior across all tools.
+- **Single Source of Truth:** `AGENTS.md` governs agent behavior across all tools. Its `Commands` section is the quality gate every skill and reviewer runs.
 - **Zero Drift:** Updating the skill or rules in `bootstrap` keeps the entire workstation's agent fleet synchronized.

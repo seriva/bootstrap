@@ -16,7 +16,7 @@ Generic project scaffold for agentic development.
 |---|---|
 | `AGENTS.md` | Agent guide for `bootstrap` itself (Part 1 synced from `scaffold/AGENTS.md`) |
 | `install.sh` | Global installer: conditionally deploys skills to detected AI tools (Antigravity, Claude Code, Codex, Cursor, Copilot) |
-| `sync.sh` | Synchronizes `scaffold/AGENTS.md` Part 1 and bridge files to sibling projects |
+| `sync.sh` | Synchronizes `scaffold/AGENTS.md` Part 1, bridge files, and `docs/feature-plan-template.md` to sibling projects |
 | `skills/design-plan/SKILL.md` | Empirical design planning workflow: active probe audit, boundary matrix, and exhaustive plan drafting |
 | `skills/execute-plan/SKILL.md` | Autonomous plan orchestrator: executes plan phase-by-phase with TDD, tracking tasks with `[x]` and opening 1 PR per phase |
 | `skills/dev-loop/SKILL.md` | Universal autonomous development loop: implementation, quality gates, draft PR, AI review, and fix cycle |
@@ -25,8 +25,8 @@ Generic project scaffold for agentic development.
 ### 2. Project Scaffold (`scaffold/` — Copied into New Repos)
 | File | Purpose |
 |---|---|
-| `scaffold/AGENTS.md` | Fill in: project identity, tech stack, architecture; agent maintains the project map |
-| `scaffold/CHANGELOG.md` | Clean starter changelog template for the new project |
+| `scaffold/AGENTS.md` | Fill in: project identity, tech stack, commands, architecture; agent maintains the project map |
+| `scaffold/CHANGELOG.md` | Clean starter changelog with a short guide to writing plain-language entries |
 | `scaffold/CLAUDE.md` | `@AGENTS.md` — do not edit |
 | `scaffold/.cursorrules` | Points to `AGENTS.md` — do not edit |
 | `scaffold/.github/copilot-instructions.md` | Points to `AGENTS.md` — do not edit |
@@ -45,7 +45,7 @@ To scaffold a new project with the agentic standard:
    ```bash
    cp -a ~/dev/bootstrap/scaffold/. /path/to/your/project/
    ```
-2. Fill in all `[PLACEHOLDER]` sections in `AGENTS.md` and `ci.yml`. In `lefthook.yml`, replace `"true"` no-ops with your actual format/lint/test commands.
+2. Fill in all `[PLACEHOLDER]` sections in `AGENTS.md` and `ci.yml`. In `lefthook.yml`, replace `"true"` no-ops with your actual format/lint/test commands. Keep the `Commands` section of `AGENTS.md` matching them: the skills use it as their quality gate.
 3. Install lefthook in the new project: `brew install lefthook` or `npm install --save-dev lefthook`, then `lefthook install`.
 4. (One-time machine setup) Run `./install.sh` in `bootstrap/` to deploy global autonomous workflows (`/design-plan`, `/execute-plan`, `/dev-loop`) to your AI tools.
 
@@ -76,17 +76,20 @@ docs/
 
 Run `./install.sh` once on your workstation to install the autonomous skills. It conditionally detects which AI tools are installed on your machine (`agy`, `claude`, `codex`, `cursor`, `copilot`) and installs the skills globally into their user configuration directories. Tested on Antigravity (`agy`) and Claude Code (`claude`); other tools are installed but untested (see [Tested Environments](docs/agentic-workflows.md#tested-environments)).
 
+Agents never commit on their own, but running `/dev-loop` or `/execute-plan` counts as permission to branch, commit, push, and open PRs as that workflow describes.
+
 ### 1. `/design-plan <feature description>`
 Use this to author comprehensive, empirical design plans before writing non-trivial code.
 - **Audits Codebase with Probes**: Never assumes; inspects code and writes probes to prove current limitations.
 - **Constructs Verified Gaps Matrix**: Documents every finding with exact file/line citations and probe evidence.
 - **Establishes Scope & Boundary Rules**: Classifies items into In-Scope Core, Target-Specific, Excluded, and Deferred.
 - **Drafts Full Plan**: Creates `docs/vX.Y.Z/<plan-slug>-plan.md` (or `docs/plans/<plan-slug>-plan.md`) following `feature-plan-template.md`.
+- **Real Work in Every Phase**: Never adds phases or tasks that only run tests/lint or update the changelog; `/dev-loop` does that in every phase.
 - **Links Roadmap**: Automatically links the newly drafted plan in `docs/roadmap.md`.
 
 ### 2. `/execute-plan [--auto] <plan-path>`
 Use this to autonomously execute an approved design plan phase-by-phase:
-- **Durable State Machine**: Tracks execution progress directly in the plan's `## Implementation Tasks` checklist.
+- **Durable State Machine**: Tracks execution progress directly in the plan's `## Implementation Tasks` checklist and marks the plan `In Progress` when it starts.
 - **One PR per Phase**: Groups phase tasks into a single clean branch off `feat/<plan-slug>`, implementing each with TDD and checking off `- [x]`.
 - **Interactive (Default) or Autonomous (`--auto`)**: By default, pauses after each phase PR is ready for human review/merge into `feat/<plan-slug>`. With `--auto`, automatically squash-merges passing phase PRs into `feat/<plan-slug>` and continues through all phases until the final full-branch audit PR into `main` (halting early if any phase fails review).
 - **Resumable**: If interrupted, running `/execute-plan` resumes at the next unchecked task.
@@ -94,6 +97,7 @@ Use this to autonomously execute an approved design plan phase-by-phase:
 ### 3. `/dev-loop <task description>`
 Use this for standalone tasks or targeted bugfixes:
 - **Target & Base Resolution**: Discovers repository and base branch (supports version branches like `1.7.0` and multi-repo roots).
+- **Plan Check**: If the task is too big for one PR and has no plan, drafts one with `/design-plan` and stops so you can run `/execute-plan`.
 - **Implementation & TDD**: Writes failing tests first, implements code, and writes one plain-language `CHANGELOG.md` entry.
 - **Quality Gates**: Runs the pre-commit gate from the `Commands` section of `AGENTS.md`.
 - **Draft PR**: Opens a draft pull request via `gh pr create --draft`.
