@@ -21,12 +21,15 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - The starter quality gate fails until you configure it, so an unconfigured project cannot pass silently.
 - Agents keep terse "caveman" style for progress updates only; everything written for people (docs, commits, PRs, changelog entries) is in plain language.
 - New projects ignore only tool session data, so shared editor settings and project-level agent config stay committable.
-- Cursor projects use a `.cursor/rules/agents.mdc` rule instead of the legacy `.cursorrules` file.
+- Cursor projects no longer get a bridge rule file; Cursor reads `AGENTS.md` directly, and `sync.sh` leaves any existing `.cursorrules` untouched.
+- When a project first receives the shared ignore block, the old catch-all ignores for agent tool folders are removed so project-level agent settings become committable.
 
 ### Fixed
 - Skill files and the rules `install.sh` generates are valid YAML again, so tools no longer reject them.
 - Workflows stage only the files they changed, stop instead of guessing when the working tree is dirty, and never review their own code; where no fresh reviewer is available the PR stays in draft.
-- Resuming a plan from its own branch targets the same base branch as the first run.
+- Reviewers' throwaway probe folder is excluded locally instead of by editing the project's ignore file, so review runs no longer leave the working tree dirty.
+- Finishing a versioned plan no longer fails when the project has no plan archive folder.
+- Resuming a plan from its own branch targets the same base branch as the first run; a plan that was already in progress, or carries an unknown base, gets a valid base recorded on the next run.
 - `sync.sh` works for project paths containing quotes and reports a project whose `AGENTS.md` lost its shared section instead of only warning.
 
 <!-- Add changes here as you work. When releasing, move this block to a new versioned section:

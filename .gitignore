@@ -68,6 +68,8 @@ docs/superpowers/
 .tabnine/
 # generic agent session files
 *.agent-session
+# throwaway probes written by /design-plan and /dev-loop reviewers
+.probes/
 
 # Tool-specific session & memory directories
 .claude/

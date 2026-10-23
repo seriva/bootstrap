@@ -94,7 +94,10 @@ targets = sys.argv[1:]
 
 PART1_RE = re.compile(r"(# Part 1: Agent Workflow\n[\s\S]*?\n---\n)")
 GITIGNORE_BLOCK_RE = re.compile(r"# >>> bootstrap-managed\n[\s\S]*?# <<< bootstrap-managed\n")
-LEGACY_CURSOR_FILE = ".cursorrules"
+# Broad tool-dir ignores from the pre-managed-block scaffold. The managed block
+# narrows them to session/state subpaths, so they must go or project config such
+# as .claude/skills/ stays uncommittable. Only exact-line matches are removed.
+LEGACY_BROAD_IGNORES = {".claude/", ".agents/", ".gemini/", ".codex/"}
 
 
 def read_text(path):
@@ -139,9 +142,9 @@ if not part1_match:
     sys.exit("Error: Could not extract Part 1 from " + canonical_path)
 canonical_part1 = part1_match.group(1)
 
+# Cursor reads AGENTS.md natively, so it needs no bridge file.
 bridge_rel_paths = [
     "CLAUDE.md",
-    os.path.join(".cursor", "rules", "agents.mdc"),
     os.path.join(".github", "copilot-instructions.md"),
 ]
 bridges = {}
@@ -161,10 +164,23 @@ if os.path.isfile(scaffold_gitignore):
         print(f"Warning: no bootstrap-managed markers in {scaffold_gitignore}; skipping .gitignore sync")
 
 
+def strip_legacy_broad_ignores(text):
+    """Drop exact legacy broad tool-dir lines outside the managed block; returns (text, removed)."""
+    kept, removed = [], []
+    for line in text.split("\n"):
+        if line.strip() in LEGACY_BROAD_IGNORES:
+            removed.append(line.strip())
+        else:
+            kept.append(line)
+    return "\n".join(kept), removed
+
+
 def sync_gitignore(target_dir):
-    """Replace/append/create the managed block; content outside the markers is untouched."""
+    """Replace/append/create the managed block; content outside the markers is untouched
+    except for known legacy broad ignores, which the block supersedes."""
     target_file = os.path.join(target_dir, ".gitignore")
     existing = read_text(target_file) if os.path.isfile(target_file) else None
+    removed = []
 
     if existing is None:
         new_text = managed_gitignore_block
@@ -173,8 +189,9 @@ def sync_gitignore(target_dir):
         if existing_block:
             new_text = existing[:existing_block.start()] + managed_gitignore_block + existing[existing_block.end():]
         else:
-            separator = "" if existing == "" or existing.endswith("\n\n") else ("\n" if existing.endswith("\n") else "\n\n")
-            new_text = existing + separator + managed_gitignore_block
+            base, removed = strip_legacy_broad_ignores(existing)
+            separator = "" if base == "" or base.endswith("\n\n") else ("\n" if base.endswith("\n") else "\n\n")
+            new_text = base + separator + managed_gitignore_block
 
     if existing == new_text:
         report(".gitignore (managed block)", "up to date")
@@ -184,19 +201,9 @@ def sync_gitignore(target_dir):
     else:
         write_text(target_file, new_text)
         report(".gitignore (managed block)", "written")
-    return True
-
-
-def remove_legacy_cursorrules(target_dir):
-    """Legacy .cursorrules is superseded by .cursor/rules/agents.mdc; remove only in write mode."""
-    legacy_file = os.path.join(target_dir, LEGACY_CURSOR_FILE)
-    if not os.path.isfile(legacy_file):
-        return False
-    if dry_run:
-        print(f"  - {LEGACY_CURSOR_FILE}: [WOULD REMOVE] (replaced by .cursor/rules/agents.mdc)")
-    else:
-        os.remove(legacy_file)
-        print(f"  - {LEGACY_CURSOR_FILE}: REMOVED (replaced by .cursor/rules/agents.mdc)")
+    if removed:
+        verb = "would remove" if dry_run else "removed"
+        print(f"    legacy broad ignores {verb} (superseded by managed block): {', '.join(removed)}")
     return True
 
 
@@ -235,9 +242,6 @@ for target_dir in targets:
     for rel_path, content in bridges.items():
         if sync_file(rel_path, os.path.join(target_dir, rel_path), content):
             has_drift = True
-
-    if remove_legacy_cursorrules(target_dir):
-        has_drift = True
 
     # Feature plan template (sync if target has docs/ dir)
     template_rel_path = os.path.join("docs", "feature-plan-template.md")

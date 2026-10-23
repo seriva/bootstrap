@@ -212,7 +212,7 @@ The installer automatically inspects your machine:
 └── scaffold/                        <-- Pristine project starter kit (copied into new projects)
     ├── AGENTS.md
     ├── CHANGELOG.md (clean starter template)
-    ├── CLAUDE.md, .cursor/rules/agents.mdc, .github/copilot-instructions.md (bridge files → AGENTS.md)
+    ├── CLAUDE.md, .github/copilot-instructions.md (bridge files → AGENTS.md; Cursor reads AGENTS.md natively)
     ├── .gitignore (agentic ignores inside the bootstrap-managed block)
     ├── lefthook.yml
     └── docs/feature-plan-template.md

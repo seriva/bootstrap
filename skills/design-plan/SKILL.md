@@ -24,7 +24,7 @@ Autonomously authors an empirical engineering design plan following the `feature
 ### Step 2: Empirical Audit & Probing (NO ASSUMPTIONS)
 Never draft a plan from assumptions alone. Conduct an active baseline audit:
 1. **Codebase Inspection**: Locate exact files, modules, types, and existing test runners.
-2. **Empirical Probes**: Write and execute small, non-destructive probe tests or inspect compilation outputs to prove existing limitations, wrong results, or bottlenecks. Put probes in `$TARGET_REPO/.probes/` (gitignored; before the first probe run `grep -qx '.probes/' .gitignore || echo '.probes/' >> .gitignore`) or the host's scratch directory, never in source or test directories, and delete them when the plan is drafted. Record each probe's command and observed result in the Verified Gaps table so the evidence survives the cleanup.
+2. **Empirical Probes**: Write and execute small, non-destructive probe tests or inspect compilation outputs to prove existing limitations, wrong results, or bottlenecks. Put probes in `$TARGET_REPO/.probes/` (before the first probe run `grep -qx '.probes/' .git/info/exclude || echo '.probes/' >> .git/info/exclude` so the directory is excluded locally without editing tracked files) or the host's scratch directory, never in source or test directories, and delete them when the plan is drafted. Record each probe's command and observed result in the Verified Gaps table so the evidence survives the cleanup.
 3. **Verified Gaps Table**: Format as `Area | Finding | Evidence & Probe Reference`. Every claim must cite an empirical probe or exact source line.
 
 ### Step 3: Scope Boundaries & Done Contract

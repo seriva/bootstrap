@@ -2,7 +2,6 @@
 
 **Version:** vX.Y.Z (or `continuous` for unversioned projects)  
 **Status:** Draft | In Progress | Completed (YYYY-MM-DD)  
-**Base branch:** [Optional. Written by `/execute-plan` on first run (e.g. `main` or `1.7.0`) so resumption uses the same base; leave out when drafting.]  
 **Depends on:** [Predecessor plans, releases, or foundational PRs, e.g. `../v1.7.0/auth-plan.md`]  
 **Replaces:** [Any dropped or superseded feature plans, or `None`]  
 **Followed by:** [Successor roadmap milestones or plans, or `None`]  

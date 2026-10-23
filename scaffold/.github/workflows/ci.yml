@@ -2,7 +2,10 @@ name: CI/CD
 
 on:
   push:
-    # feat/** covers the epic branches /execute-plan merges phase PRs into.
+    # feat/** covers the epic branches /execute-plan merges phase PRs into. It also
+    # matches phase branches (feat/<slug>-phase-N), so phase PRs run CI twice
+    # (push + pull_request); accepted to keep epic branches covered. Narrow to
+    # 'feat/*' if that cost matters.
     branches: [main, master, 'feat/**']
   # No branch filter: phase PRs target feat/<plan-slug> (and release PRs may
   # target version branches), and /dev-loop requires a check run before it

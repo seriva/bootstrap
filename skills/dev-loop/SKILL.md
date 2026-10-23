@@ -25,12 +25,12 @@ Autonomously executes a standalone task or a plan phase from implementation to a
 - **Implement-only**: Caller (e.g. `/execute-plan`) asks for Steps 1–2 only. Stop after the draft PR and return PR URL and `WORKING_BRANCH`; the caller runs Steps 3–4.
 
 ## Probes
-Throwaway probes (repro scripts, scratch tests) go in `$TARGET_REPO/.probes/` (gitignored) or the host's scratch directory, never in source or test directories. Before writing the first probe, ensure the directory is ignored: `grep -qx '.probes/' .gitignore || echo '.probes/' >> .gitignore`. Delete probes before returning. A probe worth keeping becomes a real test in the task's `Test:` file.
+Throwaway probes (repro scripts, scratch tests) go in `$TARGET_REPO/.probes/` or the host's scratch directory, never in source or test directories. Before writing the first probe, ensure the directory is excluded without touching tracked files: `grep -qx '.probes/' .git/info/exclude || echo '.probes/' >> .git/info/exclude` (local-only; never appears in `git status` or the diff). Delete probes before returning. A probe worth keeping becomes a real test in the task's `Test:` file.
 
 ## Safe Commit
 Wherever this skill says **Safe commit** `"<message>"`:
 1. `git add -A`
-2. `git diff --cached --name-only` → every path must be in the current task's `Files:`, its test files, `$PLAN_FILE`, `CHANGELOG.md`/`README.md`, or `.gitignore` when its only change is the `.probes/` line (standalone tasks: files the task needed). Unexpected path (probe, scratch file, stray edit) → `git restore --staged <path>` and delete or fix it; if it belongs to the task, say so in the commit body.
+2. `git diff --cached --name-only` → every path must be in the current task's `Files:`, its test files, `$PLAN_FILE`, or `CHANGELOG.md`/`README.md` (standalone tasks: files the task needed). Unexpected path (probe, scratch file, stray edit) → `git restore --staged <path>` and delete or fix it; if it belongs to the task, say so in the commit body.
 3. `git commit -m "<message>"`. Subject ≤72 chars including `<type>(<scope>):` and any `(Task N.M)` suffix; truncate the summary, never the scope or task reference.
 
 ---
@@ -88,16 +88,16 @@ Run an isolated review cycle against `$BASE_BRANCH`. Invariants: max 2 review pa
 | **Fix Turn** (Max 1) | `Role: "Defect Fixer"` | Pass 1 findings | Fix ONLY High/Medium items with minimal footprint. Re-run tests/lint green. **Safe commit** `"fix(<scope>): address review feedback"`. Never amend, rebase, or force-push. Push. | Proceed to Pass 2. |
 | **Pass 2** (Terminal) | `Role: "Code Reviewer (Pass 2)"` (NEW subagent) | Zero implementation history; `git diff <BASE>...HEAD` | Verify if Pass 1 High/Medium defects are resolved without new regressions. Disregard Low nits. Output `### Verification Probes Run`. | • **Resolved**: Reviewer replies `LGTM` $\rightarrow$ `REVIEW_STATUS=PASSED`.<br>• **Unresolved**: `REVIEW_STATUS=BLOCKED_BY_DEFECTS`.<br>**TERMINAL STOP**: No 3rd review, no 2nd fix. |
 
-**Subagent prompts** (use verbatim, filling the placeholders):
+**Subagent prompts** (use verbatim, filling the placeholders; `<skill path>` = where this skill is installed on the host, e.g. `~/.claude/skills/dev-loop/SKILL.md`, `~/.codex/skills/dev-loop/SKILL.md`, or `~/.gemini/config/skills/dev-loop/SKILL.md`):
 
 - `Code Reviewer (Pass 1)`:
-  > First read the dev-loop skill file in full, then `AGENTS.md` in `$TARGET_REPO` (and `$PLAN_FILE` if given: `<path or none>`). Review `git diff <BASE>...HEAD` on branch `$WORKING_BRANCH` in `$TARGET_REPO` as a fresh reviewer: look for crashes, logic bugs, boundary leaks, scope violations, and regressions. Run active verification probes per the skill's **Probes** rule (under `.probes/`, deleted afterwards). Do not modify tracked files or commit. Reply with exactly these sections: `### High`, `### Medium`, `### Low`, `### Verification Probes Run` (each probe: command + observed result). If High and Medium are both empty, end your reply with the single token `LGTM`.
+  > First read the dev-loop skill file at `<skill path>` in full, then `AGENTS.md` in `$TARGET_REPO` (and `$PLAN_FILE` if given: `<path or none>`). Review `git diff <BASE>...HEAD` on branch `$WORKING_BRANCH` in `$TARGET_REPO` as a fresh reviewer: look for crashes, logic bugs, boundary leaks, scope violations, and regressions. Run active verification probes per the skill's **Probes** rule (under `.probes/`, deleted afterwards). Do not modify tracked files or commit. Reply with exactly these sections: `### High`, `### Medium`, `### Low`, `### Verification Probes Run` (each probe: command + observed result). If High and Medium are both empty, end your reply with the single token `LGTM`.
 
 - `Defect Fixer`:
-  > First read the dev-loop skill file in full. On branch `$WORKING_BRANCH` in `$TARGET_REPO`, fix ONLY the following High/Medium findings with the smallest change that resolves them; ignore Low items: `<paste Pass 1 High/Medium findings>`. Re-run the pre-commit gate from `AGENTS.md` Commands until green, then **Safe commit** `"fix(<scope>): address review feedback"` exactly as the skill defines (check staged paths, no stray files). Never amend, rebase, or force-push. `git push`, then reply with the commit hash and a one-line note per finding.
+  > First read the dev-loop skill file at `<skill path>` in full. On branch `$WORKING_BRANCH` in `$TARGET_REPO`, fix ONLY the following High/Medium findings with the smallest change that resolves them; ignore Low items: `<paste Pass 1 High/Medium findings>`. Re-run the pre-commit gate from `AGENTS.md` Commands until green, then **Safe commit** `"fix(<scope>): address review feedback"` exactly as the skill defines (check staged paths, no stray files). Never amend, rebase, or force-push. `git push`, then reply with the commit hash and a one-line note per finding.
 
 - `Code Reviewer (Pass 2)`:
-  > First read the dev-loop skill file in full, then `AGENTS.md` in `$TARGET_REPO`. Review `git diff <BASE>...HEAD` on branch `$WORKING_BRANCH` in `$TARGET_REPO` with no knowledge of how it was implemented. Verify that each of these Pass 1 findings is resolved without introducing regressions: `<paste Pass 1 High/Medium findings>`. Run verification probes per the skill's **Probes** rule. Disregard Low nits. Reply with `### Resolved`, `### Unresolved`, and `### Verification Probes Run` (command + observed result). If `### Unresolved` is empty, end your reply with the single token `LGTM`.
+  > First read the dev-loop skill file at `<skill path>` in full, then `AGENTS.md` in `$TARGET_REPO`. Review `git diff <BASE>...HEAD` on branch `$WORKING_BRANCH` in `$TARGET_REPO` with no knowledge of how it was implemented. Verify that each of these Pass 1 findings is resolved without introducing regressions: `<paste Pass 1 High/Medium findings>`. Run verification probes per the skill's **Probes** rule. Disregard Low nits. Reply with `### Resolved`, `### Unresolved`, and `### Verification Probes Run` (command + observed result). If `### Unresolved` is empty, end your reply with the single token `LGTM`.
 
 ### Step 4: Finalize PR & Safety Gate
 1. **Update PR Body with Review Outcome**:

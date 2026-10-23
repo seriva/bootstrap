@@ -28,7 +28,6 @@ Generic project scaffold for agentic development.
 | `scaffold/AGENTS.md` | Fill in: project identity, tech stack, commands, architecture; agent maintains the project map |
 | `scaffold/CHANGELOG.md` | Clean starter changelog with a short guide to writing plain-language entries |
 | `scaffold/CLAUDE.md` | `@AGENTS.md` — do not edit |
-| `scaffold/.cursor/rules/agents.mdc` | Points to `AGENTS.md` (always-on Cursor rule) — do not edit |
 | `scaffold/.github/copilot-instructions.md` | Points to `AGENTS.md` — do not edit |
 | `scaffold/.github/dependabot.yml` | Automated monthly dependency & GitHub Actions updates |
 | `scaffold/lefthook.yml` | Pre-commit hook config (format → lint → test, formatted files auto-restaged) — fill in commands |

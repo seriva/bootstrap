@@ -35,9 +35,9 @@ Autonomously orchestrates execution of an approved design plan phase-by-phase. M
 3. **Target Plan (`PLAN_FILE`)**:
    - Use explicit path, or find active plan (`Status: Draft` or `In Progress`) in `docs/v*/` or `docs/plans/`. Derive `<plan-slug>` by stripping `.md` and any trailing `-plan` suffix from the filename.
 4. **Branch Hierarchy**:
-   - `BASE_BRANCH`: If `$PLAN_FILE` has a `**Base branch:** <name>` header line, use it (resumption). Otherwise: currently checked out branch if on `main`/version branch; else default branch. Fetch origin.
+   - `BASE_BRANCH`: If `$PLAN_FILE` has a `**Base branch:** <name>` header line and `git rev-parse --verify --quiet "origin/<name>"` succeeds, use it (resumption). Otherwise (line missing, or value is a placeholder/unknown branch): currently checked out branch if on `main`/version branch; else default branch. Fetch origin first.
    - `PLAN_BRANCH`: `feat/<plan-slug>`. Checkout off `BASE_BRANCH` (or check out existing) and push tracking branch.
-   - If `$PLAN_FILE` is `**Status:** Draft`, set it to `**Status:** In Progress`, insert `**Base branch:** $BASE_BRANCH` directly after the `**Status:**` line (so re-invocation from `feat/<plan-slug>` or a phase branch resolves the same base), commit (`docs(<plan-slug>): start plan`) and push on `$PLAN_BRANCH`.
+   - Persist the base: if `$PLAN_FILE` lacks a valid `**Base branch:**` line, insert `**Base branch:** $BASE_BRANCH` directly after the `**Status:**` line (replacing any invalid one) so re-invocation from `feat/<plan-slug>` or a phase branch resolves the same base. If `$PLAN_FILE` is `**Status:** Draft`, also set it to `**Status:** In Progress`. If either changed, commit (`docs(<plan-slug>): start plan`) and push on `$PLAN_BRANCH`.
 
 ### Step 2: Plan State Analysis
 1. `git checkout $PLAN_BRANCH && git pull`. Inspect `## Implementation Tasks` in `$PLAN_FILE`.
@@ -52,7 +52,7 @@ Autonomously orchestrates execution of an approved design plan phase-by-phase. M
 ### Step 3: Phase Execution via `/dev-loop`
 1. **Implement**:
    - Subagent-capable hosts: spawn subagent `Phase Implementer` per **Subagent Dispatch**:
-     > Prompt: `First read the dev-loop skill file (SKILL.md) in full. Then run /dev-loop in implement-only mode (Steps 1–2) in $TARGET_REPO on base branch $PLAN_BRANCH for Phase $PHASE_NUM ($PHASE_NAME) from $PLAN_FILE. Return the PR URL and WORKING_BRANCH.`
+     > Prompt: `First read the dev-loop skill file in full (installed at ~/.claude/skills/dev-loop/SKILL.md, ~/.codex/skills/dev-loop/SKILL.md, or ~/.gemini/config/skills/dev-loop/SKILL.md depending on host). Then run /dev-loop in implement-only mode (Steps 1–2) in $TARGET_REPO on base branch $PLAN_BRANCH for Phase $PHASE_NUM ($PHASE_NAME) from $PLAN_FILE. Return the PR URL and WORKING_BRANCH.`
      *(Shields orchestrator context from task compilation, tests, and diffs).*
    - No subagent tool: run `/dev-loop` Steps 1–2 inline for Phase N with `BASE_BRANCH="$PLAN_BRANCH"`.
 2. **Review**: Orchestrator runs `/dev-loop` Steps 3–4 itself on `$PHASE_BRANCH` against `$PLAN_BRANCH`, spawning `Code Reviewer (Pass 1)`, `Defect Fixer`, and `Code Reviewer (Pass 2)` subagents as that skill defines. This sets `REVIEW_STATUS`, waits for CI, and marks the PR ready only on `PASSED`.
@@ -72,13 +72,13 @@ When all phases in `$PLAN_FILE` are checked off (`- [x]`):
 2. **Comprehensive AI Audit Subagent**:
    - Spawn subagent `Plan Auditor` per **Subagent Dispatch** with `$PLAN_FILE` and diff `git diff origin/$BASE_BRANCH...$PLAN_BRANCH`.
    - Audit diff against: 1) "Done means" checklist, 2) Scope Rule & Boundary Matrix, 3) Out-of-Scope zero leaks, 4) Test coverage.
-   - Any verification probes follow the `/dev-loop` **Probes** rule: first ensure the directory is ignored (`grep -qx '.probes/' .gitignore || echo '.probes/' >> .gitignore`), write under `.probes/`, delete afterwards.
+   - Any verification probes follow the `/dev-loop` **Probes** rule: first ensure the directory is excluded locally (`grep -qx '.probes/' .git/info/exclude || echo '.probes/' >> .git/info/exclude`), write under `.probes/`, delete afterwards. Never edit tracked files.
    - Returns `PLAN_VERIFIED_LGTM` or structured discrepancy report.
 3. **Final Merge PR**:
    - **If `PLAN_VERIFIED_LGTM`**:
      - Update `$PLAN_FILE` header: `**Status:** Completed (YYYY-MM-DD)`.
      - If unversioned standalone plan, move to `docs/plans/archive/` and update `docs/roadmap.md`.
-     - Stage only the plan paths (never `git add -A`): `git add "$PLAN_FILE" docs/plans/archive/ docs/roadmap.md` (include both the old and archived plan path when moved), check `git diff --cached --name-only` lists nothing else, then `git commit -m "docs(<plan-slug>): complete plan" && git push`. Subject must stay ≤72 chars including the scope; truncate the summary, never the scope.
+     - Stage only the plan paths (never `git add -A`): `git add "$PLAN_FILE" docs/roadmap.md`; when the plan was moved, also stage its new path (`git add docs/plans/archive/<plan-slug>-plan.md`) so both the old and archived paths are staged. Do not pass `docs/plans/archive/` in versioned projects, where it does not exist and `git add` would fail. Check `git diff --cached --name-only` lists nothing else, then `git commit -m "docs(<plan-slug>): complete plan" && git push`. Subject must stay ≤72 chars including the scope; truncate the summary, never the scope.
      - Open final PR from `$PLAN_BRANCH` into `$BASE_BRANCH`:
        `gh pr create --base "$BASE_BRANCH" --head "$PLAN_BRANCH" --title "feat(<plan-slug>): complete plan implementation" --body "All phases verified against $PLAN_FILE. Full-branch audit passed."`.
      - Wait for CI (`gh pr checks "$PLAN_BRANCH" --watch`; if `.github/workflows/` exists and no checks are reported, wait and retry ≈3× / 10 s before treating CI as none configured) and report the final PR link with its CI result. Merging into `$BASE_BRANCH` is left to the user.
