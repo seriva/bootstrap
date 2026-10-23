@@ -16,7 +16,7 @@ Generic project scaffold for agentic development.
 |---|---|
 | `AGENTS.md` | Agent guide for `bootstrap` itself (Part 1 synced from `scaffold/AGENTS.md`) |
 | `install.sh` | Global installer: conditionally deploys skills to detected AI tools (Antigravity, Claude Code, Codex, Cursor, Copilot) |
-| `sync.sh` | Synchronizes `scaffold/AGENTS.md` Part 1, bridge files, and `docs/feature-plan-template.md` to sibling projects |
+| `sync.sh` | Synchronizes `scaffold/AGENTS.md` Part 1, bridge files, `docs/feature-plan-template.md`, and the bootstrap-managed `.gitignore` block to sibling projects |
 | `skills/design-plan/SKILL.md` | Empirical design planning workflow: active probe audit, boundary matrix, and exhaustive plan drafting |
 | `skills/execute-plan/SKILL.md` | Autonomous plan orchestrator: executes plan phase-by-phase with TDD, tracking tasks with `[x]` and opening 1 PR per phase |
 | `skills/dev-loop/SKILL.md` | Universal autonomous development loop: implementation, quality gates, draft PR, AI review, and fix cycle |
@@ -28,12 +28,12 @@ Generic project scaffold for agentic development.
 | `scaffold/AGENTS.md` | Fill in: project identity, tech stack, commands, architecture; agent maintains the project map |
 | `scaffold/CHANGELOG.md` | Clean starter changelog with a short guide to writing plain-language entries |
 | `scaffold/CLAUDE.md` | `@AGENTS.md` — do not edit |
-| `scaffold/.cursorrules` | Points to `AGENTS.md` — do not edit |
+| `scaffold/.cursor/rules/agents.mdc` | Points to `AGENTS.md` (always-on Cursor rule) — do not edit |
 | `scaffold/.github/copilot-instructions.md` | Points to `AGENTS.md` — do not edit |
 | `scaffold/.github/dependabot.yml` | Automated monthly dependency & GitHub Actions updates |
 | `scaffold/lefthook.yml` | Pre-commit hook config (format → lint → test, formatted files auto-restaged) — fill in commands |
-| `scaffold/.github/workflows/ci.yml` | Fill in runtime setup, lint, test, build/deploy steps |
-| `scaffold/.gitignore` | Common ignores + agentic artifact ignores pre-configured |
+| `scaffold/.github/workflows/ci.yml` | Runs the lefthook gate on every PR (any base branch, so phase PRs get checks) and on `main`/`feat/**` pushes — fill in runtime setup |
+| `scaffold/.gitignore` | Common ignores + agentic artifact ignores inside a `bootstrap-managed` block that `sync.sh` keeps current |
 | `scaffold/docs/roadmap.md` | Release planning template (supports versioned and continuous layouts) |
 | `scaffold/docs/feature-plan-template.md` | Design plan format: Goal → Boundary Matrix → Gaps Audit → Tasks → Test Plan |
 
@@ -45,7 +45,7 @@ To scaffold a new project with the agentic standard:
    ```bash
    cp -a ~/dev/bootstrap/scaffold/. /path/to/your/project/
    ```
-2. Fill in all `[PLACEHOLDER]` sections in `AGENTS.md` and `ci.yml`. In `lefthook.yml`, replace `"true"` no-ops with your actual format/lint/test commands. Keep the `Commands` section of `AGENTS.md` matching them: the skills use it as their quality gate.
+2. Fill in all `[PLACEHOLDER]` sections in `AGENTS.md` and `ci.yml`. In `lefthook.yml`, replace the `echo "lefthook: configure …" && exit 1` placeholders with your actual format/lint/test commands. Keep the `Commands` section of `AGENTS.md` matching them: the skills use it as their quality gate.
 3. Install lefthook in the new project: `brew install lefthook` or `npm install --save-dev lefthook`, then `lefthook install`. Also install [gitleaks](https://github.com/gitleaks/gitleaks#installing) (≥ 8.19) for the pre-commit secret scan. The scaffold's lefthook commands fail until you fill them in, so an unconfigured gate can't pass silently. CI runs the same lefthook gate, so commands only need to live in `lefthook.yml`.
 4. (One-time machine setup) Run `./install.sh` in `bootstrap/` to deploy global autonomous workflows (`/design-plan`, `/execute-plan`, `/dev-loop`) to your AI tools.
 
@@ -107,8 +107,8 @@ Use this for standalone tasks or targeted bugfixes:
 
 ## What Stays Out of the Repo
 
-- Tool-specific session directories (e.g. `docs/superpowers/`, `.cursor/`)
+- Tool-specific session directories (e.g. `docs/superpowers/`, `.cursor/sessions/`)
 - `.worktrees/` — git worktree working copies
-- Temporary agent session files (e.g., scratchpads, tool-specific session state)
+- Temporary agent session files (e.g., scratchpads, tool-specific session state, `.probes/`)
 
-The `.gitignore` has common patterns pre-configured. When a new tool introduces new artifact directories, add them there immediately.
+The `.gitignore` has common patterns pre-configured. The agentic-artifact entries live between `# >>> bootstrap-managed` / `# <<< bootstrap-managed` markers that `sync.sh` keeps identical across projects; when a new tool introduces artifact directories, add them to `scaffold/.gitignore` in `bootstrap` and run `./sync.sh`. Project-specific ignores go outside the markers and are never touched.

@@ -2,9 +2,12 @@ name: CI/CD
 
 on:
   push:
-    branches: [main, master]
+    # feat/** covers the epic branches /execute-plan merges phase PRs into.
+    branches: [main, master, 'feat/**']
+  # No branch filter: phase PRs target feat/<plan-slug> (and release PRs may
+  # target version branches), and /dev-loop requires a check run before it
+  # marks a PR ready.
   pull_request:
-    branches: [main, master]
   # Uncomment as needed:
   # release:
   #   types: [published]

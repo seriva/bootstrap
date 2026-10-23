@@ -49,9 +49,9 @@ Canonical headquarters for agentic development standards, project scaffolding (`
 
 ## Architecture
 
-- `scaffold/` — Pristine starter templates copied into new repositories (`AGENTS.md`, `CHANGELOG.md`, `CLAUDE.md`, `.cursorrules`, `.github/`, `lefthook.yml`, `docs/`). `scaffold/AGENTS.md` Part 1 is the canonical source of truth.
+- `scaffold/` — Pristine starter templates copied into new repositories (`AGENTS.md`, `CHANGELOG.md`, `CLAUDE.md`, `.cursor/rules/agents.mdc`, `.github/`, `lefthook.yml`, `docs/`). `scaffold/AGENTS.md` Part 1 is the canonical source of truth.
 - `skills/` — Global autonomous workflows (`design-plan`, `execute-plan`, `dev-loop`) deployed machine-wide by `install.sh`.
 - `install.sh` — Conditional multi-vendor skill installer (Antigravity, Claude Code, Codex, Cursor, Copilot).
-- `sync.sh` — Propagates `scaffold/AGENTS.md` Part 1, tool bridge files, and `docs/feature-plan-template.md` to sibling projects (and keeps root `AGENTS.md` Part 1 in sync).
+- `sync.sh` — Propagates `scaffold/AGENTS.md` Part 1, tool bridge files, `docs/feature-plan-template.md`, and the bootstrap-managed `.gitignore` block to sibling projects (and keeps root `AGENTS.md` Part 1 in sync).
 - `docs/agentic-workflows.md` — Architecture reference and diagrams for the 3-tier autonomous lifecycle.
 

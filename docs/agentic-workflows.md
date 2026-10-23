@@ -68,7 +68,7 @@ flowchart TD
    - Verifies existing limitations, missing types, or silent wrong results.
    - Formulates the **Verified Gaps & Baseline Audit** table with exact file/line citations and probe evidence.
 3. **Boundary & Scope Definition:**
-   - Defines explicit categories: `In scope: core`, `In scope: target-specific`, `Excluded: runtime/host`, and `Excluded: deferred`.
+   - Defines explicit categories: `In scope: core`, `In scope: target-specific`, `Excluded: runtime / platform`, and `Excluded: deferred`.
    - Explicitly documents architectural reasons for deferred items to halt scope creep before coding begins.
 4. **"Done Means" Contract:**
    - Formulates 3–5 falsifiable, testable completion criteria (e.g., zero regressions on conformance corpus, specific diagnostic on invalid inputs).
@@ -101,7 +101,7 @@ flowchart TD
 2. **Epic Branch Isolation:**
    - Branches `feat/<plan-slug>` off `main` (or a release branch like `1.7.0`).
    - `main` remains untouched and releasable while the feature develops.
-   - Marks the plan `**Status:** In Progress` on the epic branch.
+   - Marks the plan `**Status:** In Progress` on the epic branch and records `**Base branch:**` in the plan header so a re-run from `feat/<plan-slug>` or a phase branch resolves the same base.
 3. **Phase Execution via `/dev-loop` (Context-Shielded Delivery):**
    - Runs the active phase through `/dev-loop` targeting base branch `feat/<plan-slug>`, with one flat flow on every host: the orchestrator spawns every subagent itself and subagents never spawn subagents.
    - A **Phase Implementer** subagent runs `/dev-loop` in implement-only mode: creates `feat/<plan-slug>-phase-<N>`, implements tasks with TDD, commits atomically, checks off `- [x] Task N.M` in the plan doc, runs pre-commit gates, and opens a draft PR. This shields the orchestrator's context from compilation and test logs.
@@ -117,7 +117,7 @@ flowchart TD
      - Confirms zero violations of the "Scope Rule & Boundary Matrix".
      - Validates that **no items listed in "Out of Scope" leaked in**.
      - Confirms full test suite passes green.
-   - Updates plan status to `Completed (YYYY-MM-DD)`; for unversioned projects, archives the plan file to `docs/plans/archive/` and updates `docs/roadmap.md` links.
+   - Updates plan status to `Completed (YYYY-MM-DD)`; for unversioned projects, archives the plan file to `docs/plans/archive/` and updates `docs/roadmap.md` links. Only those plan paths are staged for the status commit.
    - Opens the final Pull Request from `feat/<plan-slug>` into `main`.
 
 #### Invocations:
@@ -186,7 +186,7 @@ flowchart TD
 |---|---|---|
 | Google Antigravity (`agy`) | **Tested** | `invoke_subagent`; `/execute-plan` spawns the Phase Implementer and reviewers directly. |
 | Claude Code (`claude`) | **Tested** | `Agent` tool (`general-purpose`); same flat flow, which fits Claude Code's rule that subagents cannot spawn subagents. |
-| Codex, Cursor, Copilot | Installed, untested | No subagent tool assumed; workflows run inline (single-session fallback). |
+| Codex, Cursor, Copilot | Installed, untested | If the host offers a fresh-context subagent tool, the skills use it via the generic dispatch row. Without one, implementation runs inline and the review step halts: the PR stays Draft with `REVIEW_STATUS=PENDING_REVIEW` (never self-review). |
 
 ### Installation
 Running `./install.sh` from `bootstrap`:
@@ -207,16 +207,19 @@ The installer automatically inspects your machine:
 ```text
 ~/dev/bootstrap/                     <-- Global Agentic Headquarters
 ├── install.sh                       <-- Installs /design-plan, /execute-plan, /dev-loop globally
-├── sync.sh                          <-- Syncs scaffold/AGENTS.md Part 1 + plan template to sibling projects
+├── sync.sh                          <-- Syncs scaffold/AGENTS.md Part 1, bridge files, plan template + managed .gitignore block to sibling projects
 ├── skills/                          <-- Global skill definitions (never copied to projects)
 └── scaffold/                        <-- Pristine project starter kit (copied into new projects)
     ├── AGENTS.md
     ├── CHANGELOG.md (clean starter template)
+    ├── CLAUDE.md, .cursor/rules/agents.mdc, .github/copilot-instructions.md (bridge files → AGENTS.md)
+    ├── .gitignore (agentic ignores inside the bootstrap-managed block)
     ├── lefthook.yml
     └── docs/feature-plan-template.md
 
 ~/dev/gofront/                       <-- Sibling Project Repository
 ├── AGENTS.md                        <-- Part 1 synced from bootstrap; Part 2 project context + Commands
+├── .gitignore                       <-- bootstrap-managed block synced; project ignores outside it untouched
 ├── lefthook.yml                     <-- Pre-commit quality gate
 ├── CHANGELOG.md                     <-- Maintained by /dev-loop and /execute-plan
 └── docs/

@@ -75,8 +75,12 @@ for skill_path in "$SKILLS_SRC"/*/; do
   [ -e "$skill_path" ] || continue
   skill_name="$(basename "$skill_path")"
   skill_file="$skill_path/SKILL.md"
-  skill_desc=$(grep -E "^description:" "$skill_file" 2>/dev/null | head -n 1 | sed 's/^description:[[:space:]]*//' | tr -d '"' || true)
+  # Raw frontmatter value: strip one pair of surrounding quotes if present, then
+  # escape backslashes and embedded double quotes so the emitted `description: "%s"`
+  # is valid YAML even when the text contains `: `.
+  skill_desc=$(grep -E "^description:" "$skill_file" 2>/dev/null | head -n 1 | sed -e 's/^description:[[:space:]]*//' -e 's/^"\(.*\)"$/\1/' || true)
   skill_desc=${skill_desc:-"Autonomous $skill_name workflow"}
+  skill_desc_yaml=$(printf '%s' "$skill_desc" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')
 
   echo "Deploying skill: $skill_name"
 
@@ -110,12 +114,12 @@ EOF
     echo "  -> [Codex] Installed to ~/.codex/skills/$skill_name"
   fi
 
-  # 4. Cursor (MDC Rule)
+  # 4. Cursor (MDC Rule) — description-triggered; no `globs` so it is not auto-attached to every file
   if [ "$HAS_CURSOR" = true ]; then
     cursor_rules_dir="$HOME/.cursor/rules"
     mkdir -p "$cursor_rules_dir"
     {
-      printf -- '---\ndescription: %s\nglobs: *\nalwaysApply: false\n---\n' "$skill_desc"
+      printf -- '---\ndescription: "%s"\nalwaysApply: false\n---\n' "$skill_desc_yaml"
       strip_frontmatter "$skill_file"
     } > "$cursor_rules_dir/$skill_name.mdc"
     echo "  -> [Cursor] Installed rule to ~/.cursor/rules/$skill_name.mdc"
@@ -135,7 +139,7 @@ EOF
       if [ -d "$parent_dir" ]; then
         mkdir -p "$pdir"
         {
-          printf -- '---\nname: %s\ndescription: %s\n---\n' "$skill_name" "$skill_desc"
+          printf -- '---\nname: %s\ndescription: "%s"\n---\n' "$skill_name" "$skill_desc_yaml"
           strip_frontmatter "$skill_file"
         } > "$pdir/$skill_name.prompt.md"
         echo "  -> [Copilot] Installed prompt to $pdir/$skill_name.prompt.md"

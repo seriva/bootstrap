@@ -24,23 +24,24 @@ Autonomously authors an empirical engineering design plan following the `feature
 ### Step 2: Empirical Audit & Probing (NO ASSUMPTIONS)
 Never draft a plan from assumptions alone. Conduct an active baseline audit:
 1. **Codebase Inspection**: Locate exact files, modules, types, and existing test runners.
-2. **Empirical Probes**: Write and execute small, non-destructive probe tests or inspect compilation outputs to prove existing limitations, wrong results, or bottlenecks. Put probes in `$TARGET_REPO/.probes/` (gitignored) or the host's scratch directory, never in source or test directories, and delete them when the plan is drafted. Record each probe's command and observed result in the Verified Gaps table so the evidence survives the cleanup.
+2. **Empirical Probes**: Write and execute small, non-destructive probe tests or inspect compilation outputs to prove existing limitations, wrong results, or bottlenecks. Put probes in `$TARGET_REPO/.probes/` (gitignored; before the first probe run `grep -qx '.probes/' .gitignore || echo '.probes/' >> .gitignore`) or the host's scratch directory, never in source or test directories, and delete them when the plan is drafted. Record each probe's command and observed result in the Verified Gaps table so the evidence survives the cleanup.
 3. **Verified Gaps Table**: Format as `Area | Finding | Evidence & Probe Reference`. Every claim must cite an empirical probe or exact source line.
 
 ### Step 3: Scope Boundaries & Done Contract
 1. **Scope Boundary Matrix**: Classify every candidate capability:
    - `In scope: core`: Supported everywhere.
-   - `In scope: target-specific`: Supported on designated targets/runtimes.
-   - `Excluded: runtime / platform`: Incompatible with invariants.
+   - `In scope: target-specific` *(optional)*: Supported on designated targets/runtimes.
+   - `Excluded: runtime / platform` *(optional)*: Incompatible with invariants.
    - `Excluded: deferred`: Valid ideas deferred to avoid scope creep (document architectural reason).
+   The two optional rows only apply to projects with multiple targets or runtimes (compilers, cross-platform libraries); drop them otherwise, as the template says.
 2. **"Done Means" Checklist**: Formulate 3–5 concrete, falsifiable exit criteria (zero regressions, benchmark thresholds, conformance tests).
 
 ### Step 4: Draft the Design Plan
 1. **Location**:
    - Versioned: `$TARGET_REPO/docs/vX.Y.Z/<plan-slug>-plan.md`.
    - Continuous/Unversioned: `$TARGET_REPO/docs/plans/<plan-slug>-plan.md`.
-2. **Sections** (from `feature-plan-template.md`):
-   - Header, Continuity, Goal & Done Means, Scope Matrix, Verified Gaps, Out of Scope, Architecture & Invariants.
+2. **Sections** (from `feature-plan-template.md`, same names and order):
+   - Header (Version, Status, Depends on, Replaces, Followed by), Goal & Done Means, Scope Rule & Boundary Matrix, Verified Gaps & Baseline Audit, Out of Scope, Approach (Architecture & Design Decisions / Invariants & Safety Bounds / Edge Cases & Error Handling).
    - **Implementation Tasks (The Dev-Loop Contract)**:
      - **1 Phase = 1 Dev-Loop** (1 phase branch, 1 PR, 1 isolated 2-pass review).
      - **3–5 Tasks per Phase** (hard max 6). Decouple subsystems into sequential phases.

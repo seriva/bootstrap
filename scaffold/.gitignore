@@ -51,12 +51,16 @@ Thumbs.db
 
 # Lefthook
 .lefthook/
+lefthook-local.yml
+.lefthook-local/
 
-# Agentic session artifacts — add tool-specific dirs here as needed
+# >>> bootstrap-managed
+# Agentic session artifacts — kept in sync by bootstrap/sync.sh; edit scaffold/.gitignore
+# in the bootstrap repo instead. Add project-specific ignores outside these markers.
 # (git only treats a leading # as a comment; trailing text becomes part of the pattern)
 # Claude Code superpowers
 docs/superpowers/
-# Cursor session state
+# Cursor session state (.cursor/rules/ stays committable)
 .cursor/sessions/
 # git worktrees
 .worktrees/
@@ -73,11 +77,16 @@ docs/superpowers/
 # throwaway probes written by /design-plan and /dev-loop reviewers
 .probes/
 
-# Tool-specific session & memory directories
-# (.claude/settings.json and .claude/skills/ are project config: keep them committable)
+# Tool-specific session & memory directories — only session/state subpaths, so
+# project config such as .claude/settings.json, .claude/skills/, .agents/skills/
+# and .codex/ or .gemini/ project settings stay committable
 .claude/settings.local.json
 .claude/worktrees/
-.agents/
+.agents/sessions/
+.agents/memory/
 _agents/
-.gemini/
-.codex/
+.gemini/tmp/
+.gemini/sessions/
+.codex/sessions/
+.codex/memory/
+# <<< bootstrap-managed

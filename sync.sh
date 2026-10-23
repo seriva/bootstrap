@@ -4,7 +4,8 @@ set -euo pipefail
 # ==============================================================================
 # Bootstrap Agentic Workflow Sync Script
 # Propagates canonical Part 1 from scaffold/AGENTS.md, standard tool bridge
-# files, and docs/feature-plan-template.md to sibling repositories.
+# files, docs/feature-plan-template.md, and the bootstrap-managed .gitignore
+# block to sibling repositories.
 # ==============================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -20,8 +21,9 @@ for arg in "$@"; do
   if [[ "$arg" == "--help" || "$arg" == "-h" ]]; then
     echo "Usage: $0 [options] [target_dir ...]"
     echo ""
-    echo "Synchronizes Part 1 of AGENTS.md, bridge files, and docs/feature-plan-template.md"
-    echo "from the bootstrap repository to sibling repositories."
+    echo "Synchronizes Part 1 of AGENTS.md, bridge files, docs/feature-plan-template.md,"
+    echo "and the bootstrap-managed .gitignore block from the bootstrap repository to"
+    echo "sibling repositories."
     echo ""
     echo "Options:"
     echo "  -c, --check    Check targets for drift; exit 1 if drift detected, 0 if clean"
@@ -73,39 +75,130 @@ fi
 echo "Targets: ${#TARGETS[@]} repositories"
 echo "--------------------------------"
 
-python3 - <<EOF
+# Shell values reach Python via env/argv only (quoted heredoc), so target paths
+# containing quotes or backslashes cannot break the embedded source.
+BOOTSTRAP_AGENTS="$BOOTSTRAP_AGENTS" SCRIPT_DIR="$SCRIPT_DIR" SCAFFOLD_DIR="$SCAFFOLD_DIR" \
+CHECK="$CHECK" DRY_RUN="$DRY_RUN" \
+python3 - "${TARGETS[@]}" <<'EOF'
 import os
 import re
 import sys
 
-canonical_path = "$BOOTSTRAP_AGENTS"
-self_dir = "$SCRIPT_DIR"
-check_mode = ("$CHECK" == "true")
-dry_run = ("$DRY_RUN" == "true")
+canonical_path = os.environ["BOOTSTRAP_AGENTS"]
+self_dir = os.environ["SCRIPT_DIR"]
+scaffold_dir = os.environ["SCAFFOLD_DIR"]
+check_mode = os.environ["CHECK"] == "true"
+dry_run = os.environ["DRY_RUN"] == "true"
 has_drift = False
-targets = [$(printf '"%s", ' "${TARGETS[@]}")]
+targets = sys.argv[1:]
 
-with open(canonical_path, "r", encoding="utf-8") as f:
-    canonical_text = f.read()
+PART1_RE = re.compile(r"(# Part 1: Agent Workflow\n[\s\S]*?\n---\n)")
+GITIGNORE_BLOCK_RE = re.compile(r"# >>> bootstrap-managed\n[\s\S]*?# <<< bootstrap-managed\n")
+LEGACY_CURSOR_FILE = ".cursorrules"
 
-# Extract Part 1 block from bootstrap
-part1_match = re.search(r"(# Part 1: Agent Workflow\n[\s\S]*?\n---\n)", canonical_text)
+
+def read_text(path):
+    with open(path, "r", encoding="utf-8") as f:
+        return f.read()
+
+
+def write_text(path, content):
+    parent = os.path.dirname(path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(content)
+
+
+def report(label, state):
+    """Print one status line; state is 'up to date', 'drift' (dry-run) or 'written'."""
+    if state == "up to date":
+        print(f"  - {label}: up to date")
+    elif state == "drift":
+        print(f"  - {label}: [WOULD CREATE/UPDATE]")
+    else:
+        print(f"  - {label}: CREATED/UPDATED")
+
+
+def sync_file(label, target_file, content):
+    """Make target_file equal content; returns True when drift was found."""
+    if os.path.isfile(target_file) and read_text(target_file) == content:
+        report(label, "up to date")
+        return False
+    if dry_run:
+        report(label, "drift")
+    else:
+        write_text(target_file, content)
+        report(label, "written")
+    return True
+
+
+canonical_text = read_text(canonical_path)
+part1_match = PART1_RE.search(canonical_text)
 if not part1_match:
     sys.exit("Error: Could not extract Part 1 from " + canonical_path)
-
 canonical_part1 = part1_match.group(1)
 
 bridge_rel_paths = [
     "CLAUDE.md",
-    ".cursorrules",
+    os.path.join(".cursor", "rules", "agents.mdc"),
     os.path.join(".github", "copilot-instructions.md"),
 ]
 bridges = {}
 for rel_path in bridge_rel_paths:
-    src_path = os.path.join("$SCAFFOLD_DIR", rel_path)
+    src_path = os.path.join(scaffold_dir, rel_path)
     if os.path.isfile(src_path):
-        with open(src_path, "r", encoding="utf-8") as f:
-            bridges[rel_path] = f.read()
+        bridges[rel_path] = read_text(src_path)
+
+# Managed .gitignore block: everything between the markers (inclusive) in scaffold/.gitignore
+managed_gitignore_block = None
+scaffold_gitignore = os.path.join(scaffold_dir, ".gitignore")
+if os.path.isfile(scaffold_gitignore):
+    block_match = GITIGNORE_BLOCK_RE.search(read_text(scaffold_gitignore))
+    if block_match:
+        managed_gitignore_block = block_match.group(0)
+    else:
+        print(f"Warning: no bootstrap-managed markers in {scaffold_gitignore}; skipping .gitignore sync")
+
+
+def sync_gitignore(target_dir):
+    """Replace/append/create the managed block; content outside the markers is untouched."""
+    target_file = os.path.join(target_dir, ".gitignore")
+    existing = read_text(target_file) if os.path.isfile(target_file) else None
+
+    if existing is None:
+        new_text = managed_gitignore_block
+    else:
+        existing_block = GITIGNORE_BLOCK_RE.search(existing)
+        if existing_block:
+            new_text = existing[:existing_block.start()] + managed_gitignore_block + existing[existing_block.end():]
+        else:
+            separator = "" if existing == "" or existing.endswith("\n\n") else ("\n" if existing.endswith("\n") else "\n\n")
+            new_text = existing + separator + managed_gitignore_block
+
+    if existing == new_text:
+        report(".gitignore (managed block)", "up to date")
+        return False
+    if dry_run:
+        report(".gitignore (managed block)", "drift")
+    else:
+        write_text(target_file, new_text)
+        report(".gitignore (managed block)", "written")
+    return True
+
+
+def remove_legacy_cursorrules(target_dir):
+    """Legacy .cursorrules is superseded by .cursor/rules/agents.mdc; remove only in write mode."""
+    legacy_file = os.path.join(target_dir, LEGACY_CURSOR_FILE)
+    if not os.path.isfile(legacy_file):
+        return False
+    if dry_run:
+        print(f"  - {LEGACY_CURSOR_FILE}: [WOULD REMOVE] (replaced by .cursor/rules/agents.mdc)")
+    else:
+        os.remove(legacy_file)
+        print(f"  - {LEGACY_CURSOR_FILE}: REMOVED (replaced by .cursor/rules/agents.mdc)")
+    return True
+
 
 for target_dir in targets:
     proj_name = os.path.basename(target_dir)
@@ -116,83 +209,45 @@ for target_dir in targets:
         print(f"  - Skipped: AGENTS.md not found in {target_dir}")
         continue
 
-    with open(agents_path, "r", encoding="utf-8") as f:
-        target_text = f.read()
-
-    # Match target Part 1 block
-    target_part1_match = re.search(r"(# Part 1: Agent Workflow\n[\s\S]*?\n---\n)", target_text)
+    target_text = read_text(agents_path)
+    target_part1_match = PART1_RE.search(target_text)
     if not target_part1_match:
-        print(f"  - Warning: Could not locate '# Part 1: Agent Workflow ... ---' in {agents_path}")
+        has_drift = True
+        print(f"  - AGENTS.md Part 1: [DRIFT] '# Part 1: Agent Workflow ... ---' markers not found in {agents_path}; fix manually")
+    elif target_part1_match.group(1) == canonical_part1:
+        print("  - AGENTS.md Part 1: up to date")
     else:
-        existing_part1 = target_part1_match.group(1)
-        if existing_part1 == canonical_part1:
-            print("  - AGENTS.md Part 1: up to date")
+        has_drift = True
+        if dry_run:
+            print("  - AGENTS.md Part 1: [WOULD UPDATE]")
         else:
-            has_drift = True
-            if dry_run:
-                print("  - AGENTS.md Part 1: [WOULD UPDATE]")
-            else:
-                new_target_text = (
-                    target_text[:target_part1_match.start(1)]
-                    + canonical_part1
-                    + target_text[target_part1_match.end(1):]
-                )
-                with open(agents_path, "w", encoding="utf-8") as f:
-                    f.write(new_target_text)
-                print("  - AGENTS.md Part 1: UPDATED")
+            write_text(
+                agents_path,
+                target_text[:target_part1_match.start(1)]
+                + canonical_part1
+                + target_text[target_part1_match.end(1):],
+            )
+            print("  - AGENTS.md Part 1: UPDATED")
 
     if os.path.abspath(target_dir) == os.path.abspath(self_dir):
         continue
 
-    # Bridge files
     for rel_path, content in bridges.items():
-        bridge_file = os.path.join(target_dir, rel_path)
-        parent_dir = os.path.dirname(bridge_file)
-
-        already_valid = False
-        if os.path.isfile(bridge_file):
-            with open(bridge_file, "r", encoding="utf-8") as f:
-                if f.read() == content:
-                    already_valid = True
-
-        if already_valid:
-            print(f"  - {rel_path}: up to date")
-        else:
+        if sync_file(rel_path, os.path.join(target_dir, rel_path), content):
             has_drift = True
-            if dry_run:
-                print(f"  - {rel_path}: [WOULD CREATE/UPDATE]")
-            else:
-                if parent_dir:
-                    os.makedirs(parent_dir, exist_ok=True)
-                with open(bridge_file, "w", encoding="utf-8") as f:
-                    f.write(content)
-                print(f"  - {rel_path}: CREATED/UPDATED")
+
+    if remove_legacy_cursorrules(target_dir):
+        has_drift = True
 
     # Feature plan template (sync if target has docs/ dir)
     template_rel_path = os.path.join("docs", "feature-plan-template.md")
-    template_src_path = os.path.join("$SCAFFOLD_DIR", template_rel_path)
-    target_docs_dir = os.path.join(target_dir, "docs")
-    if os.path.isfile(template_src_path) and os.path.isdir(target_docs_dir):
-        with open(template_src_path, "r", encoding="utf-8") as f:
-            template_content = f.read()
-
-        template_target_file = os.path.join(target_dir, template_rel_path)
-        already_valid = False
-        if os.path.isfile(template_target_file):
-            with open(template_target_file, "r", encoding="utf-8") as f:
-                if f.read() == template_content:
-                    already_valid = True
-
-        if already_valid:
-            print(f"  - {template_rel_path}: up to date")
-        else:
+    template_src_path = os.path.join(scaffold_dir, template_rel_path)
+    if os.path.isfile(template_src_path) and os.path.isdir(os.path.join(target_dir, "docs")):
+        if sync_file(template_rel_path, os.path.join(target_dir, template_rel_path), read_text(template_src_path)):
             has_drift = True
-            if dry_run:
-                print(f"  - {template_rel_path}: [WOULD CREATE/UPDATE]")
-            else:
-                with open(template_target_file, "w", encoding="utf-8") as f:
-                    f.write(template_content)
-                print(f"  - {template_rel_path}: CREATED/UPDATED")
+
+    if managed_gitignore_block is not None and sync_gitignore(target_dir):
+        has_drift = True
 
 if check_mode and has_drift:
     print("\n[FAIL] Workflow drift detected across repositories.")
