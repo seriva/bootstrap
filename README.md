@@ -94,8 +94,8 @@ Use this to autonomously execute an approved design plan phase-by-phase:
 ### 3. `/dev-loop <task description>`
 Use this for standalone tasks or targeted bugfixes:
 - **Target & Base Resolution**: Discovers repository and base branch (supports version branches like `1.7.0` and multi-repo roots).
-- **Implementation & TDD**: Writes failing tests first, implements code, and updates `CHANGELOG.md`.
-- **Quality Gates**: Runs `lefthook run pre-commit` verification.
+- **Implementation & TDD**: Writes failing tests first, implements code, and writes one plain-language `CHANGELOG.md` entry.
+- **Quality Gates**: Runs the pre-commit gate from the `Commands` section of `AGENTS.md`.
 - **Draft PR**: Opens a draft pull request via `gh pr create --draft`.
 - **Fresh Reviewer Subagent**: Spawns an isolated review subagent to review diffs and run active verification probes (Deterministic 2-Pass Review Protocol).
 - **Fix Loop**: A defect fixer subagent patches High/Medium defects in a single fix turn before Pass 2 final verification (hard cap: max 2 review passes, max 1 fix turn).

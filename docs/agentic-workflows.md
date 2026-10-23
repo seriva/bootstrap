@@ -32,9 +32,9 @@ flowchart TD
     end
 
     subgraph Tier3 ["Tier 3: Delivery Engine"]
-        DL["/dev-loop &lt;task&gt; / Phase Implementer"]
+        DL["/dev-loop &lt;task&gt; / Phase Delivery Engine"]
         TDD["Implementation with TDD"]
-        Gate["Quality Gate (lefthook pre-commit)"]
+        Gate["Quality Gate (AGENTS.md Commands)"]
         Review["Fresh-Context AI Review\n(Deterministic 2-Pass Protocol)"]
         Fix["Defect Fixer Subagent\n(Max 1 fix turn)"]
         PR["Ready PR (gh pr ready)"]
@@ -137,8 +137,8 @@ flowchart TD
    - **For Plan Phases**: Loops through all unchecked tasks in the phase, implementing with TDD, committing atomically per task, and checking off `- [x] Task N.M` in the plan doc.
    - **For Standalone Tasks**: Writes failing tests first (TDD), optional **Probe Investigator** subagent for elusive bugs.
    - Enforces project conventions from `AGENTS.md`.
-   - Runs `lefthook run pre-commit` (or project linters and test suites).
-   - Updates `CHANGELOG.md` under `## [Unreleased]`.
+   - Runs the pre-commit gate from the `Commands` section of `AGENTS.md`.
+   - Writes one plain-language `CHANGELOG.md` entry under `## [Unreleased]` per phase (or standalone task).
 3. **Draft PR Containment:**
    - Opens a draft pull request via `gh pr create --draft`.
    - Silences notifications while the automated review loop runs.

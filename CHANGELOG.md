@@ -8,6 +8,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 ## [Unreleased]
 
 ### Added
+- A Commands section in the project part of `AGENTS.md`, so agents and reviewers know exactly how to test, lint, and build each project.
+- Changelog writing rules: entries are now short plain-language sentences aimed at users, with an example in the starter changelog.
 - Tested Environments table in `docs/agentic-workflows.md` (and README note) documenting Antigravity and Claude Code as tested, with per-tool subagent behavior.
 - Support `--auto` (`--auto-merge`) flag in `/execute-plan` to automatically squash-merge passing phase PRs into `feat/<plan-slug>` and loop through all phases up to the final full-branch audit (with circuit-breaker halt on `BLOCKED_BY_DEFECTS`), while preserving interactive per-phase review as the default.
 - Phase Implementer subagent execution in `/execute-plan` providing context shielding for the orchestrator during multi-task phases.
@@ -24,6 +26,13 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - Comprehensive `--help` / `-h` CLI flag and usage documentation in `sync.sh`.
 
 ### Changed
+- Running `/dev-loop` or `/execute-plan` now counts as permission to commit and open PRs, so agents no longer trip over the "never auto-commit" rule mid-workflow.
+- Plans no longer end with a separate phase just for tests, lint, and the changelog; that work already happens in every phase, so it saved a whole PR and review round.
+- The changelog is updated once per phase instead of once per task, giving fewer, more readable entries.
+- `/dev-loop` stops after drafting a plan and points you to `/execute-plan`, instead of trying to build the whole plan in one go.
+- `/execute-plan` marks a plan as "In Progress" when it starts.
+- PR descriptions and commit messages are now written in normal readable language, like other human-facing text.
+- The plan skills now call their own internal stages "Step 1, 2, 3…", so "Phase" and "Task" in a plan always mean the plan's own phases and tasks.
 - Treat Claude Code as subagent-capable in `/dev-loop` and `/execute-plan`: shared Subagent Dispatch table maps spawns to Antigravity `invoke_subagent` (`conversationId`) or Claude Code `Agent` tool (`agentId`), with a `PENDING_CALLER_REVIEW` hand-off so the orchestrator runs the review cycle where nested subagents are unavailable.
 - Consolidate `/dev-loop` AI code review outcome directly into the initial PR description (`gh pr edit`), removing redundant PR timeline comments (`gh pr comment`).
 - Unify architecture by having `/execute-plan` delegate phase delivery directly to `/dev-loop` (single authoritative delivery engine for TDD, atomic commits, draft PR, 2-pass AI code review, and publish safety gate).
@@ -39,6 +48,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - Populate root `AGENTS.md` Part 2 for `bootstrap` itself and keep Part 1 synchronized from `scaffold/AGENTS.md` via `sync.sh`.
 
 ### Fixed
+- Plans no longer ask you to commit failing tests in the first phase: those tests start out skipped and get switched on when the fix lands, so every commit passes the quality gate.
 - Enforce Proof-of-Review in `/dev-loop` and `/execute-plan`: mandate reading `dev-loop/SKILL.md` in subagent prompts, explicitly forbid self-review without `invoke_subagent`, require recording the Reviewer Subagent `conversationId` and review breakdown in the PR body, and add an orchestrator verification fallback in `/execute-plan`.
 - Prevent shell expansion and duplicate YAML frontmatter when `install.sh` generates Cursor `.mdc` and Copilot `.prompt.md` files.
 - Fix branch fallback typo in `/dev-loop` when working branch already exists (`checkout` instead of duplicate `checkout -b`).
