@@ -4,11 +4,11 @@
 
 <!--
 For VERSIONED projects:
-Each release has a subfolder in docs/ containing design documents for planned features (e.g. docs/v0.1.0/).
+Each release has a subfolder in plans/ containing its design documents (e.g. plans/v0.1.0/).
 Use the versioned section structure below.
 
 For UNVERSIONED / CONTINUOUS projects:
-Design documents live in docs/plans/ and are moved to docs/plans/archive/ upon completion.
+Design documents live in plans/; a finished plan stays there with `Status: Completed`.
 Replace the version sections with the "## Upcoming" and "## Completed" tables shown below.
 -->
 
@@ -32,7 +32,7 @@ Replace the version sections with the "## Upcoming" and "## Completed" tables sh
 
 | Feature | Difficulty | Status | Notes |
 |---|---|---|---|
-| [Feature Name](plans/feature-plan.md) | Medium | Planned | Short summary |
+| [Feature Name](feature-plan.md) | Medium | Planned | Short summary |
 
 ---
 
@@ -40,7 +40,7 @@ Replace the version sections with the "## Upcoming" and "## Completed" tables sh
 
 | Feature | Difficulty | Status | Notes |
 |---|---|---|---|
-| [Old Feature](plans/archive/old-feature-plan.md) | Low | Done | Completed (YYYY-MM-DD) |
+| [Old Feature](old-feature-plan.md) | Low | Done | Completed (YYYY-MM-DD) |
 
 ---
 -->

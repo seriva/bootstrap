@@ -4,7 +4,7 @@ set -euo pipefail
 # ==============================================================================
 # Bootstrap Agentic Workflow Sync Script
 # Propagates canonical Part 1 from scaffold/AGENTS.md, standard tool bridge
-# files, docs/feature-plan-template.md, and the bootstrap-managed .gitignore
+# files, plans/template.md, and the bootstrap-managed .gitignore
 # block to sibling repositories.
 # ==============================================================================
 
@@ -21,7 +21,7 @@ for arg in "$@"; do
   if [[ "$arg" == "--help" || "$arg" == "-h" ]]; then
     echo "Usage: $0 [options] [target_dir ...]"
     echo ""
-    echo "Synchronizes Part 1 of AGENTS.md, bridge files, docs/feature-plan-template.md,"
+    echo "Synchronizes Part 1 of AGENTS.md, bridge files, plans/template.md,"
     echo "and the bootstrap-managed .gitignore block from the bootstrap repository to"
     echo "sibling repositories."
     echo ""
@@ -243,12 +243,20 @@ for target_dir in targets:
         if sync_file(rel_path, os.path.join(target_dir, rel_path), content):
             has_drift = True
 
-    # Feature plan template (sync if target has docs/ dir)
-    template_rel_path = os.path.join("docs", "feature-plan-template.md")
+    # Plan template lives in plans/ (everything the skills read and write); docs/ is for people.
+    template_rel_path = os.path.join("plans", "template.md")
     template_src_path = os.path.join(scaffold_dir, template_rel_path)
-    if os.path.isfile(template_src_path) and os.path.isdir(os.path.join(target_dir, "docs")):
+    if os.path.isfile(template_src_path):
         if sync_file(template_rel_path, os.path.join(target_dir, template_rel_path), read_text(template_src_path)):
             has_drift = True
+        legacy_template = os.path.join(target_dir, "docs", "feature-plan-template.md")
+        if os.path.isfile(legacy_template):
+            has_drift = True
+            if dry_run:
+                print("  - docs/feature-plan-template.md: [WOULD REMOVE] (moved to plans/template.md)")
+            else:
+                os.remove(legacy_template)
+                print("  - docs/feature-plan-template.md: REMOVED (moved to plans/template.md)")
 
     if managed_gitignore_block is not None and sync_gitignore(target_dir):
         has_drift = True

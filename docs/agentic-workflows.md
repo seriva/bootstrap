@@ -13,7 +13,7 @@ flowchart TD
     subgraph Tier1 ["Tier 1: Architect"]
         DP["/design-plan &lt;feature&gt;"]
         Audit["Empirical Probe Audit\n(Prove bugs, inspect AST/code)"]
-        PlanDoc["docs/vX.Y.Z/&lt;plan-slug&gt;-plan.md\n(Checklist: - [ ] Task N.M)"]
+        PlanDoc["plans/vX.Y.Z/&lt;plan-slug&gt;-plan.md\n(Checklist: - [ ] Task N.M)"]
         DP --> Audit --> PlanDoc
     end
 
@@ -21,13 +21,16 @@ flowchart TD
         EP["/execute-plan &lt;plan-path&gt;"]
         PlanBranch["Epic Branch: feat/&lt;plan-slug&gt;\n(Branched off main or release branch)"]
         PhaseLoop["Phase Loop (1 PR per Phase)\nChecks off - [x] as tasks land"]
+        Triage["Follow-up Triage\n(re-run open follow-up repros)"]
         FinalAudit["Full-Branch AI Audit against Plan\n(Verify 'Done Means' & zero scope leaks)"]
         FinalPR["Final PR: feat/&lt;plan-slug&gt; &rarr; main"]
         
         PlanDoc --> EP
         EP --> PlanBranch
         PlanBranch --> PhaseLoop
-        PhaseLoop --> FinalAudit
+        PhaseLoop --> Triage
+        Triage -.->|"still reproduce: /design-plan follow-ups"| DP
+        Triage --> FinalAudit
         FinalAudit --> FinalPR
     end
 
@@ -49,118 +52,41 @@ flowchart TD
 
 | Tier | Skill | Role | When to Use | Output |
 | :--- | :--- | :--- | :--- | :--- |
-| **1. Architect** | [`/design-plan`](#1-design-plan-the-architect) | **Pre-implementation** | Complex features, architectural migrations, multi-component refactors | Exhaustive plan document (`docs/vX.Y.Z/<plan-slug>-plan.md`) with probe evidence & task checklist |
+| **1. Architect** | [`/design-plan`](#1-design-plan-the-architect) | **Pre-implementation** | Complex features, architectural migrations, multi-component refactors | Exhaustive plan document (`plans/vX.Y.Z/<plan-slug>-plan.md`) with probe evidence & task checklist |
 | **2. Orchestrator** | [`/execute-plan`](#2-execute-plan-the-orchestrator) | **Multi-phase execution** | Once a design plan is approved | Creates epic branch, coordinates phased PRs, updates `- [x]`, conducts pre-merge branch audit |
 | **3. Delivery Unit** | [`/dev-loop`](#3-dev-loop-the-delivery-engine) | **Single-task execution** | Targeted bugfixes, standalone tasks, or driven by `/execute-plan` | Feature branch, TDD, quality gate, draft PR, isolated AI review & fix, published PR |
 
 ---
 
-## 2. Detailed Breakdown of Skills
+## 2. The Skills in Brief
+
+Each skill's `SKILL.md` is the authoritative, step-by-step specification; this section only states what each one is for and how to call it. Conventions shared by all three (target discovery, subagent dispatch, probes, safe commits, CI wait, the follow-up ledger) are defined once in `dev-loop/SKILL.md`.
 
 ### 1. `/design-plan` (The Architect)
+Prevents shallow, hallucinated planning: probes the codebase to prove every claimed gap, fixes scope in a boundary matrix (every excluded item with its reason), writes falsifiable "Done means" criteria, and breaks the work into phases sized for one AI-reviewed PR each (3–5 tasks, each with `Files:` / `Test:` / `Done when:`). Links the plan in `plans/roadmap.md`.
 
-**Purpose:** Prevents shallow, hallucinated planning by forcing an active empirical audit of the codebase before writing design text.
+`/design-plan follow-ups [<plan-path>]` re-probes the open entries of `plans/follow-ups.md` (bugs reviewers found outside their diff), closes the ones already fixed, and appends the rest to a plan as fix phases.
 
-#### Operational Flow:
-1. **Target Discovery:** Resolves target repository (supporting multi-repo umbrella workspaces like `~/dev`).
-2. **Empirical Codebase Audit (No Guessing):**
-   - The agent writes and executes small, non-destructive test probes or CLI commands to verify baseline behavior.
-   - Verifies existing limitations, missing types, or silent wrong results.
-   - Formulates the **Verified Gaps & Baseline Audit** table with exact file/line citations and probe evidence.
-3. **Boundary & Scope Definition:**
-   - Defines explicit categories: `In scope: core`, `In scope: target-specific`, `Excluded: runtime / platform`, and `Excluded: deferred`.
-   - Explicitly documents architectural reasons for deferred items to halt scope creep before coding begins.
-4. **"Done Means" Contract:**
-   - Formulates 3–5 falsifiable, testable completion criteria (e.g., zero regressions on conformance corpus, specific diagnostic on invalid inputs).
-5. **Phased Task Breakdown (The Dev-Loop Contract):**
-   - Enforces **1 Phase = 1 Dev-Loop**: 3–5 tasks per phase, ~150–500 net LOC diff budget across 3–6 files.
-   - Prevents mega-phases by decoupling orthogonal subsystems into separate sequential phases.
-   - Enforces the 3-point task contract on every task: `Files:` (1–3 files), `Test:` (failing test first), `Done when:` (observable completion).
-   - No gate-only phases or tasks (just running tests/lint or updating the changelog): `/dev-loop` does those in every phase.
-6. **Plan Generation & Roadmap Sync:**
-   - Populates `docs/vX.Y.Z/<plan-slug>-plan.md` (or `docs/plans/<plan-slug>-plan.md`) following `docs/feature-plan-template.md`.
-   - Links the new plan directly into `docs/roadmap.md`.
-
-#### Invocations:
 ```text
 /design-plan Add WebSocket reconnection protocol with exponential backoff
 /design-plan in gofront: Implement encoding/csv stdlib package
+/design-plan follow-ups plans/v1.8.0/portable-go-plan.md
 ```
 
----
-
 ### 2. `/execute-plan` (The Orchestrator)
+Runs an approved plan on an epic branch `feat/<plan-slug>`, one phase at a time: a **Phase Implementer** subagent runs `/dev-loop` (implement-only) on `feat/<plan-slug>-phase-<N>`, then the orchestrator runs the `/dev-loop` review cycle on that PR. The plan's `- [x]` checklist is the durable state, so an interrupted run resumes at the next unchecked task. Default mode stops after each phase PR is ready for you to merge; `--auto` merges passing phases itself (merge commit) and continues. When every task is done it triages open follow-ups (halting to ask if any still reproduce), has a **Plan Auditor** subagent verify the whole branch against "Done means" and the boundary matrix, marks the plan `Completed`, and opens the final PR into `main`.
 
-**Purpose:** Executes an approved design plan phase-by-phase on an isolated epic branch (`feat/<plan-slug>`), supporting both **interactive per-phase review** (default) and **fully autonomous multi-phase auto-merge** (`--auto`).
-
-#### Operational Flow:
-1. **Durable State Machine:**
-   - Uses the plan's `## Implementation Tasks` checklist directly.
-   - Completed tasks are marked `- [x]`; pending tasks are marked `- [ ]`.
-   - If interrupted, running `/execute-plan` automatically resumes at the first unchecked task.
-2. **Epic Branch Isolation:**
-   - Branches `feat/<plan-slug>` off `main` (or a release branch like `1.7.0`).
-   - `main` remains untouched and releasable while the feature develops.
-   - Marks the plan `**Status:** In Progress` on the epic branch and records `**Base branch:**` in the plan header so a re-run from `feat/<plan-slug>` or a phase branch resolves the same base.
-3. **Phase Execution via `/dev-loop` (Context-Shielded Delivery):**
-   - Runs the active phase through `/dev-loop` targeting base branch `feat/<plan-slug>`, with one flat flow on every host: the orchestrator spawns every subagent itself and subagents never spawn subagents.
-   - A **Phase Implementer** subagent runs `/dev-loop` in implement-only mode: creates `feat/<plan-slug>-phase-<N>`, implements tasks with TDD, commits atomically, checks off `- [x] Task N.M` in the plan doc, runs pre-commit gates, and opens a draft PR. This shields the orchestrator's context from compilation and test logs.
-   - The orchestrator then runs the `/dev-loop` review cycle (Deterministic 2-Pass AI Code Review), updates the PR description with the review outcome, waits for CI, and marks the PR ready (`gh pr ready`).
-   - If a phase PR is already open but not merged, re-running `/execute-plan` reports it instead of re-running the phase.
-   - **Execution Modes (Default vs. `--auto`)**:
-     - **Default (Interactive Phase Gate)**: Pauses after each phase PR is marked ready so you can inspect and merge it into `feat/<plan-slug>`. Re-running `/execute-plan` advances to the next phase.
-     - **Autonomous (`--auto` / `--auto-merge`)**: When a phase passes the 2-pass AI review (`REVIEW_STATUS == PASSED`), re-checks CI and merges the phase PR into `feat/<plan-slug>` with a merge commit (`gh pr merge --merge --delete-branch`) so per-task commits are kept, pulls `feat/<plan-slug>`, and immediately starts the next phase. If any phase is blocked by review defects or failing CI, the circuit breaker trips and halts immediately without merging.
-4. **Full-Branch Final Audit (Pre-Merge to `main`):**
-   - Once all phases are marked `- [x]`, switches to `feat/<plan-slug>`.
-   - Spawns an isolated **Plan Auditor** subagent to inspect the complete diff against `main`:
-     - Verifies every item in the plan's "Done means:" contract.
-     - Confirms zero violations of the "Scope Rule & Boundary Matrix".
-     - Validates that **no items listed in "Out of Scope" leaked in**.
-     - Confirms full test suite passes green.
-   - Updates plan status to `Completed (YYYY-MM-DD)`; for unversioned projects, archives the plan file to `docs/plans/archive/` and updates `docs/roadmap.md` links. Only those plan paths are staged for the status commit.
-   - Opens the final Pull Request from `feat/<plan-slug>` into `main`.
-
-#### Invocations:
 ```text
-/execute-plan docs/v1.8.0/portable-go-plan.md
-/execute-plan --auto docs/v1.8.0/portable-go-plan.md
+/execute-plan plans/v1.8.0/portable-go-plan.md
+/execute-plan --auto plans/v1.8.0/portable-go-plan.md
 /execute-plan --auto in gofront
 ```
 
----
-
 ### 3. `/dev-loop` (The Delivery Engine)
+Takes a standalone task or a plan phase from failing test to a ready PR: TDD implementation, the `AGENTS.md` quality gate, one plain-language changelog entry, a draft PR, then a deterministic review protocol run entirely by fresh-context subagents (never self-review): Pass 1 review with verification probes → at most one **Defect Fixer** turn for High/Medium findings → Pass 2 verification, hard-stopped after two passes. Pre-existing defects the reviewer notices go to the follow-up ledger `plans/follow-ups.md` with a repro instead of being fixed out of scope. The PR is marked ready only when review and CI are both clean; otherwise it stays a draft with the findings in its body.
 
-**Purpose:** Autonomous inner implementation, quality assurance, draft PR opening, and peer review cycle for a standalone task or plan phase driven by `/execute-plan`.
-
-#### Operational Flow:
-1. **Target & Base Branch Resolution:**
-   - Dynamically identifies base branch as `BASE_BRANCH` (supports version branches like `1.7.0`, epic branches like `feat/<plan-slug>`, or `main`).
-   - Creates a clean working branch: `<type>/<task-slug>` (e.g. `feat/<task-slug>` or `fix/<task-slug>`, or `feat/<plan-slug>-phase-<N>` for plan phases).
-   - If a standalone task is non-trivial and has no plan, runs `/design-plan` and stops, pointing you to `/execute-plan`.
-2. **Implementation & Quality Gates:**
-   - **For Plan Phases**: Loops through all unchecked tasks in the phase, implementing with TDD, committing atomically per task, and checking off `- [x] Task N.M` in the plan doc.
-   - **For Standalone Tasks**: Writes failing tests first (TDD), optional **Probe Investigator** subagent for elusive bugs.
-   - Enforces project conventions from `AGENTS.md`.
-   - Runs the pre-commit gate from the `Commands` section of `AGENTS.md`.
-   - Writes one plain-language `CHANGELOG.md` entry under `## [Unreleased]` per phase (or standalone task).
-3. **Draft PR Containment:**
-   - Opens a draft pull request via `gh pr create --draft`.
-   - Silences notifications while the automated review loop runs.
-4. **Fresh-Context AI Code Review (Deterministic 2-Pass Protocol):**
-   - Spawns an isolated subagent with zero prior chat context.
-   - Inspects `git diff <BASE_BRANCH>...HEAD`, runs verification probes, and groups findings into `High`, `Medium`, and `Low`.
-   - If clean or zero High/Medium defects: returns `"Looks Good"` / `"LGTM"` and passes immediately.
-   - If High or Medium defects found: spawns a fixer subagent for a single fix turn, re-verifies, and pushes fixes.
-   - Runs Pass 2 final verification review. Unconditionally halts after Pass 2 (hard invariant: max 2 reviews, max 1 fix turn; zero infinite loops). Low-severity cosmetic nits never block approval.
-5. **PR Review Summary & Publish Safety Gate:**
-   - Updates the PR description (`gh pr edit`) with the complete review outcome (passes executed, findings addressed, fix commit hashes, and the reviewer's verification probes with their results).
-   - If review passes cleanly: waits for CI (`gh pr checks --watch`), then runs `gh pr ready`.
-   - If unresolved `High` or `Medium` defects persist after Pass 2, or CI fails: leaves the PR in **Draft** mode to prevent accidental merging and notifies you.
-
-#### Invocations:
 ```text
-/dev-loop Fix nil pointer exception in session validation logic
+/dev-loop Fix the race condition in session cleanup
 /dev-loop in gofront: Add benchmark for AST token parsing
 ```
 
@@ -197,7 +123,7 @@ cd ~/dev/bootstrap
 The installer automatically inspects your machine:
 - Detects installed AI tools (`agy`, `claude`, `codex`, `cursor`, `code`).
 - Installs skills only for tools present on the system.
-- Converts prompts into native formats (MDC rules for Cursor, Prompt files for Copilot, Agent Skills for Antigravity/Claude/Codex).
+- Converts prompts into native formats (MDC rules for Cursor, Prompt files for Copilot, Agent Skills for Antigravity/Claude/Codex) and fills in each host's installed `dev-loop` path where subagent prompts need to read it.
 - Cleanly skips absent tools without creating clutter.
 
 ---
@@ -215,14 +141,17 @@ The installer automatically inspects your machine:
     ├── CLAUDE.md, .github/copilot-instructions.md (bridge files → AGENTS.md; Cursor reads AGENTS.md natively)
     ├── .gitignore (agentic ignores inside the bootstrap-managed block)
     ├── lefthook.yml
-    └── docs/feature-plan-template.md
+    └── plans/template.md
 
 ~/dev/gofront/                       <-- Sibling Project Repository
 ├── AGENTS.md                        <-- Part 1 synced from bootstrap; Part 2 project context + Commands
 ├── .gitignore                       <-- bootstrap-managed block synced; project ignores outside it untouched
 ├── lefthook.yml                     <-- Pre-commit quality gate
 ├── CHANGELOG.md                     <-- Maintained by /dev-loop and /execute-plan
-└── docs/
+├── docs/                            <-- Human documentation only; never touched by the skills
+└── plans/                           <-- Everything the skills read and write
+    ├── template.md                  <-- Synced from bootstrap
+    ├── follow-ups.md                <-- Review follow-up ledger: written by /dev-loop, scheduled by /design-plan follow-ups
     ├── roadmap.md                   <-- Maintained by /design-plan and /execute-plan
     └── v1.8.0/                      <-- Plans authored by /design-plan, executed by /execute-plan
         └── portable-go-plan.md

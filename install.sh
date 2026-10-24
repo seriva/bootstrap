@@ -51,9 +51,18 @@ fi
 
 echo "---------------------------------------------"
 
+# Skills reference the installed dev-loop skill file via the {{DEV_LOOP_SKILL}}
+# placeholder; each host gets its own path substituted at install time.
+render_skill() {
+  local path
+  path=$(printf '%s' "$2" | sed 's/[&|\\]/\\&/g')  # escape sed replacement metacharacters
+  sed "s|{{DEV_LOOP_SKILL}}|$path|g" "$1"
+}
+
 copy_skill() {
   local src="$1"
   local dest="$2"
+  local dev_loop_path="$3"
 
   if [ -L "$dest" ]; then
     rm -f "$dest"
@@ -65,10 +74,11 @@ copy_skill() {
   else
     cp -a "$src/." "$dest/"
   fi
+  render_skill "$src/SKILL.md" "$dev_loop_path" > "$dest/SKILL.md"
 }
 
 strip_frontmatter() {
-  awk 'BEGIN{c=0} /^---$/{if(c<2){c++; next}} c>=2{print}' "$1"
+  awk 'BEGIN{c=0} /^---$/{if(c<2){c++; next}} c>=2{print}'
 }
 
 for skill_path in "$SKILLS_SRC"/*/; do
@@ -87,7 +97,7 @@ for skill_path in "$SKILLS_SRC"/*/; do
   # 1. Google Antigravity
   if [ "$HAS_ANTIGRAVITY" = true ]; then
     target="$HOME/.gemini/config/skills/$skill_name"
-    copy_skill "$skill_path" "$target"
+    copy_skill "$skill_path" "$target" "$HOME/.gemini/config/skills/dev-loop/SKILL.md"
     echo "  -> [Antigravity] Installed to ~/.gemini/config/skills/$skill_name"
   fi
 
@@ -95,7 +105,7 @@ for skill_path in "$SKILLS_SRC"/*/; do
   if [ "$HAS_CLAUDE" = true ]; then
     # Native Agent Skill format
     claude_skill_target="$HOME/.claude/skills/$skill_name"
-    copy_skill "$skill_path" "$claude_skill_target"
+    copy_skill "$skill_path" "$claude_skill_target" "$HOME/.claude/skills/dev-loop/SKILL.md"
 
     # Slash command shim (~/.claude/commands/<skill>.md)
     claude_cmd_dir="$HOME/.claude/commands"
@@ -110,7 +120,7 @@ EOF
   # 3. OpenAI Codex CLI
   if [ "$HAS_CODEX" = true ]; then
     codex_target="$HOME/.codex/skills/$skill_name"
-    copy_skill "$skill_path" "$codex_target"
+    copy_skill "$skill_path" "$codex_target" "$HOME/.codex/skills/dev-loop/SKILL.md"
     echo "  -> [Codex] Installed to ~/.codex/skills/$skill_name"
   fi
 
@@ -120,7 +130,7 @@ EOF
     mkdir -p "$cursor_rules_dir"
     {
       printf -- '---\ndescription: "%s"\nalwaysApply: false\n---\n' "$skill_desc_yaml"
-      strip_frontmatter "$skill_file"
+      render_skill "$skill_file" "$cursor_rules_dir/dev-loop.mdc" | strip_frontmatter
     } > "$cursor_rules_dir/$skill_name.mdc"
     echo "  -> [Cursor] Installed rule to ~/.cursor/rules/$skill_name.mdc"
   fi
@@ -140,7 +150,7 @@ EOF
         mkdir -p "$pdir"
         {
           printf -- '---\nname: %s\ndescription: "%s"\n---\n' "$skill_name" "$skill_desc_yaml"
-          strip_frontmatter "$skill_file"
+          render_skill "$skill_file" "$pdir/dev-loop.prompt.md" | strip_frontmatter
         } > "$pdir/$skill_name.prompt.md"
         echo "  -> [Copilot] Installed prompt to $pdir/$skill_name.prompt.md"
       fi
