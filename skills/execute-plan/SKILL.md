@@ -59,13 +59,13 @@ Shared conventions (**Target**, **Dispatch**, **Probes**, **Safe commit**, **CI 
 ### Step 4: Full-Branch Final Audit & Merge Preparation
 When all phases in `$PLAN_FILE` are checked off (`- [x]`):
 1. **Sync & Test**: Checkout `$PLAN_BRANCH`. Pull latest merges. Run the pre-commit gate from `AGENTS.md` Commands (test, lint, and build).
-2. **Follow-up Triage** (only when `plans/follow-ups.md` has open `- [ ]` entries tagged with this plan's slug):
+2. **Follow-up Triage** (only when `plans/follow-ups.md` has entries tagged with this plan's slug):
    - Spawn subagent `Follow-up Triager` (no subagent tool: run the same prompt inline; it only re-runs repros, so it is not a self-review):
-     > Prompt: `In $TARGET_REPO on branch $PLAN_BRANCH, re-run the repro of every open "- [ ]" entry in plans/follow-ups.md that references plan <plan-slug>, following the /dev-loop Probes rule (under .probes/, deleted afterwards). Do not modify tracked files. Reply with one line per entry: the entry text, then STILL REPRODUCES or FIXED, with the observed result.`
-   - Mark each `FIXED` entry `- [x] … → fixed (re-probed YYYY-MM-DD)`. If anything changed, stage only `plans/follow-ups.md`, commit `docs(<plan-slug>): triage review follow-ups`, and push.
+     > Prompt: `In $TARGET_REPO on branch $PLAN_BRANCH, re-run the repro of every entry in plans/follow-ups.md that references plan <plan-slug>, following the /dev-loop Probes rule (under .probes/, deleted afterwards). Do not modify tracked files. Reply with one line per entry: the entry text, then STILL REPRODUCES or FIXED, with the observed result.`
+   - Delete each `FIXED` entry. If anything changed, stage only `plans/follow-ups.md`, commit `docs(<plan-slug>): triage review follow-ups`, and push.
    - If any entry still reproduces: **halt, even in `--auto` mode**, list them, and offer two options:
      - **Schedule**: the user runs `/design-plan follow-ups $PLAN_FILE`, which appends fix phases; the user then commits the plan change on `$PLAN_BRANCH` and re-runs `/execute-plan` (Step 2 picks up the new phases).
-     - **Defer**: mark them `- [x] … → deferred`, add them to the plan's `Excluded: deferred` row, stage only `plans/follow-ups.md` and `$PLAN_FILE`, commit `docs(<plan-slug>): defer review follow-ups`, push, and continue with step 3. Deferred entries never halt a later re-run.
+     - **Defer**: move them (with their repros) to the plan's `Excluded: deferred` row and delete them from the ledger, stage only `plans/follow-ups.md` and `$PLAN_FILE`, commit `docs(<plan-slug>): defer review follow-ups`, push, and continue with step 3.
      If the host cannot ask and wait, stop; the user applies one of the two and re-runs.
 3. **Comprehensive AI Audit Subagent**:
    - Spawn subagent `Plan Auditor` with `$PLAN_FILE` and diff `git diff origin/$BASE_BRANCH...$PLAN_BRANCH`.
@@ -76,6 +76,6 @@ When all phases in `$PLAN_FILE` are checked off (`- [x]`):
      - Update `$PLAN_FILE` header: `**Status:** Completed (YYYY-MM-DD)`, and move its `plans/roadmap.md` entry to the completed section if the roadmap has one.
      - Stage only those paths (never `git add -A`): `git add "$PLAN_FILE" plans/roadmap.md`; check `git diff --cached --name-only` lists nothing else, then `git commit -m "docs(<plan-slug>): complete plan" && git push`. Subject must stay ≤72 chars including the scope; truncate the summary, never the scope.
      - Open final PR from `$PLAN_BRANCH` into `$BASE_BRANCH`:
-       `gh pr create --base "$BASE_BRANCH" --head "$PLAN_BRANCH" --title "feat(<plan-slug>): complete plan implementation" --body "All phases verified against $PLAN_FILE. Full-branch audit passed."` (append a `## Known follow-ups` list of this plan's `→ deferred` ledger entries, with their repros, if there are any).
+       `gh pr create --base "$BASE_BRANCH" --head "$PLAN_BRANCH" --title "feat(<plan-slug>): complete plan implementation" --body "All phases verified against $PLAN_FILE. Full-branch audit passed."` (append a `## Known follow-ups` list of the `Excluded: deferred` items that came from review follow-ups, with their repros, if there are any).
      - Per **CI wait** on `$PLAN_BRANCH`, then report the final PR link with its CI result. Merging into `$BASE_BRANCH` is left to the user.
    - **If discrepancies exist**: Do not open the final PR. Alert user with the audit report.

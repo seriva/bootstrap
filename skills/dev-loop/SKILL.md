@@ -42,15 +42,13 @@ Wherever a skill says **Safe commit** `"<message>"`:
 `gh pr checks "<branch>" --watch --fail-fast`. If `.github/workflows/` exists and no checks are reported yet, wait and retry (≈3× / 10 s): GitHub registers check runs a few seconds after push. Only when the repo has no `.github/workflows/` (or retries still report none) treat CI as `none configured`. Any failing check → `BLOCKED_BY_CI`.
 
 ### Follow-ups
-Reviews regularly find real bugs that this diff did not cause, or Low items the single fix turn leaves alone. They must not be fixed here (**Scope**), and they must not be lost in a PR body. They go into the **follow-up ledger** `$TARGET_REPO/plans/follow-ups.md` (create it with a `# Follow-ups` heading if missing); `/design-plan follow-ups` later turns it into fix phases.
+Reviews regularly find real bugs that this diff did not cause, or Low items the single fix turn leaves alone. They must not be fixed here (**Scope**), and they must not be lost in a PR body. They go into the **follow-up ledger** `$TARGET_REPO/plans/follow-ups.md` (create it with a `# Follow-ups` heading if missing). The ledger holds **open items only**: `/design-plan follow-ups` and `/execute-plan` delete an entry once it is scheduled, fixed, or deferred, and the plan becomes its record.
 - **What goes in**: every Pass 1 `### Out of Scope` item, plus unfixed `### Low` items that describe wrong behaviour (wrong output, crash, broken build, valid input rejected, invalid input accepted without an error). Record these even if they may be deferred later; `/design-plan follow-ups` decides what gets scheduled. Pure style or wording nits stay in the PR body only.
 - **Entry format** (one line; the repro is mandatory so the item can be re-probed later):
   ```markdown
-  - [ ] **<Area>:** <defect in one sentence>. Repro: `<snippet or command>` → got `<actual>`, want `<expected>`. (<PR #N or branch>, <plan-slug Phase N | standalone>, <Low | Out of Scope>)
+  - **<Area>:** <defect in one sentence>. Repro: `<snippet or command>` → got `<actual>`, want `<expected>`. (<PR #N or branch>, <plan-slug Phase N | standalone>, <Low | Out of Scope>)
   ```
-- **States**: open `- [ ]`; closed `- [x]` with a trailing `→ <reason>`, one of `→ <plan path> Task N.M` (scheduled), `→ fixed (<commit, PR, or "re-probed YYYY-MM-DD">)`, or `→ deferred` (not fixed in that plan; its final PR lists it).
 - **Dedupe**: if an entry already describes the same defect, append the new PR reference to it instead of adding a line.
-- Ledger checkboxes are **not** plan tasks: only `- [ ] Task N.M` lines under a plan's `## Implementation Tasks` are.
 
 ---
 

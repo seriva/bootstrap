@@ -35,6 +35,7 @@ Generic project scaffold for agentic development.
 | `scaffold/.gitignore` | Common ignores + agentic artifact ignores inside a `bootstrap-managed` block that `sync.sh` keeps current |
 | `scaffold/plans/roadmap.md` | Release planning template (supports versioned and continuous layouts) |
 | `scaffold/plans/template.md` | Design plan format: Goal → Boundary Matrix → Gaps Audit → Approach → Tasks |
+| `scaffold/plans/follow-ups.md` | Empty follow-up ledger for bugs found outside the task at hand; filled by reviewers and agents, scheduled by `/design-plan follow-ups` |
 
 ## Scaffolding a New Project
 
@@ -72,7 +73,7 @@ plans/
 docs/                      <- human documentation only, if the project has any
 ```
 
-Everything the skills read and write lives in `plans/`; `docs/` is left to people.
+Everything the skills read and write lives in `plans/`; `docs/` is left to people. `plans/follow-ups.md` is the project's follow-up ledger: bugs noticed outside the current task (by reviewers or by any agent session) are logged there with a repro, and `/design-plan follow-ups` moves them into a plan as fix phases later, so the file only ever lists open bugs.
 
 ## Global Autonomous Workflows (`/design-plan`, `/execute-plan`, `/dev-loop`)
 

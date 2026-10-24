@@ -55,11 +55,11 @@ Never draft a plan from assumptions alone. Conduct an active baseline audit:
 
 ## Follow-up Mode (`/design-plan follow-ups [<plan-path>]`)
 
-Turns the open entries of the review follow-up ledger (`plans/follow-ups.md`, see `/dev-loop` **Follow-ups**) into scheduled fix work in a plan: the given one, else the active plan (`Status: In Progress`), else a **new plan** drafted with the normal flow (Steps 1–5, slug `follow-ups-YYYY-MM-DD`). This mode sweeps the whole ledger, including `standalone` entries and entries from other plans; `/execute-plan` only gates on entries from its own plan.
+Turns the entries of the review follow-up ledger (`plans/follow-ups.md`, see `/dev-loop` **Follow-ups**) into scheduled fix work in a plan: the given one, else the active plan (`Status: In Progress`), else a **new plan** drafted with the normal flow (Steps 1–5, slug `follow-ups-YYYY-MM-DD`). This mode sweeps the whole ledger, including `standalone` entries and entries from other plans; `/execute-plan` only gates on entries from its own plan.
 
 1. **Context**: Step 1 as above, plus the target plan's Scope Rule & Boundary Matrix.
-2. **Re-probe every open `- [ ]` entry** per **Probes**. No longer reproduces → `- [x] … → fixed (re-probed YYYY-MM-DD)`.
+2. **Re-probe every entry** per **Probes**. No longer reproduces → delete it.
 3. **Record evidence**: add a `### Review follow-ups (YYYY-MM-DD)` subsection to the plan's Verified Gaps (new plan: this is its Verified Gaps table): `Area | Finding | Evidence & probe` (probe snippet, observed vs expected result, originating PR).
-4. **Append phases**: group the entries that still reproduce by subsystem into phases per Step 4.3 (each repro becomes the task's `Test:` assertion), appended after the last existing phase (new plan: they are its Phase 1, 2, …). Note under the first new phase that it was scheduled from review follow-ups. An entry not worth fixing in this plan → `- [x] … → deferred`, added to the plan's `Excluded: deferred` row.
-5. **Close the ledger**: mark every scheduled entry `- [x] … → <plan path> Task N.M`.
+4. **Append phases**: group the entries that still reproduce by subsystem into phases per Step 4.3 (each repro becomes the task's `Test:` assertion), appended after the last existing phase (new plan: they are its Phase 1, 2, …). Note under the first new phase that it was scheduled from review follow-ups. An entry not worth fixing in this plan is moved (with its repro) to the plan's `Excluded: deferred` row.
+5. **Clear the ledger**: delete every entry that is now a task or a deferred row; the plan is its record from here on.
 6. **Summary**: report re-probe results, the new phases, and the deferred items; remind the user to commit the plan and ledger changes (`docs(<plan-slug>): schedule review follow-ups`) before running `/execute-plan`, which needs a clean working tree: on the plan branch `feat/<plan-slug>` when extending a plan, on the current branch for a new plan (`/execute-plan` creates its branch).

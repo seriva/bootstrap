@@ -26,6 +26,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - Finished plans stay where they are with a `Completed` status instead of being moved to an archive folder, so links to them never break.
 - Plans, the roadmap, the plan template, and the follow-up list now live in their own `plans/` folder instead of `docs/`, so project documentation for people is no longer mixed with the files the workflows maintain. `sync.sh` removes the old template copy from `docs/`.
 - The plan template is shorter: what a plan will not do lives only in the boundary matrix, and how each goal is verified is stated next to the goal itself.
+- Any agent session, not only the review loop, is told to log bugs it notices outside its task in the follow-up list instead of fixing them on the side, and new projects start with an empty list in place.
 - The installer now writes each tool's own location of the `dev-loop` skill into the workflows, so reviewer subagents find it without guessing between tool folders.
 
 ### Fixed

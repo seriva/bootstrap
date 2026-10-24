@@ -65,7 +65,7 @@ Each skill's `SKILL.md` is the authoritative, step-by-step specification; this s
 ### 1. `/design-plan` (The Architect)
 Prevents shallow, hallucinated planning: probes the codebase to prove every claimed gap, fixes scope in a boundary matrix (every excluded item with its reason), writes falsifiable "Done means" criteria, and breaks the work into phases sized for one AI-reviewed PR each (3–5 tasks, each with `Files:` / `Test:` / `Done when:`). Links the plan in `plans/roadmap.md`.
 
-`/design-plan follow-ups [<plan-path>]` re-probes the open entries of `plans/follow-ups.md` (bugs reviewers found outside their diff), closes the ones already fixed, and appends the rest to a plan as fix phases.
+`/design-plan follow-ups [<plan-path>]` re-probes the entries of `plans/follow-ups.md` (bugs reviewers found outside their diff), drops the ones already fixed, and moves the rest into a plan as fix phases or deferred items, so the ledger only ever holds open bugs.
 
 ```text
 /design-plan Add WebSocket reconnection protocol with exponential backoff
@@ -141,7 +141,7 @@ The installer automatically inspects your machine:
     ├── CLAUDE.md, .github/copilot-instructions.md (bridge files → AGENTS.md; Cursor reads AGENTS.md natively)
     ├── .gitignore (agentic ignores inside the bootstrap-managed block)
     ├── lefthook.yml
-    └── plans/template.md
+    └── plans/ (roadmap.md, template.md, follow-ups.md starters)
 
 ~/dev/gofront/                       <-- Sibling Project Repository
 ├── AGENTS.md                        <-- Part 1 synced from bootstrap; Part 2 project context + Commands
@@ -151,7 +151,7 @@ The installer automatically inspects your machine:
 ├── docs/                            <-- Human documentation only; never touched by the skills
 └── plans/                           <-- Everything the skills read and write
     ├── template.md                  <-- Synced from bootstrap
-    ├── follow-ups.md                <-- Review follow-up ledger: written by /dev-loop, scheduled by /design-plan follow-ups
+    ├── follow-ups.md                <-- Follow-up ledger: written by /dev-loop reviewers and any agent session, scheduled by /design-plan follow-ups
     ├── roadmap.md                   <-- Maintained by /design-plan and /execute-plan
     └── v1.8.0/                      <-- Plans authored by /design-plan, executed by /execute-plan
         └── portable-go-plan.md
