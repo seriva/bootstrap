@@ -7,7 +7,7 @@ Generic project scaffold for agentic development.
 1. **`AGENTS.md` is the single source of truth** — tool-specific bridge files are thin shims that point here and nothing more.
 2. **No session artifacts in the repo** — tool-specific scratchpads, worktree dirs, and ephemeral session state do not belong in git.
 3. **Explicit quality gates** — pre-commit hook + CI block on lint/test failure, independent of which tool wrote the code.
-4. **Plan-first** — `plans/vX.Y.Z/<plan-slug>-plan.md` before any non-trivial code, kept apart from human docs in `docs/`. Structured design with implementation tasks checked off as they land.
+4. **Plan-first** — `plans/<plan-slug>-plan.md` (continuous) or `plans/vX.Y.Z/<plan-slug>-plan.md` (versioned) before any non-trivial code, kept apart from human docs in `docs/`. Structured design with implementation tasks checked off as they land.
 
 ## Structure
 
@@ -25,15 +25,16 @@ Generic project scaffold for agentic development.
 ### 2. Project Scaffold (`scaffold/` — Copied into New Repos)
 | File | Purpose |
 |---|---|
+| `init.sh` | Copies the scaffold into a new project for a `continuous` (default) or `versioned` release model; refuses to overwrite existing files unless `--force` |
 | `scaffold/AGENTS.md` | Fill in: project identity, tech stack, commands, architecture; agent maintains the project map |
-| `scaffold/CHANGELOG.md` | Clean starter changelog with a short guide to writing plain-language entries |
+| `scaffold/templates/<profile>/CHANGELOG.md` | Clean starter changelog per release model, with a short guide to writing plain-language entries |
+| `scaffold/templates/<profile>/roadmap.md` | Roadmap per release model: version sections (`versioned`) or Upcoming/Completed tables (`continuous`) |
 | `scaffold/CLAUDE.md` | `@AGENTS.md` — do not edit |
 | `scaffold/.github/copilot-instructions.md` | Points to `AGENTS.md` — do not edit |
 | `scaffold/.github/dependabot.yml` | Automated monthly dependency & GitHub Actions updates |
 | `scaffold/lefthook.yml` | Pre-commit hook config (format → lint → test, formatted files auto-restaged) — fill in commands |
 | `scaffold/.github/workflows/ci.yml` | Runs the lefthook gate on every PR (any base branch, so phase PRs get checks) and on `main`/`feat/**` pushes — fill in runtime setup |
 | `scaffold/.gitignore` | Common ignores + agentic artifact ignores inside a `bootstrap-managed` block that `sync.sh` keeps current |
-| `scaffold/plans/roadmap.md` | Release planning template (supports versioned and continuous layouts) |
 | `scaffold/plans/template.md` | Design plan format: Goal → Boundary Matrix → Gaps Audit → Approach → Tasks |
 | `scaffold/plans/follow-ups.md` | Empty follow-up ledger for bugs found outside the task at hand; filled by reviewers and agents, scheduled by `/design-plan follow-ups` |
 
@@ -41,36 +42,43 @@ Generic project scaffold for agentic development.
 
 To scaffold a new project with the agentic standard:
 
-1. Copy the contents of the `scaffold/` directory into your project root:
+1. Run `init.sh` pointing to your project directory:
    ```bash
-   cp -a ~/dev/bootstrap/scaffold/. /path/to/your/project/
+   # For continuous apps/games/sites (default):
+   ~/dev/bootstrap/init.sh /path/to/your/project --type continuous
+
+   # For versioned libraries/compilers:
+   ~/dev/bootstrap/init.sh /path/to/your/project --type versioned
    ```
 2. Fill in all `[PLACEHOLDER]` sections in `AGENTS.md` and `ci.yml`. In `lefthook.yml`, replace the `echo "lefthook: configure …" && exit 1` placeholders with your actual format/lint/test commands. Keep the `Commands` section of `AGENTS.md` matching them: the skills use it as their quality gate.
 3. Install lefthook in the new project: `brew install lefthook` or `npm install --save-dev lefthook`, then `lefthook install`. Also install [gitleaks](https://github.com/gitleaks/gitleaks#installing) (≥ 8.19) for the pre-commit secret scan. The scaffold's lefthook commands fail until you fill them in, so an unconfigured gate can't pass silently. CI runs the same lefthook gate, so commands only need to live in `lefthook.yml`.
 4. (One-time machine setup) Run `./install.sh` in `bootstrap/` to deploy global autonomous workflows (`/design-plan`, `/execute-plan`, `/dev-loop`) to your AI tools.
 
-### Unversioned / Continuous Applications
-For web apps, websites, or services without semantic release versions:
+### Continuous Applications & Services
+For web apps, websites, games, or services without semantic release versions:
+- In `AGENTS.md` Part 2, specify `Release Model: Continuous`.
+- In `CHANGELOG.md`, use calendar releases (`## [YYYY-MM]`) or rolling `## [Unreleased]` sections instead of SemVer.
 - Create feature plans in `plans/<plan-slug>-plan.md` with `**Version:** continuous`.
 - Use the `## Upcoming` and `## Completed` tables in `plans/roadmap.md` instead of `## [vX.Y.Z]` sections.
-- When a plan completes, it stays in place with `**Status:** Completed`; move its roadmap row to `## Completed`.
+- When a plan completes, `/execute-plan` moves it to `plans/archive/<plan-slug>-plan.md` and moves its `plans/roadmap.md` row to `## Completed`, keeping the root `plans/` directory clean while preserving design history.
 
 ## Plan Docs
 
 When starting a non-trivial feature, create `plans/v1.2.3/my-feature-plan.md` (or `plans/my-feature-plan.md` for continuous projects) using `plans/template.md` as the starting point. Track execution progress by checking off tasks (`- [x]`) as they land. Persists as the architectural record of *why* the code is the way it is.
 
-Example structure after a few releases:
+Example structure:
 
 ```text
-plans/
-  roadmap.md
-  template.md
-  follow-ups.md
-  v0.2.0/
-    auth-redesign-plan.md
-  v0.3.0/
+Versioned (Library / Compiler):          Continuous (App / Game / Site):
+plans/                                   plans/
+  roadmap.md                               roadmap.md
+  template.md                              template.md
+  follow-ups.md                            follow-ups.md
+  v0.2.0/                                  archive/
+    auth-redesign-plan.md                    gofront-rewrite-plan.md
+  v0.3.0/                                  active-feature-plan.md
     websocket-support-plan.md
-docs/                      <- human documentation only, if the project has any
+docs/   <- human documentation only, if the project has any
 ```
 
 Everything the skills read and write lives in `plans/`; `docs/` is left to people. `plans/follow-ups.md` is the project's follow-up ledger: bugs noticed outside the current task (by reviewers or by any agent session) are logged there with a repro, and `/design-plan follow-ups` moves them into a plan as fix phases later, so the file only ever lists open bugs.

@@ -23,7 +23,7 @@ Shared conventions (**Target**, **Dispatch**, **Probes**, **Safe commit**, **CI 
      - **Autonomous (`AUTO_MODE=true`)**: Continuous mode. Automatically merges phase PRs that pass review and CI into `$PLAN_BRANCH` and loops through all remaining phases until Step 4 (Full-Branch Final Audit), halting early if a phase is blocked.
 2. **Target Repository**: resolve `$TARGET_REPO` and read `AGENTS.md` per `/dev-loop` **Target**.
 3. **Target Plan (`PLAN_FILE`)**:
-   - Use explicit path, or find active plan (`Status: Draft` or `In Progress`) in `plans/v*/` or `plans/`. Derive `<plan-slug>` by stripping `.md` and any trailing `-plan` suffix from the filename.
+   - Use explicit path, or find active plan (`Status: Draft` or `In Progress`) in `plans/v*/` or top-level `plans/` (ignoring `plans/archive/`). Derive `<plan-slug>` by stripping `.md` and any trailing `-plan` suffix from the filename.
 4. **Branch Hierarchy**:
    - `BASE_BRANCH`: If `$PLAN_FILE` has a `**Base branch:** <name>` header line and `git rev-parse --verify --quiet "origin/<name>"` succeeds, use it (resumption). Otherwise (line missing, or value is a placeholder/unknown branch): currently checked out branch if on `main`/version branch; else default branch. Fetch origin first.
    - `PLAN_BRANCH`: `feat/<plan-slug>`. Checkout off `BASE_BRANCH` (or check out existing) and push tracking branch.
@@ -73,8 +73,11 @@ When all phases in `$PLAN_FILE` are checked off (`- [x]`):
    - Returns `PLAN_VERIFIED_LGTM` or structured discrepancy report.
 4. **Final Merge PR**:
    - **If `PLAN_VERIFIED_LGTM`**:
-     - Update `$PLAN_FILE` header: `**Status:** Completed (YYYY-MM-DD)`, and move its `plans/roadmap.md` entry to the completed section if the roadmap has one.
-     - Stage only those paths (never `git add -A`): `git add "$PLAN_FILE" plans/roadmap.md`; check `git diff --cached --name-only` lists nothing else, then `git commit -m "docs(<plan-slug>): complete plan" && git push`. Subject must stay ≤72 chars including the scope; truncate the summary, never the scope.
+     - Update `$PLAN_FILE` header: `**Status:** Completed (YYYY-MM-DD)`.
+     - **Archive the plan**:
+       - **Versioned plans (`plans/v*/`)**: Stays in its milestone folder. Move its `plans/roadmap.md` entry to the completed section if applicable. Stage only those paths: `git add "$PLAN_FILE" plans/roadmap.md`.
+       - **Continuous plans (top-level `plans/`)**: Move to `plans/archive/` keeping its filename (creating `plans/archive/` if needed) and update its roadmap entry under `## Completed` with date and link `[Feature](archive/<plan-filename>)`. Stage changes: `mkdir -p plans/archive && git mv "$PLAN_FILE" plans/archive/ && git add "plans/archive/$(basename "$PLAN_FILE")" plans/roadmap.md` (`git mv` alone does not stage the Status edit).
+     - Check `git diff --cached --name-only` lists nothing else, then `git commit -m "docs(<plan-slug>): complete plan" && git push`. Subject must stay ≤72 chars including the scope; truncate the summary, never the scope.
      - Open final PR from `$PLAN_BRANCH` into `$BASE_BRANCH`:
        `gh pr create --base "$BASE_BRANCH" --head "$PLAN_BRANCH" --title "feat(<plan-slug>): complete plan implementation" --body "All phases verified against $PLAN_FILE. Full-branch audit passed."` (append a `## Known follow-ups` list of the `Excluded: deferred` items that came from review follow-ups, with their repros, if there are any).
      - Per **CI wait** on `$PLAN_BRANCH`, then report the final PR link with its CI result. Merging into `$BASE_BRANCH` is left to the user.

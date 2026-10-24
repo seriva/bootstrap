@@ -16,17 +16,18 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 ### Removed
 
 <!-- How to write entries:
-- Write for someone using the project, not someone reviewing the code.
-- One short sentence per change: what is different, and why it matters.
-- Skip file paths, function names, and internal jargon unless the reader needs them.
-- Combine related small changes into one entry.
+- Write for humans using the project, not reviewers reading the diff.
+- One short plain-language sentence per change: what changed and why it matters.
+- No file paths, function names, flags, or internal jargon unless the reader needs them to act.
+- Merge related task-level changes into one entry.
 
   Good: Collision checks are about twice as fast on large maps.
   Bad:  Add 4-wide SIMD triangle-packet kernel in `collision/packet.go` behind `useSIMD` gate.
 -->
 
-<!-- Add changes here as you work. When releasing, move this block to a new versioned section:
+<!-- When releasing, move the Unreleased block to a new version section:
 ## [1.0.0] - YYYY-MM-DD
 ### Added / Changed / Fixed / Removed
 - ...
 -->
+

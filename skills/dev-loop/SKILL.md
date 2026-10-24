@@ -60,7 +60,7 @@ Reviews regularly find real bugs that this diff did not cause, or Low items the 
 
 ### Step 1: Target & Plan Check
 1. Resolve `$TARGET_REPO` and read `AGENTS.md` per **Target**.
-2. **Plan-First Requirement**: If the task is non-trivial, standalone, and no plan exists in `plans/v*/` or `plans/`, run `/design-plan`, then STOP: present the plan and suggest `/execute-plan`. Never implement a multi-phase plan in a single dev-loop.
+2. **Plan-First Requirement**: If the task is non-trivial, standalone, and no plan exists in `plans/v*/` or top-level `plans/` (ignoring `plans/archive/`), run `/design-plan`, then STOP: present the plan and suggest `/execute-plan`. Never implement a multi-phase plan in a single dev-loop.
 
 ### Step 2: Branch & TDD Implementation
 1. **Branch Resolution**:

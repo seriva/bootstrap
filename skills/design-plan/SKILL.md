@@ -48,7 +48,7 @@ Never draft a plan from assumptions alone. Conduct an active baseline audit:
    - Phases added later (follow-up mode) are appended with the next integer; existing phases are never renumbered.
 
 ### Step 5: Link Roadmap & Summary
-1. Link the new plan in `$TARGET_REPO/plans/roadmap.md` under the upcoming milestone.
+1. Link the new plan in `$TARGET_REPO/plans/roadmap.md`: under the target `## [vX.Y.Z]` section (versioned) or in the `## Upcoming` table (continuous).
 2. Present a concise summary to the user with plan link, probe findings, scope boundaries, and next steps.
 
 ---

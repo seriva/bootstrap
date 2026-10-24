@@ -7,7 +7,7 @@
 ## 1. Context & Rules
 - **Caveman Speak:** Progress updates and tool-call narration use "caveman" style (extreme density, zero fluff, drop grammar, `->` for correlations). Explanations, answers to the user, and human-facing text (`README`, `CHANGELOG`, plans, PR descriptions, commit bodies) use normal readable prose.
 - **Skills Override:** While running a skill (`/design-plan`, `/execute-plan`, `/dev-loop`), its rules override **Blockers**, **Quality**, and **Branches** here.
-- **Plan-first:** Create `plans/vX.Y.Z/<plan-slug>-plan.md` (or `plans/<plan-slug>-plan.md` for continuous/unversioned projects) & update roadmap for non-trivial (multi-component, arch-altering, risky) features. Track execution by checking off tasks (`- [x]`) as they land; mark the plan `Status: Completed` when done.
+- **Plan-first:** Non-trivial features (multi-component, arch-altering, risky) require a design plan created with `/design-plan` and tracked in `plans/roadmap.md`. Active plans live under `plans/` (or milestone subfolders like `plans/vX.Y.Z/`); on completion `/execute-plan` moves continuous plans to `plans/archive/`, while versioned plans stay in their milestone folder. Track execution by checking off tasks (`- [x]`) as they land.
 - **TDD:** Write failing tests first for non-trivial logic (if applicable).
 - **Quality:** Run format/lint before every commit. Before opening a PR, update `CHANGELOG.md` & `README.md` when user-facing behavior changed.
 - **Changelog:** Write for humans, not reviewers: one short plain-language sentence per change saying what is different for the user and why it matters. No file paths, function names, flags, or internal jargon unless the reader needs them to act. Merge related task-level changes into one entry.
@@ -32,6 +32,8 @@
 
 ## Project Identity
 
+- **Release Model**: Continuous
+
 Canonical headquarters for agentic development standards, project scaffolding (`scaffold/`), and multi-vendor autonomous AI skills (`skills/`). Synchronizes workflow rules across sibling repositories via `sync.sh` and deploys global agent skills via `install.sh`.
 
 ## Tech Stack
@@ -42,15 +44,16 @@ Canonical headquarters for agentic development standards, project scaffolding (`
 ## Commands
 
 - **Test**: `./sync.sh --check`
-- **Lint**: `bash -n install.sh sync.sh`
+- **Lint**: `bash -n install.sh sync.sh init.sh`
 - **Format**: none
 - **Build**: none (deploy skills with `./install.sh`)
-- **Pre-commit gate**: `bash -n install.sh sync.sh && ./sync.sh --check`
+- **Pre-commit gate**: `bash -n install.sh sync.sh init.sh && ./sync.sh --check`
 
 ## Architecture
 
-- `scaffold/` — Pristine starter templates copied into new repositories (`AGENTS.md`, `CHANGELOG.md`, `CLAUDE.md`, `.github/`, `lefthook.yml`, `plans/`). Cursor reads `AGENTS.md` natively, so it has no bridge file. `scaffold/AGENTS.md` Part 1 is the canonical source of truth.
+- `scaffold/` — Pristine starter templates copied into new repositories by `init.sh` (`AGENTS.md`, `CLAUDE.md`, `.github/`, `lefthook.yml`, `plans/`, plus `CHANGELOG.md` and `plans/roadmap.md` from `templates/<profile>/`). Cursor reads `AGENTS.md` natively, so it has no bridge file. `scaffold/AGENTS.md` Part 1 is the canonical source of truth.
 - `skills/` — Global autonomous workflows (`design-plan`, `execute-plan`, `dev-loop`) deployed machine-wide by `install.sh`.
+- `init.sh` — Scaffolding initializer for new projects with profile selection (`--type continuous|versioned`).
 - `install.sh` — Conditional multi-vendor skill installer (Antigravity, Claude Code, Codex, Cursor, Copilot).
 - `sync.sh` — Propagates `scaffold/AGENTS.md` Part 1, tool bridge files, `plans/template.md`, and the bootstrap-managed `.gitignore` block to sibling projects (and keeps root `AGENTS.md` Part 1 in sync).
 - `docs/agentic-workflows.md` — Architecture reference and diagrams for the 3-tier autonomous lifecycle.

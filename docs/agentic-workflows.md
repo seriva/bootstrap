@@ -13,7 +13,7 @@ flowchart TD
     subgraph Tier1 ["Tier 1: Architect"]
         DP["/design-plan &lt;feature&gt;"]
         Audit["Empirical Probe Audit\n(Prove bugs, inspect AST/code)"]
-        PlanDoc["plans/vX.Y.Z/&lt;plan-slug&gt;-plan.md\n(Checklist: - [ ] Task N.M)"]
+        PlanDoc["plans/[vX.Y.Z/]&lt;plan-slug&gt;-plan.md\n(Checklist: - [ ] Task N.M)"]
         DP --> Audit --> PlanDoc
     end
 
@@ -52,7 +52,7 @@ flowchart TD
 
 | Tier | Skill | Role | When to Use | Output |
 | :--- | :--- | :--- | :--- | :--- |
-| **1. Architect** | [`/design-plan`](#1-design-plan-the-architect) | **Pre-implementation** | Complex features, architectural migrations, multi-component refactors | Exhaustive plan document (`plans/vX.Y.Z/<plan-slug>-plan.md`) with probe evidence & task checklist |
+| **1. Architect** | [`/design-plan`](#1-design-plan-the-architect) | **Pre-implementation** | Complex features, architectural migrations, multi-component refactors | Exhaustive plan document (`plans/<plan-slug>-plan.md` or `plans/vX.Y.Z/<plan-slug>-plan.md`) with probe evidence & task checklist |
 | **2. Orchestrator** | [`/execute-plan`](#2-execute-plan-the-orchestrator) | **Multi-phase execution** | Once a design plan is approved | Creates epic branch, coordinates phased PRs, updates `- [x]`, conducts pre-merge branch audit |
 | **3. Delivery Unit** | [`/dev-loop`](#3-dev-loop-the-delivery-engine) | **Single-task execution** | Targeted bugfixes, standalone tasks, or driven by `/execute-plan` | Feature branch, TDD, quality gate, draft PR, isolated AI review & fix, published PR |
 
@@ -132,16 +132,17 @@ The installer automatically inspects your machine:
 
 ```text
 ~/dev/bootstrap/                     <-- Global Agentic Headquarters
+├── init.sh                          <-- Scaffolds a new project (--type continuous|versioned)
 ├── install.sh                       <-- Installs /design-plan, /execute-plan, /dev-loop globally
 ├── sync.sh                          <-- Syncs scaffold/AGENTS.md Part 1, bridge files, plan template + managed .gitignore block to sibling projects
 ├── skills/                          <-- Global skill definitions (never copied to projects)
 └── scaffold/                        <-- Pristine project starter kit (copied into new projects)
     ├── AGENTS.md
-    ├── CHANGELOG.md (clean starter template)
     ├── CLAUDE.md, .github/copilot-instructions.md (bridge files → AGENTS.md; Cursor reads AGENTS.md natively)
     ├── .gitignore (agentic ignores inside the bootstrap-managed block)
     ├── lefthook.yml
-    └── plans/ (roadmap.md, template.md, follow-ups.md starters)
+    ├── plans/ (template.md, follow-ups.md starters)
+    └── templates/ (continuous/ and versioned/ CHANGELOG.md + roadmap.md, picked by init.sh)
 
 ~/dev/gofront/                       <-- Sibling Project Repository
 ├── AGENTS.md                        <-- Part 1 synced from bootstrap; Part 2 project context + Commands
@@ -154,7 +155,7 @@ The installer automatically inspects your machine:
     ├── follow-ups.md                <-- Follow-up ledger: written by /dev-loop reviewers and any agent session, scheduled by /design-plan follow-ups
     ├── roadmap.md                   <-- Maintained by /design-plan and /execute-plan
     └── v1.8.0/                      <-- Plans authored by /design-plan, executed by /execute-plan
-        └── portable-go-plan.md
+        └── portable-go-plan.md      <-- (continuous projects: plans/<slug>-plan.md, moved to plans/archive/ when completed)
 ```
 
 - **Clean Repositories:** Sibling projects (`gofront`, `simplefps`, etc.) contain zero tool-specific skill directories.
