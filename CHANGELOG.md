@@ -15,7 +15,7 @@ Versioning: continuous (rolling `[Unreleased]`, calendar sections `[YYYY-MM]` wh
 - A `scaffold/` starter kit for new projects: `AGENTS.md` as the single source of truth with thin bridge files for each tool, a pre-commit gate (format, lint, test, secret scan, Conventional Commits), a CI workflow that runs that same gate, Dependabot, a plan template, and a roadmap that works for both versioned and continuous projects.
 - `sync.sh` keeps the shared rules, bridge files, plan template, and the agentic section of `.gitignore` identical across sibling projects; `--check` fails when anything has drifted.
 - `init.sh` sets up a new project in one command, with a changelog and roadmap that fit either continuous or versioned releases, and refuses to overwrite files that already exist unless you pass `--force`.
-- An architecture guide (`docs/agentic-workflows.md`) describing how the three skills fit together and which tools are tested.
+- A single README that walks you from setup to your first reviewed PR, explains how the three skills fit together, and lists which tools are tested.
 
 ### Changed
 - CI now runs on every pull request, including the phase PRs the skills open, so they are never marked ready without checks.

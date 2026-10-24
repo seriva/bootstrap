@@ -1,109 +1,182 @@
 # Agentic Development Bootstrap
 
-Generic project scaffold for agentic development.
+A starter kit and a set of AI workflows for building software with coding agents (Claude Code, Antigravity, Codex, Cursor, Copilot).
 
-## Philosophy
+It gives you two things:
 
-1. **`AGENTS.md` is the single source of truth** — tool-specific bridge files are thin shims that point here and nothing more.
-2. **No session artifacts in the repo** — tool-specific scratchpads, worktree dirs, and ephemeral session state do not belong in git.
-3. **Explicit quality gates** — pre-commit hook + CI block on lint/test failure, independent of which tool wrote the code.
-4. **Plan-first** — `plans/<plan-slug>-plan.md` (continuous) or `plans/vX.Y.Z/<plan-slug>-plan.md` (versioned) before any non-trivial code, kept apart from human docs in `docs/`. Structured design with implementation tasks checked off as they land.
+- **A project scaffold** — one command sets up a new repository with an agent rulebook (`AGENTS.md`), a pre-commit quality gate, CI, and a `plans/` folder for design docs.
+- **Three global skills** — `/design-plan`, `/execute-plan`, and `/dev-loop`, installed once per machine, that take work from idea to reviewed pull request.
 
-## Structure
+## Quick Start
 
-### 1. Global Toolkit & Workflows (Machine-Wide)
-| File | Purpose |
-|---|---|
-| `AGENTS.md` | Agent guide for `bootstrap` itself (Part 1 synced from `scaffold/AGENTS.md`) |
-| `install.sh` | Global installer: conditionally deploys skills to detected AI tools (Antigravity, Claude Code, Codex, Cursor, Copilot), filling in each host's installed `dev-loop` path |
-| `sync.sh` | Synchronizes `scaffold/AGENTS.md` Part 1, bridge files, `plans/template.md`, and the bootstrap-managed `.gitignore` block to sibling projects |
-| `skills/design-plan/SKILL.md` | Empirical design planning workflow: active probe audit, boundary matrix, and exhaustive plan drafting |
-| `skills/execute-plan/SKILL.md` | Autonomous plan orchestrator: executes plan phase-by-phase with TDD, tracking tasks with `[x]` and opening 1 PR per phase |
-| `skills/dev-loop/SKILL.md` | Universal autonomous development loop: implementation, quality gates, draft PR, AI review, and fix cycle |
-| `docs/agentic-workflows.md` | Comprehensive architectural guide & diagrams for all autonomous workflows |
+**1. Install the skills (once per machine).**
 
-### 2. Project Scaffold (`scaffold/` — Copied into New Repos)
-| File | Purpose |
-|---|---|
-| `init.sh` | Copies the scaffold into a new project for a `continuous` (default) or `versioned` release model; refuses to overwrite existing files unless `--force` |
-| `scaffold/AGENTS.md` | Fill in: project identity, tech stack, commands, architecture; agent maintains the project map |
-| `scaffold/templates/<profile>/CHANGELOG.md` | Clean starter changelog per release model, with a short guide to writing plain-language entries |
-| `scaffold/templates/<profile>/roadmap.md` | Roadmap per release model: version sections (`versioned`) or Upcoming/Completed tables (`continuous`) |
-| `scaffold/CLAUDE.md` | `@AGENTS.md` — do not edit |
-| `scaffold/.github/copilot-instructions.md` | Points to `AGENTS.md` — do not edit |
-| `scaffold/.github/dependabot.yml` | Automated monthly dependency & GitHub Actions updates |
-| `scaffold/lefthook.yml` | Pre-commit hook config (format → lint → test, formatted files auto-restaged) — fill in commands |
-| `scaffold/.github/workflows/ci.yml` | Runs the lefthook gate on every PR (any base branch, so phase PRs get checks) and on `main`/`feat/**` pushes — fill in runtime setup |
-| `scaffold/.gitignore` | Common ignores + agentic artifact ignores inside a `bootstrap-managed` block that `sync.sh` keeps current |
-| `scaffold/plans/template.md` | Design plan format: Goal → Boundary Matrix → Gaps Audit → Approach → Tasks |
-| `scaffold/plans/follow-ups.md` | Empty follow-up ledger for bugs found outside the task at hand; filled by reviewers and agents, scheduled by `/design-plan follow-ups` |
+```bash
+cd ~/dev/bootstrap
+./install.sh
+```
 
-## Scaffolding a New Project
+The installer detects which AI tools you have and installs the skills only for those.
 
-To scaffold a new project with the agentic standard:
+**2. Scaffold a project.**
 
-1. Run `init.sh` pointing to your project directory:
-   ```bash
-   # For continuous apps/games/sites (default):
-   ~/dev/bootstrap/init.sh /path/to/your/project --type continuous
+```bash
+# Apps, sites, games, services (default)
+~/dev/bootstrap/init.sh ~/dev/my-app --type continuous
 
-   # For versioned libraries/compilers:
-   ~/dev/bootstrap/init.sh /path/to/your/project --type versioned
-   ```
-2. Fill in all `[PLACEHOLDER]` sections in `AGENTS.md` and `ci.yml`. In `lefthook.yml`, replace the `echo "lefthook: configure …" && exit 1` placeholders with your actual format/lint/test commands. Keep the `Commands` section of `AGENTS.md` matching them: the skills use it as their quality gate.
-3. Install lefthook in the new project: `brew install lefthook` or `npm install --save-dev lefthook`, then `lefthook install`. Also install [gitleaks](https://github.com/gitleaks/gitleaks#installing) (≥ 8.19) for the pre-commit secret scan. The scaffold's lefthook commands fail until you fill them in, so an unconfigured gate can't pass silently. CI runs the same lefthook gate, so commands only need to live in `lefthook.yml`.
-4. (One-time machine setup) Run `./install.sh` in `bootstrap/` to deploy global autonomous workflows (`/design-plan`, `/execute-plan`, `/dev-loop`) to your AI tools.
+# Libraries, compilers, anything with release versions
+~/dev/bootstrap/init.sh ~/dev/my-lib --type versioned
+```
 
-### Continuous Applications & Services
-For web apps, websites, games, or services without semantic release versions:
-- In `AGENTS.md` Part 2, specify `Release Model: Continuous`.
-- In `CHANGELOG.md`, use calendar releases (`## [YYYY-MM]`) or rolling `## [Unreleased]` sections instead of SemVer.
-- Create feature plans in `plans/<plan-slug>-plan.md` with `**Version:** continuous`.
-- Use the `## Upcoming` and `## Completed` tables in `plans/roadmap.md` instead of `## [vX.Y.Z]` sections.
-- When a plan completes, `/execute-plan` moves it to `plans/archive/<plan-slug>-plan.md` and moves its `plans/roadmap.md` row to `## Completed`, keeping the root `plans/` directory clean while preserving design history.
+Existing files are never overwritten unless you pass `--force`.
 
-## Plan Docs
+**3. Configure the quality gate.**
 
-When starting a non-trivial feature, create `plans/v1.2.3/my-feature-plan.md` (or `plans/my-feature-plan.md` for continuous projects) using `plans/template.md` as the starting point. Track execution progress by checking off tasks (`- [x]`) as they land. Persists as the architectural record of *why* the code is the way it is.
+- Fill in every `[PLACEHOLDER]` in `AGENTS.md` and `.github/workflows/ci.yml`.
+- In `lefthook.yml`, replace the placeholder commands with your real format, lint, and test commands, and list the same commands under **Commands** in `AGENTS.md`. The skills run those commands as their quality gate.
+- Install [lefthook](https://github.com/evilmartians/lefthook) (`brew install lefthook` or `npm install --save-dev lefthook`, then `lefthook install`) and [gitleaks](https://github.com/gitleaks/gitleaks#installing) 8.19 or newer for the secret scan.
 
-Example structure:
+The gate fails until it is configured, so an unconfigured project can't pass by accident. CI runs the same gate, so the commands only live in `lefthook.yml`.
+
+## How It Works
+
+The skills split work into three roles. Use `/dev-loop` alone for small tasks; use all three for larger features.
+
+```mermaid
+flowchart LR
+    DP["/design-plan<br/>writes the plan"] --> Plan["plans/…-plan.md"]
+    Plan --> EP["/execute-plan<br/>runs it phase by phase"]
+    EP -->|"one phase at a time"| DL["/dev-loop<br/>test → code → review → PR"]
+    DL -->|"phase PR merged"| EP
+    EP --> Final["Final PR into main"]
+```
+
+| Skill | Use it for | What you get |
+| :--- | :--- | :--- |
+| `/design-plan` | Features that touch several parts of the code, migrations, risky changes | A design plan with verified gaps, a clear scope, and small testable tasks |
+| `/execute-plan` | Carrying out an approved plan | One reviewed PR per phase, then a final PR into `main` |
+| `/dev-loop` | Bug fixes and standalone tasks (and each phase of a plan) | A tested, AI-reviewed PR that is marked ready only when review and CI are clean |
+
+Agents never commit on their own. Running `/dev-loop` or `/execute-plan` counts as permission to branch, commit, push, and open PRs as that workflow describes.
+
+### `/design-plan` — plan before you build
+
+Before writing a plan, it probes the codebase to prove every problem it claims exists, so the plan isn't built on guesses. The plan lists what is in and out of scope (with reasons), states how "done" will be checked, and splits the work into phases small enough for one reviewed PR each. The plan is linked from `plans/roadmap.md`.
+
+`/design-plan follow-ups` turns the open bugs in `plans/follow-ups.md` into fix phases.
 
 ```text
-Versioned (Library / Compiler):          Continuous (App / Game / Site):
+/design-plan Add WebSocket reconnection with exponential backoff
+/design-plan in gofront: Implement the encoding/csv stdlib package
+/design-plan follow-ups plans/v1.8.0/portable-go-plan.md
+```
+
+### `/execute-plan` — run the plan
+
+Works on a branch named `feat/<plan-slug>` and handles one phase at a time: a subagent implements the phase with `/dev-loop` on its own branch, then the phase PR is reviewed. Progress is tracked by ticking the plan's checkboxes, so an interrupted run picks up where it stopped.
+
+By default it pauses after each phase for you to merge. With `--auto` it merges passing phases itself and keeps going. When all tasks are done, it checks the follow-up list, has a fresh agent audit the whole branch against the plan, and opens the final PR into `main`.
+
+```text
+/execute-plan plans/v1.8.0/portable-go-plan.md
+/execute-plan --auto plans/v1.8.0/portable-go-plan.md
+```
+
+### `/dev-loop` — from failing test to ready PR
+
+1. Writes a failing test, then the code to make it pass.
+2. Runs the project's quality gate and adds a changelog entry.
+3. Opens a draft PR.
+4. A fresh AI reviewer (never the agent that wrote the code) checks it. Serious findings get one fix round, followed by a second and final review.
+5. Waits for CI, and marks the PR ready only if review and CI are both clean. Otherwise the PR stays a draft with the findings in its description.
+
+Bugs the reviewer spots outside the change are logged in `plans/follow-ups.md` instead of being fixed on the side.
+
+```text
+/dev-loop Fix the race condition in session cleanup
+/dev-loop in gofront: Add a benchmark for AST token parsing
+```
+
+Each skill's full, step-by-step rules live in its `SKILL.md` under [`skills/`](skills/).
+
+## Principles
+
+1. **`AGENTS.md` is the single source of truth.** Tool-specific files (`CLAUDE.md`, `.github/copilot-instructions.md`) only point to it. Cursor reads it directly.
+2. **Plan first.** Non-trivial work starts with a written plan in `plans/`, which stays as the record of *why* the code looks the way it does.
+3. **The gate is independent of the tool.** The pre-commit hook and CI block bad commits no matter which agent (or person) wrote the code.
+4. **No session clutter in git.** Agent scratchpads and tool session state are ignored.
+
+## Plans and Follow-ups
+
+Everything the skills read and write lives in `plans/`. The `docs/` folder is left for documentation written for people.
+
+```text
+Versioned (library / compiler):          Continuous (app / game / site):
 plans/                                   plans/
   roadmap.md                               roadmap.md
   template.md                              template.md
   follow-ups.md                            follow-ups.md
   v0.2.0/                                  archive/
-    auth-redesign-plan.md                    gofront-rewrite-plan.md
+    auth-redesign-plan.md                    old-feature-plan.md
   v0.3.0/                                  active-feature-plan.md
     websocket-support-plan.md
-docs/   <- human documentation only, if the project has any
 ```
 
-Everything the skills read and write lives in `plans/`; `docs/` is left to people. `plans/follow-ups.md` is the project's follow-up ledger: bugs noticed outside the current task (by reviewers or by any agent session) are logged there with a repro, and `/design-plan follow-ups` moves them into a plan as fix phases later, so the file only ever lists open bugs.
+- **`template.md`** is the starting point for new plans.
+- **`roadmap.md`** lists plans by release (versioned) or as Upcoming/Completed tables (continuous).
+- **`follow-ups.md`** collects bugs noticed outside the current task, each with a way to reproduce it. `/design-plan follow-ups` schedules them, so the list only holds open bugs.
 
-## Global Autonomous Workflows (`/design-plan`, `/execute-plan`, `/dev-loop`)
+**Versioned vs. continuous.** Versioned projects group plans by release (`plans/vX.Y.Z/`) and use SemVer changelog sections. Continuous projects keep active plans directly in `plans/`, use `## [Unreleased]` or calendar sections (`## [YYYY-MM]`) in the changelog, and move finished plans to `plans/archive/`.
 
-> For full architectural diagrams, interaction models, and multi-vendor setup, see the complete guide in [docs/agentic-workflows.md](docs/agentic-workflows.md).
+## Keeping Projects in Sync
 
-Run `./install.sh` once on your workstation to install the autonomous skills. It conditionally detects which AI tools are installed on your machine (`agy`, `claude`, `codex`, `cursor`, `copilot`) and installs the skills globally into their user configuration directories. Tested on Antigravity (`agy`) and Claude Code (`claude`); other tools are installed but untested (see [Tested Environments](docs/agentic-workflows.md#tested-environments)).
+Shared rules are edited here, then pushed to your other projects:
 
-Agents never commit on their own, but running `/dev-loop` or `/execute-plan` counts as permission to branch, commit, push, and open PRs as that workflow describes.
+```bash
+./sync.sh             # update every sibling project in ~/dev that has an AGENTS.md
+./sync.sh --dry-run   # preview changes
+./sync.sh --check     # exit 1 if any project has drifted
+./sync.sh ~/dev/app   # sync specific projects only
+```
 
-### 1. `/design-plan <feature description>`
-Authors an empirical design plan before non-trivial code: probes the codebase to prove every gap, fixes scope in a boundary matrix, writes falsifiable "Done means" criteria, and splits the work into phases sized for one reviewed PR each. `/design-plan follow-ups [<plan-path>]` turns the bugs reviewers collected in `plans/follow-ups.md` into fix phases.
+`sync.sh` copies Part 1 of `scaffold/AGENTS.md`, the bridge files, `plans/template.md`, and the shared `.gitignore` block (between the `# >>> bootstrap-managed` and `# <<< bootstrap-managed` markers). Part 2 of each project's `AGENTS.md` and any ignores outside the markers are never touched.
 
-### 2. `/execute-plan [--auto] <plan-path>`
-Runs an approved plan phase by phase on `feat/<plan-slug>`, one AI-reviewed PR per phase, tracking progress in the plan's checklist so it can resume anywhere. Stops after each phase for you to merge, or merges passing phases itself with `--auto`. Finishes with a follow-up triage, a full-branch audit against the plan, and a final PR into `main`.
+To ignore a new tool's session folder everywhere, add it to `scaffold/.gitignore` here and run `./sync.sh`.
 
-### 3. `/dev-loop <task description>`
-Takes a standalone task from failing test to a ready PR: TDD, the `AGENTS.md` quality gate, a changelog entry, a draft PR, then a fresh-context AI review with at most one fix round and two passes. Bugs the reviewer finds outside the change are logged in `plans/follow-ups.md` with a repro. The PR is marked ready only when review and CI are both clean.
+## Supported Tools
 
-## What Stays Out of the Repo
+| Tool | Status | Installed to |
+|---|---|---|
+| Google Antigravity (`agy`) | Tested | `~/.gemini/config/skills/` |
+| Claude Code (`claude`) | Tested | `~/.claude/skills/` and `~/.claude/commands/` |
+| OpenAI Codex (`codex`) | Installed, untested | `~/.codex/skills/` |
+| Cursor (`cursor`) | Installed, untested | `~/.cursor/rules/*.mdc` |
+| GitHub Copilot / VS Code (`code`) | Installed, untested | User prompt files (`.prompt.md`) |
 
-- Tool-specific session directories (e.g. `docs/superpowers/`, `.cursor/sessions/`)
-- `.worktrees/` — git worktree working copies
-- Temporary agent session files (e.g., scratchpads, tool-specific session state, `.probes/`)
+The review steps depend on the tool being able to start a fresh-context subagent. If it can't, implementation still runs but review halts: the PR stays a draft marked `REVIEW_STATUS=PENDING_REVIEW` rather than letting the agent review its own work.
 
-The `.gitignore` has common patterns pre-configured. The agentic-artifact entries live between `# >>> bootstrap-managed` / `# <<< bootstrap-managed` markers that `sync.sh` keeps identical across projects; when a new tool introduces artifact directories, add them to `scaffold/.gitignore` in `bootstrap` and run `./sync.sh`. Project-specific ignores go outside the markers and are never touched.
+## Repository Layout
+
+```text
+bootstrap/
+├── install.sh          Installs the skills for the AI tools on this machine
+├── init.sh             Scaffolds a new project (--type continuous|versioned, --force)
+├── sync.sh             Pushes shared rules to sibling projects (--check, --dry-run)
+├── AGENTS.md           Agent guide for this repo (Part 1 synced from scaffold/AGENTS.md)
+├── skills/             The three skills; installed globally, never copied into projects
+│   ├── design-plan/SKILL.md
+│   ├── execute-plan/SKILL.md
+│   └── dev-loop/SKILL.md
+└── scaffold/           Copied into new projects by init.sh
+    ├── AGENTS.md                         Rules (Part 1) + project context to fill in (Part 2)
+    ├── CLAUDE.md                         Points to AGENTS.md; don't edit
+    ├── .github/copilot-instructions.md   Points to AGENTS.md; don't edit
+    ├── .github/workflows/ci.yml          Runs the lefthook gate on every PR and on main/feat/** pushes
+    ├── .github/dependabot.yml            Monthly dependency and Actions updates
+    ├── lefthook.yml                      Gate: format → lint → test, secret scan, commit message check
+    ├── .gitignore                        Common ignores + the bootstrap-managed block
+    ├── plans/                            template.md and an empty follow-ups.md
+    └── templates/                        CHANGELOG.md and roadmap.md per release model
+        ├── continuous/
+        └── versioned/
+```

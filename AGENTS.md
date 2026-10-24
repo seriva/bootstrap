@@ -56,5 +56,5 @@ Canonical headquarters for agentic development standards, project scaffolding (`
 - `init.sh` — Scaffolding initializer for new projects with profile selection (`--type continuous|versioned`).
 - `install.sh` — Conditional multi-vendor skill installer (Antigravity, Claude Code, Codex, Cursor, Copilot).
 - `sync.sh` — Propagates `scaffold/AGENTS.md` Part 1, tool bridge files, `plans/template.md`, and the bootstrap-managed `.gitignore` block to sibling projects (and keeps root `AGENTS.md` Part 1 in sync).
-- `docs/agentic-workflows.md` — Architecture reference and diagrams for the 3-tier autonomous lifecycle.
+- `README.md` — Human-facing guide: quick start, how the three skills fit together, sync, supported tools, repository layout.
 
