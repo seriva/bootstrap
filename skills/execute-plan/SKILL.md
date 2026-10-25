@@ -10,7 +10,7 @@ Autonomously orchestrates execution of an approved design plan phase-by-phase. M
 > [!NOTE]
 > Invoking `/execute-plan` grants authorization to manage plan branches, run `/dev-loop` for each phase, merge phase PRs as described below, and conduct the final full-branch audit.
 
-Shared conventions (**Target**, **Dispatch**, **Probes**, **Safe commit**, **CI wait**, **Follow-ups**) are defined in `/dev-loop` and apply here by name. The orchestrator spawns every subagent itself.
+Shared conventions (**Target**, **Dispatch**, **Probes**, **Safe commit**, **People docs**, **CI wait**, **Follow-ups**) are defined in `/dev-loop` and apply here by name. The orchestrator spawns every subagent itself.
 
 ---
 
@@ -65,13 +65,16 @@ When all phases in `$PLAN_FILE` are checked off (`- [x]`):
    - Delete each `FIXED` entry. If anything changed, stage only `plans/follow-ups.md`, commit `docs(<plan-slug>): triage review follow-ups`, and push.
    - If any entry still reproduces: **halt, even in `--auto` mode**, list them, and offer two options:
      - **Schedule**: the user runs `/design-plan follow-ups $PLAN_FILE`, which appends fix phases; the user then commits the plan change on `$PLAN_BRANCH` and re-runs `/execute-plan` (Step 2 picks up the new phases).
-     - **Defer**: move them (with their repros) to the plan's `Excluded: deferred` row and delete them from the ledger, stage only `plans/follow-ups.md` and `$PLAN_FILE`, commit `docs(<plan-slug>): defer review follow-ups`, push, and continue with step 3.
+     - **Defer**: move them (with their repros) to the plan's `Excluded: deferred` row and delete them from the ledger, stage only `plans/follow-ups.md` and `$PLAN_FILE`, commit `docs(<plan-slug>): defer review follow-ups`, push, and continue with step 3 (Release Notes Pass).
      If the host cannot ask and wait, stop; the user applies one of the two and re-runs.
-3. **Comprehensive AI Audit Subagent**:
+3. **Release Notes Pass**: people read the plan's changelog entry and docs; phase-by-phase writing leaves them choppy.
+   - Spawn subagent `Release Notes Editor` (no subagent tool: run the same prompt inline; it edits prose only):
+     > Prompt: `First read the "People docs" section of the dev-loop skill at {{DEV_LOOP_SKILL}} and the Audiences, Changelog, and Docs rules in AGENTS.md of $TARGET_REPO. On branch $PLAN_BRANCH, look at git diff origin/$BASE_BRANCH...$PLAN_BRANCH -- CHANGELOG.md README.md docs/. Rewrite this plan's ## [Unreleased] entries so someone upgrading understands them without the plan: merge per-phase entries into one per user-facing feature, keep every behaviour change, and give each breaking change its own **Breaking:** entry under ### Changed saying what to do. Fix README/docs passages from this diff that read like plan notes. Use $PLAN_FILE and the code only to check facts; never copy its IDs or symbol lists. Touch only CHANGELOG.md, README.md and docs/. Run the pre-commit gate from AGENTS.md Commands. If anything changed, stage only the modified files, commit "docs(<plan-slug>): edit release notes", and push. Reply with the final entries and the commit hash or "no changes".`
+4. **Comprehensive AI Audit Subagent**:
    - Spawn subagent `Plan Auditor` with `$PLAN_FILE` and diff `git diff origin/$BASE_BRANCH...$PLAN_BRANCH`.
-   - Audit diff against: 1) "Done means" checklist, 2) Scope Rule & Boundary Matrix (nothing from an `Excluded` row leaked in), 3) Test coverage. Probes per `/dev-loop` **Probes**; never edit tracked files.
+   - Audit diff against: 1) "Done means" checklist, 2) Scope Rule & Boundary Matrix (nothing from an `Excluded` row leaked in), 3) Test coverage, 4) People docs: `CHANGELOG.md`, `README.md`, and `docs/` changes are accurate and follow the `AGENTS.md` **Audiences**, **Changelog**, and **Docs** rules. Probes per `/dev-loop` **Probes**; never edit tracked files.
    - Returns `PLAN_VERIFIED_LGTM` or structured discrepancy report.
-4. **Final Merge PR**:
+5. **Final Merge PR**:
    - **If `PLAN_VERIFIED_LGTM`**:
      - Update `$PLAN_FILE` header: `**Status:** Completed (YYYY-MM-DD)`.
      - **Archive the plan**:

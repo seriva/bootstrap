@@ -10,7 +10,7 @@ Autonomously authors an empirical engineering design plan following the `plans/t
 > [!NOTE]
 > Invoking `/design-plan` grants authorization to inspect code, run non-destructive probes/tests, create the plan under `plans/`, and link it in `plans/roadmap.md`.
 
-Shared conventions (**Target**, **Probes**, **Follow-ups**) are defined in `/dev-loop` and apply here by name.
+Shared conventions (**Target**, **Probes**, **People docs**, **Follow-ups**) are defined in `/dev-loop` and apply here by name.
 
 ---
 
@@ -39,11 +39,12 @@ Never draft a plan from assumptions alone. Conduct an active baseline audit:
 1. **Location**:
    - Versioned: `$TARGET_REPO/plans/vX.Y.Z/<plan-slug>-plan.md`.
    - Continuous/Unversioned: `$TARGET_REPO/plans/<plan-slug>-plan.md`.
-2. **Sections** (from `plans/template.md`, same names and order): Header (Version, Status, Related), Goal & Done Means, Scope Rule & Boundary Matrix, Verified Gaps & Baseline Audit, Approach (Architecture & Design Decisions / Invariants & Safety Bounds / Edge Cases & Error Handling), Implementation Tasks.
+2. **Sections** (from `plans/template.md`, same names and order): Header (Version, Status, Related, Release note), Goal & Done Means, Scope Rule & Boundary Matrix, Verified Gaps & Baseline Audit, Approach (Architecture & Design Decisions / Invariants & Safety Bounds / Edge Cases & Error Handling), Implementation Tasks.
 3. **Implementation Tasks (The Dev-Loop Contract)**:
    - **1 Phase = 1 Dev-Loop** (1 phase branch, 1 PR, 1 isolated 2-pass review). Decouple subsystems into sequential phases; never bundle them into one mega-phase.
    - **3–5 tasks per phase** (hard max 6); ~150–500 net LOC across 3–6 files per phase so AI review stays focused.
    - **Task contract**: every `- [ ] Task N.M` specifies `Files:` (1–3 files), `Test:` (failing test written first), and `Done when:` (falsifiable condition). Each task is one atomic commit; each phase is one PR, merged with a merge commit.
+   - **Audience**: the plan is for agents, so dense, symbol-heavy text and IDs are fine. The one exception is the **Release note:** header line, which `/dev-loop` turns into the changelog entry: write it for someone upgrading, per the `AGENTS.md` **Changelog** rule.
    - **No gate-only work**: no phases or tasks that only run tests/lint or write the changelog; `/dev-loop` does those every phase. Put user-facing docs updates in the last phase that changes behavior.
    - Phases added later (follow-up mode) are appended with the next integer; existing phases are never renumbered.
 

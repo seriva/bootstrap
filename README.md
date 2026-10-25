@@ -75,7 +75,7 @@ Before writing a plan, it probes the codebase to prove every problem it claims e
 
 Works on a branch named `feat/<plan-slug>` and handles one phase at a time: a subagent implements the phase with `/dev-loop` on its own branch, then the phase PR is reviewed. Progress is tracked by ticking the plan's checkboxes, so an interrupted run picks up where it stopped.
 
-By default it pauses after each phase for you to merge. With `--auto` it merges passing phases itself and keeps going. When all tasks are done, it checks the follow-up list, has a fresh agent audit the whole branch against the plan, and opens the final PR into `main`.
+By default it pauses after each phase for you to merge. With `--auto` it merges passing phases itself and keeps going. When all tasks are done, it checks the follow-up list, has a fresh agent turn the plan's changelog entries into readable release notes, has another fresh agent audit the whole branch against the plan, and opens the final PR into `main`.
 
 ```text
 /execute-plan plans/v1.8.0/portable-go-plan.md
@@ -85,9 +85,9 @@ By default it pauses after each phase for you to merge. With `--auto` it merges 
 ### `/dev-loop` — from failing test to ready PR
 
 1. Writes a failing test, then the code to make it pass.
-2. Runs the project's quality gate and adds a changelog entry.
+2. Runs the project's quality gate and writes a changelog entry for the people using the project (not a list of what the code does).
 3. Opens a draft PR.
-4. A fresh AI reviewer (never the agent that wrote the code) checks it. Serious findings get one fix round, followed by a second and final review.
+4. A fresh AI reviewer (never the agent that wrote the code) checks it, including whether the changelog and docs make sense to a user. Serious findings get one fix round, followed by a second and final review.
 5. Waits for CI, and marks the PR ready only if review and CI are both clean. Otherwise the PR stays a draft with the findings in its description.
 
 Bugs the reviewer spots outside the change are logged in `plans/follow-ups.md` instead of being fixed on the side.
@@ -105,6 +105,7 @@ Each skill's full, step-by-step rules live in its `SKILL.md` under [`skills/`](s
 2. **Plan first.** Non-trivial work starts with a written plan in `plans/`, which stays as the record of *why* the code looks the way it does.
 3. **The gate is independent of the tool.** The pre-commit hook and CI block bad commits no matter which agent (or person) wrote the code.
 4. **No session clutter in git.** Agent scratchpads and tool session state are ignored.
+5. **Write for the reader.** `README.md`, `docs/`, and `CHANGELOG.md` are written for people: short and plain, with no task IDs or file paths. Plans in `plans/` are written for agents and can be as dense as they need to be.
 
 ## Plans and Follow-ups
 
