@@ -172,7 +172,7 @@ bootstrap/
     ├── AGENTS.md                         Rules (Part 1) + project context to fill in (Part 2)
     ├── CLAUDE.md                         Points to AGENTS.md; don't edit
     ├── .github/copilot-instructions.md   Points to AGENTS.md; don't edit
-    ├── .github/workflows/ci.yml          Runs the lefthook gate on every PR and on main/feat/** pushes
+    ├── .github/workflows/ci.yml          Runs the lefthook gate on every PR and on main/master pushes
     ├── .github/dependabot.yml            Monthly dependency and Actions updates
     ├── lefthook.yml                      Gate: format → lint → test, secret scan, commit message check
     ├── .gitignore                        Common ignores + the bootstrap-managed block

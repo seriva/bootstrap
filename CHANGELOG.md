@@ -19,7 +19,7 @@ Versioning: continuous (rolling `[Unreleased]`, calendar sections `[YYYY-MM]` wh
 - A single README that walks you from setup to your first reviewed PR, explains how the three skills fit together, and lists which tools are tested.
 
 ### Changed
-- CI now runs on every pull request, including the phase PRs the skills open, so they are never marked ready without checks.
+- CI now runs on every pull request (including phase PRs targeting `feat/<plan-slug>`) and on `main`/`master` pushes, and when a repository has no workflow that runs on a pull request, `/dev-loop` and `/execute-plan` treat `no checks reported` as `CI: none configured` instead of blocking the PR.
 - The starter quality gate fails until you configure it, so an unconfigured project cannot pass silently.
 - Agents keep terse "caveman" style for progress updates only. Docs, commit bodies, PR summaries, and changelog entries are written for people in plain language, and reviewers send them back when they aren't; plans stay dense because agents read them.
 - Finishing a plan now includes a pass that turns its changelog entries into a few readable release notes, starting from a one-line release note written in the plan, while purely internal phases skip changelog updates until a user-facing phase lands.

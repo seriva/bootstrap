@@ -38,7 +38,7 @@ Follow `AGENTS.md` **Audiences**, **Changelog**, and **Docs**. In addition:
 3. Update `README.md`/`docs/` when behaviour changed (in a multi-phase plan, in the phase that schedules docs updates, normally the last phase that changes behaviour).
 
 ### CI wait
-`gh pr checks "<branch>" --watch --fail-fast`. If `.github/workflows/` exists and no checks appear yet, retry ≈3× / 10 s while GitHub registers check runs. Treat CI as `none configured` only if no `.github/workflows/` exists (or retries still report none). Any failing check → `BLOCKED_BY_CI`.
+`gh pr checks "<branch>" --watch --fail-fast`. Note: `gh pr checks` exits non-zero (`no checks reported`) when no check runs exist yet or when no workflow triggers on this PR's base branch. If `.github/workflows/` exists and `no checks reported` is returned, retry ≈3× / 10 s while GitHub registers check runs. Treat CI as `none configured` (not a failure) when no `.github/workflows/` exists or retries still report `no checks reported`. Only an actual failing check run sets `BLOCKED_BY_CI`.
 
 ### Follow-ups
 Real bugs not caused by this diff (`### Out of Scope`) and unfixed behavioural `### Low` items (wrong output, crash, broken build, valid input rejected, invalid input accepted) must not be fixed here (**Scope**) and must not be lost in a PR body. Record them in `$TARGET_REPO/plans/follow-ups.md` (create with `# Follow-ups` if missing; pure style/wording nits stay in the PR body only):

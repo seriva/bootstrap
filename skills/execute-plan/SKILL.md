@@ -36,7 +36,7 @@ Invoking `/execute-plan` authorizes managing plan branches, running `/dev-loop` 
    - If `REVIEW_STATUS` is `BLOCKED_BY_DEFECTS`, `BLOCKED_BY_CI`, or `PENDING_REVIEW`: unconditionally halt (even in `--auto`), leave PR in **Draft**, and alert the user.
    - If `REVIEW_STATUS == PASSED` and `AUTO_MODE=false`: report phase PR URL and stop (re-running `/execute-plan` after merge resumes at the next phase).
 4. **Auto-Merge** (`REVIEW_STATUS == PASSED` and `AUTO_MODE=true`):
-   1. Re-verify CI per **CI wait** on `$PHASE_BRANCH`; on failure, `gh pr ready "$PHASE_BRANCH" --undo`, halt, and alert user.
+   1. Re-verify CI per **CI wait** on `$PHASE_BRANCH`; on `BLOCKED_BY_CI`, `gh pr ready "$PHASE_BRANCH" --undo`, halt, and alert user (`none configured` is not a failure).
    2. `gh pr merge "$PHASE_BRANCH" --merge --delete-branch && git checkout "$PLAN_BRANCH" && git pull`, then loop back to **Step 2**.
 
 ### Step 4: Full-Branch Final Audit & Merge Preparation
