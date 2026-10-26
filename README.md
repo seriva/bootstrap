@@ -61,7 +61,7 @@ Agents never commit on their own. Running `/dev-loop` or `/execute-plan` counts 
 
 ### `/design-plan` — plan before you build
 
-Before writing a plan, it probes the codebase to prove every problem it claims exists, so the plan isn't built on guesses. The plan lists what is in and out of scope (with reasons), states how "done" will be checked, and splits the work into phases small enough for one reviewed PR each. The plan is linked from `plans/roadmap.md`.
+Before writing a plan, it probes the codebase to prove every problem it claims exists, so the plan isn't built on guesses. The plan lists what is in and out of scope (with reasons), states how "done" will be checked, and splits the work into phases small enough for one reviewed PR each. The plan is linked from `plans/roadmap.md`. Commit the plan and roadmap before running `/execute-plan`, which won't start with uncommitted changes.
 
 `/design-plan follow-ups` turns the open bugs in `plans/follow-ups.md` into fix phases.
 

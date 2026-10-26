@@ -5,131 +5,102 @@ description: "End-to-end autonomous development loop: implementation, quality ga
 
 # Autonomous Development Loop (dev-loop)
 
-Autonomously executes a standalone task or a plan phase from implementation to a verified, self-reviewed Pull Request ready for human inspection.
-
-> [!NOTE]
-> Invoking `/dev-loop` grants authorization to discover target repos, create branches, stage/commit code, run tests, and manage GitHub PRs.
+Invoking `/dev-loop` authorizes discovering target repos, creating branches, staging/committing code, running tests, and managing GitHub PRs. `/design-plan` and `/execute-plan` reference **Shared Conventions** below by name.
 
 ## Shared Conventions
-`/design-plan` and `/execute-plan` reference these sections by name ("per `/dev-loop` **Target**").
 
 ### Target
-1. **`TARGET_REPO`**: in a git repo, `git rev-parse --show-toplevel`. In an umbrella workspace (e.g. `~/dev/`): resolve via prompt (`in <repo>: ...`), active editor tab, or immediate subdirectory with `.git` and `AGENTS.md`. Ask if ambiguous. All subsequent commands and file edits MUST run in `$TARGET_REPO`.
-2. **Project invariants**: read `$TARGET_REPO/AGENTS.md` (Part 2) for stack, boundaries, and the **Commands** section (test/lint/format/build and pre-commit gate). If Commands is missing, use `lefthook run pre-commit --all-files` when `lefthook.yml` exists; otherwise ask.
+1. **`TARGET_REPO`**: in a git repo, `git rev-parse --show-toplevel`. In an umbrella workspace (e.g. `~/dev/`): resolve via prompt (`in <repo>: ...`), active editor tab, or immediate subdirectory with `.git` and `AGENTS.md`. Ask if ambiguous. All commands and edits MUST run in `$TARGET_REPO`.
+2. **Project invariants**: read `$TARGET_REPO/AGENTS.md` (Part 2) for stack, boundaries, and **Commands** (test/lint/format/build and pre-commit gate; fallback: `lefthook run pre-commit --all-files` if `lefthook.yml` exists, else ask).
 
 ### Dispatch
-"Spawn subagent `<Role>`" = fresh-context agent (zero chat history) via the host's subagent tool. The invoking agent spawns every role itself; subagents never spawn subagents, so the same flat flow works on every host. Always wait for the result before continuing.
+"Spawn subagent `<Role>`" = fresh-context agent (zero chat history) via the host's subagent tool. The invoking agent spawns every role itself; subagents never spawn subagents. Always wait for the result. Prompts referencing this skill use `{{DEV_LOOP_SKILL}}` (substituted by `install.sh`).
 
 | Environment | Spawn call |
 |---|---|
 | Antigravity | `invoke_subagent` (`TypeName: "self"`, `Workspace: "inherit"`, `Model: "inherit"`) |
-| Claude Code | `Agent` tool (`subagent_type: "general-purpose"`, `description: "<Role>"`, omit `model` to inherit). Never `subagent_type: "fork"` (inherits context = not fresh). |
-| Any other host with a fresh-context subagent tool (e.g. Copilot, Codex) | Use that tool with the role name as its description and no inherited chat history. |
+| Claude Code | `Agent` tool (`subagent_type: "general-purpose"`, `description: "<Role>"`, omit `model` to inherit). Never `subagent_type: "fork"` (inherits context). |
+| Other subagent-capable host (Copilot, Codex) | Host's fresh-context subagent tool with `<Role>` as description and no inherited history. |
 | No subagent tool (e.g. Cursor) | Implementation and probes run inline; review halts per Step 3 (never self-review). |
 
-Prompts that tell a subagent to read this skill use its installed path `{{DEV_LOOP_SKILL}}` (substituted by `install.sh`).
-
 ### Probes
-Throwaway probes (repro scripts, scratch tests) go in `$TARGET_REPO/.probes/` or the host's scratch directory, never in source or test directories. Before writing the first probe, ensure the directory is excluded without touching tracked files: `grep -qx '.probes/' .git/info/exclude || echo '.probes/' >> .git/info/exclude` (local-only; never appears in `git status` or the diff). Delete probes before returning. A probe worth keeping becomes a real test in the task's `Test:` file.
+Throwaway probes go in `$TARGET_REPO/.probes/` or the host's scratch directory, never in source/test dirs. Before writing the first probe, exclude `.probes/` locally: `grep -qx '.probes/' .git/info/exclude || echo '.probes/' >> .git/info/exclude`. Delete probes before returning. A probe worth keeping becomes a real test in the task's `Test:` file.
 
 ### Safe commit
-Wherever a skill says **Safe commit** `"<message>"`:
 1. `git add -A`
-2. `git diff --cached --name-only` → every path must be in the current task's `Files:`, its test files, `$PLAN_FILE`, `plans/follow-ups.md`, or `CHANGELOG.md`/`README.md`/`docs/` (standalone tasks: files the task needed). Unexpected path (probe, scratch file, stray edit) → `git restore --staged <path>` and delete or fix it; if it belongs to the task, say so in the commit body.
-3. `git commit -m "<message>"`. Subject ≤72 chars including `<type>(<scope>):` and any `(Task N.M)` suffix; truncate the summary, never the scope or task reference.
+2. `git diff --cached --name-only` → every path must be in the current task's `Files:`, its test files, `$PLAN_FILE`, `plans/follow-ups.md`, or `CHANGELOG.md`/`README.md`/`docs/` (standalone: files the task needed). Unexpected path → `git restore --staged <path>` and delete/fix it (or explain in commit body if required).
+3. Run the pre-commit gate from `AGENTS.md` Commands on the staged diff (so `stage_fixed` and `gitleaks git --staged` apply), then `git commit -m "<message>"`. Subject ≤72 chars including `<type>(<scope>):` and any `(Task N.M)` suffix; truncate `<summary>`, never scope or task ID.
 
 ### People docs
-`CHANGELOG.md`, `README.md`, and `docs/` are for people (`AGENTS.md` **Audiences**, **Changelog**, **Docs**); `plans/` is for agents. When writing a changelog entry:
-1. Write it from the user's side first: what can they do now, or what stopped breaking? Start from the plan's **Release note:** header line when it has one; otherwise write it before rereading commit messages or the plan. Never paste a commit body or task list into it.
-2. Plan work keeps ONE entry per plan under `## [Unreleased]`: on each phase, rewrite that entry so it still reads as one or two sentences, instead of appending the new phase's details. Split it only when a phase adds a clearly separate user-facing feature, or a breaking change (its own `**Breaking:**` entry under `### Changed`).
-
-When behaviour changed, update the `README.md`/`docs/` page a user would read for it, in the same prose style; plan-only details stay in the plan.
+Follow `AGENTS.md` **Audiences**, **Changelog**, and **Docs**. In addition:
+1. Start the `CHANGELOG.md` entry from the plan's **Release note:** header line when present; otherwise write it from the user's perspective before rereading commits or the plan.
+2. Keep ONE `## [Unreleased]` entry per plan: once a phase changes user-facing behaviour (or on the final phase), write or rewrite that entry so it describes what works as of this phase in 1–2 sentences (purely internal foundational phases skip `CHANGELOG.md` until a user-facing phase lands). Split only for a separate user-facing feature or a `**Breaking:**` entry under `### Changed`.
+3. Update `README.md`/`docs/` when behaviour changed (in a multi-phase plan, in the phase that schedules docs updates, normally the last phase that changes behaviour).
 
 ### CI wait
-`gh pr checks "<branch>" --watch --fail-fast`. If `.github/workflows/` exists and no checks are reported yet, wait and retry (≈3× / 10 s): GitHub registers check runs a few seconds after push. Only when the repo has no `.github/workflows/` (or retries still report none) treat CI as `none configured`. Any failing check → `BLOCKED_BY_CI`.
+`gh pr checks "<branch>" --watch --fail-fast`. If `.github/workflows/` exists and no checks appear yet, retry ≈3× / 10 s while GitHub registers check runs. Treat CI as `none configured` only if no `.github/workflows/` exists (or retries still report none). Any failing check → `BLOCKED_BY_CI`.
 
 ### Follow-ups
-Reviews regularly find real bugs that this diff did not cause, or Low items the single fix turn leaves alone. They must not be fixed here (**Scope**), and they must not be lost in a PR body. They go into the **follow-up ledger** `$TARGET_REPO/plans/follow-ups.md` (create it with a `# Follow-ups` heading if missing). The ledger holds **open items only**: `/design-plan follow-ups` and `/execute-plan` delete an entry once it is scheduled, fixed, or deferred, and the plan becomes its record.
-- **What goes in**: every Pass 1 `### Out of Scope` item, plus unfixed `### Low` items that describe wrong behaviour (wrong output, crash, broken build, valid input rejected, invalid input accepted without an error). Record these even if they may be deferred later; `/design-plan follow-ups` decides what gets scheduled. Pure style or wording nits stay in the PR body only.
-- **Entry format** (one line; the repro is mandatory so the item can be re-probed later):
-  ```markdown
-  - **<Area>:** <defect in one sentence>. Repro: `<snippet or command>` → got `<actual>`, want `<expected>`. (<PR #N or branch>, <plan-slug Phase N | standalone>, <Low | Out of Scope>)
-  ```
-- **Dedupe**: if an entry already describes the same defect, append the new PR reference to it instead of adding a line.
+Real bugs not caused by this diff (`### Out of Scope`) and unfixed behavioural `### Low` items (wrong output, crash, broken build, valid input rejected, invalid input accepted) must not be fixed here (**Scope**) and must not be lost in a PR body. Record them in `$TARGET_REPO/plans/follow-ups.md` (create with `# Follow-ups` if missing; pure style/wording nits stay in the PR body only):
+```markdown
+- **<Area>:** <defect in one sentence>. Repro: `<snippet or command>` → got `<actual>`, want `<expected>`. (<PR #N or branch>, <plan-slug Phase N | standalone>, <Low | Out of Scope>)
+```
+**Dedupe**: if an entry already covers the same defect, append `(<PR #N or branch>, <plan-slug Phase N | standalone>)` to it instead of adding a line so `/execute-plan` still matches the plan slug during triage.
 
 ---
 
-## Invocation Modes
-- **Full (default)**: Steps 1–4.
-- **Implement-only**: Caller (e.g. `/execute-plan`) asks for Steps 1–2 only. Stop after the draft PR and return PR URL and `WORKING_BRANCH`; the caller runs Steps 3–4.
-
 ## Operational Workflow
+
+- **Invocation Modes**: **Full** (default, Steps 1–4) or **Implement-only** (Steps 1–2 only; stop after opening the draft PR and return PR URL + `WORKING_BRANCH`).
 
 ### Step 1: Target & Plan Check
 1. Resolve `$TARGET_REPO` and read `AGENTS.md` per **Target**.
-2. **Plan-First Requirement**: If the task is non-trivial, standalone, and no plan exists in `plans/v*/` or top-level `plans/` (ignoring `plans/archive/`), run `/design-plan`, then STOP: present the plan and suggest `/execute-plan`. Never implement a multi-phase plan in a single dev-loop.
+2. **Plan-First**: If the task is non-trivial, standalone, and has no plan in `plans/v*/` or top-level `plans/` (ignoring `plans/archive/`), run `/design-plan`, then STOP: present the plan and remind the user to commit it (with `plans/roadmap.md`) before running `/execute-plan`.
 
 ### Step 2: Branch & TDD Implementation
 1. **Branch Resolution**:
-   - Ensure clean working tree (`git status --porcelain`). If it is not clean, stop and report the modified/untracked paths to the caller/user; never auto-stash, discard, or commit them.
-   - `BASE_BRANCH`: User/caller-specified base (e.g. `feat/<plan-slug>` when called from `/execute-plan`, or explicit branch like `1.7.0`), otherwise currently checked out branch. Fetch upstream.
-   - `WORKING_BRANCH`:
-     - **Plan Phase**: `feat/<plan-slug>-phase-<N>` (`git checkout -b feat/<plan-slug>-phase-<N> $BASE_BRANCH`, or `git checkout` if resuming).
-     - **Standalone Task**: If already on feature/fix branch, stay on it; otherwise `git checkout -b <type>/<task-slug> $BASE_BRANCH` (e.g. `feat/<task-slug>` or `fix/<task-slug>`).
-2. **Implementation Protocol**:
-   - **Case A: Plan Phase (`Phase N from <PLAN_FILE>`)**:
-     - Loop continuously through EVERY unchecked task (`- [ ] Task N.M`) in Phase N without pausing:
-       1. Write failing unit/integration tests first (TDD).
-       2. Implement changes strictly within boundaries in `AGENTS.md`.
-       3. Run the pre-commit gate from `AGENTS.md` Commands. All tests must pass.
-       4. Update `$PLAN_FILE` (`- [x] Task N.M`). On the phase's last task, also write or rewrite the plan's `CHANGELOG.md` entry and touched user docs per **People docs**.
-       5. **Safe commit** `"feat(<plan-slug>): <summary> (Task N.M)"` (≤72 chars total; shorten `<summary>` if needed).
-   - **Case B: Standalone Task (`$TASK`)**:
-     - Optional: spawn subagent `Probe Investigator` to isolate elusive root causes with minimal reproducing tests (per **Probes**).
-     - Write failing tests first (TDD), implement within `AGENTS.md` boundaries, add ONE `CHANGELOG.md` entry (and user docs if behaviour changed) per **People docs**, and verify with the pre-commit gate from `AGENTS.md` Commands.
-     - **Safe commit** `"<type>(<scope>): <summary>"` (≤72 chars total).
+   - Require clean working tree (`git status --porcelain`); if dirty, stop and report the paths—never auto-stash, discard, or commit them.
+   - `BASE_BRANCH`: caller/user-specified base (e.g. `feat/<plan-slug>`), else current branch. Fetch upstream.
+   - `WORKING_BRANCH`: `feat/<plan-slug>-phase-<N>` for plan phases (`git checkout -b ... $BASE_BRANCH`, or `git checkout` if resuming); for standalone tasks, stay on an existing `feat/` or `fix/` branch or `git checkout -b <type>/<task-slug> $BASE_BRANCH`.
+2. **Implementation**:
+   - **Case A — Plan Phase (`Phase N from <PLAN_FILE>`)**: Loop through every unchecked `- [ ] Task N.M` in Phase N without pausing:
+     1. Write failing tests first (TDD), then implement within `AGENTS.md` boundaries.
+     2. Run test and lint commands from `AGENTS.md` Commands until green.
+     3. Check off `- [x] Task N.M` in `$PLAN_FILE`. On the phase's last task, if this phase changes user-facing behaviour (or is the final phase), update `CHANGELOG.md` (and user docs when scheduled in this phase) per **People docs**.
+     4. **Safe commit** `"feat(<plan-slug>): <summary> (Task N.M)"`.
+   - **Case B — Standalone Task (`$TASK`)**:
+     - Optional: spawn subagent `Probe Investigator` to isolate root causes per **Probes**.
+     - Write failing tests first (TDD), implement within `AGENTS.md` boundaries, update `CHANGELOG.md` (and user docs if behaviour changed) per **People docs**, verify test/lint green, and **Safe commit** `"<type>(<scope>): <summary>"`.
 3. **Draft PR**:
-   - Push: `git push -u origin HEAD`.
-   - If a PR already exists for `$WORKING_BRANCH` (`gh pr view "$WORKING_BRANCH"`), reuse it. Otherwise open a Draft PR targeted at `$BASE_BRANCH` (`PR_TITLE`: `feat(<plan-slug>): phase <N> - <phase-name>` for plan phases, or `<type>(<scope>): <summary>` for standalone tasks):
-     ```bash
-     gh pr create --draft --base "$BASE_BRANCH" --title "$PR_TITLE" --body "$PR_BODY"
-     ```
-     *(PR Body must include: Summary, Completed Tasks/Quality Gates checklist, and `## Review Status: *Automated AI review & fix cycle in progress...*`)*.
-   - **Implement-only mode**: STOP here. Return PR URL and `WORKING_BRANCH`.
+   - `git push -u origin HEAD`. Reuse existing PR for `$WORKING_BRANCH` (`gh pr view "$WORKING_BRANCH"`) or create a draft PR (`PR_TITLE`: `feat(<plan-slug>): phase <N> - <phase-name>` for phases, `<type>(<scope>): <summary>` for standalone; `PR_BODY`: Summary, Completed Tasks/Quality Gates checklist, and `## Review Status: *Automated AI review & fix cycle in progress...*`):
+     `gh pr create --draft --base "$BASE_BRANCH" --title "$PR_TITLE" --body "$PR_BODY"`
+   - **Implement-only mode**: STOP here and return PR URL + `WORKING_BRANCH`.
 
 ### Step 3: Deterministic 2-Pass AI Code Review
-Run an isolated review cycle against `$BASE_BRANCH`. Invariants: max 2 review passes, max 1 fix turn. Low-severity nits NEVER block approval or trigger fixes. Defects this diff did not cause are reported under `### Out of Scope`, never fixed in this loop, and recorded per **Follow-ups** in Step 4.
+Review `$WORKING_BRANCH` against `$BASE_BRANCH` (max 2 review passes, max 1 fix turn; Low nits never block or trigger fixes; pre-existing/unrelated defects go under `### Out of Scope`).
 
 > [!IMPORTANT]
-> **NO SELF-REVIEW:**
-> - You MUST NOT review your own diff in the current agent context or report `PASSED` based on local tests alone.
-> - **Every step in the table below MUST be executed by spawning a NEW subagent** per **Dispatch**.
-> - **No subagent tool available** (e.g. you are yourself a Claude Code subagent, or single-session host): leave PR in **Draft**, tell the user fresh-context review is unavailable, and return PR URL with `REVIEW_STATUS=PENDING_REVIEW`. Never self-review.
+> **NO SELF-REVIEW:** Never review your own diff in the current context. Every row below MUST spawn a NEW subagent per **Dispatch**. If no subagent tool is available, leave the PR in **Draft**, inform the user, and return PR URL with `REVIEW_STATUS=PENDING_REVIEW`.
 
-| Pass | Spawn Subagent | Context | Objective | Outcome & Transition |
-|---|---|---|---|---|
-| **Pass 1** | `Role: "Code Reviewer (Pass 1)"` | Zero prior history; `git diff <BASE>...HEAD` | Read `AGENTS.md` (and `$PLAN_FILE` if applicable). Inspect full diff and run active verification probes (per **Probes**) for crashes, logic bugs, boundary leaks, and regressions; check changed people docs per **People docs** (unreadable or wrong = Medium). Output structured report with `### High`, `### Medium`, `### Low`, `### Out of Scope` (pre-existing defects not caused by this diff, each with a repro), and `### Verification Probes Run` (each probe: command + observed result). | • **Zero High/Medium**: Reviewer replies `LGTM` $\rightarrow$ `REVIEW_STATUS=PASSED` (Proceed to Step 4).<br>• **High/Medium found**: Proceed to Fix Turn. |
-| **Fix Turn** (Max 1) | `Role: "Defect Fixer"` | Pass 1 findings | Fix ONLY High/Medium items with minimal footprint; never Low or Out of Scope items. Re-run tests/lint green. **Safe commit** `"fix(<scope>): address review feedback"`. Never amend, rebase, or force-push. Push. | Proceed to Pass 2. |
-| **Pass 2** (Terminal) | `Role: "Code Reviewer (Pass 2)"` (NEW subagent) | Zero implementation history; `git diff <BASE>...HEAD` | Verify if Pass 1 High/Medium defects are resolved without new regressions. Disregard Low nits. Output `### Verification Probes Run`. | • **Resolved**: Reviewer replies `LGTM` $\rightarrow$ `REVIEW_STATUS=PASSED`.<br>• **Unresolved**: `REVIEW_STATUS=BLOCKED_BY_DEFECTS`.<br>**TERMINAL STOP**: No 3rd review, no 2nd fix. |
+| Pass | Spawn Subagent | Context | Outcome & Transition |
+|---|---|---|---|
+| **Pass 1** | `Role: "Code Reviewer (Pass 1)"` | Zero history; `git diff <BASE>...HEAD` | • **Zero High/Medium** (`LGTM`) → `REVIEW_STATUS=PASSED` (Step 4).<br>• **High/Medium found** → Fix Turn. |
+| **Fix Turn** (Max 1) | `Role: "Defect Fixer"` | Pass 1 High/Medium findings | Commits + pushes fix → Pass 2. |
+| **Pass 2** (Terminal) | `Role: "Code Reviewer (Pass 2)"` (NEW) | Zero history; `git diff <BASE>...HEAD` | • **All resolved** (`LGTM`) → `REVIEW_STATUS=PASSED`.<br>• **Unresolved** → `REVIEW_STATUS=BLOCKED_BY_DEFECTS` (terminal stop). |
 
-**Subagent prompts** (use verbatim, filling the placeholders):
+**Subagent prompts** (use verbatim, filling placeholders):
 
 - `Code Reviewer (Pass 1)`:
-  > First read the dev-loop skill file at `{{DEV_LOOP_SKILL}}` in full, then `AGENTS.md` in `$TARGET_REPO` (and `$PLAN_FILE` if given: `<path or none>`). Review `git diff <BASE>...HEAD` on branch `$WORKING_BRANCH` in `$TARGET_REPO` as a fresh reviewer: look for crashes, logic bugs, boundary leaks, scope violations, and regressions. Also read every changed line in `CHANGELOG.md`, `README.md`, and `docs/` against the `AGENTS.md` **Audiences**, **Changelog**, and **Docs** rules and the skill's **People docs** section: an entry or doc a user cannot follow (task/phase/follow-up IDs, file paths, internal identifiers, pasted symbol lists, appended per-task detail, missing **Breaking:** note) or that is factually wrong is a `### Medium` finding, quoted with a suggested rewrite. Run active verification probes per the skill's **Probes** rule (under `.probes/`, deleted afterwards). Do not modify tracked files or commit. A defect that also exists on `<BASE>` (check with a probe against the base, e.g. in `git worktree add --detach .probes/base <BASE>`, which works even when `<BASE>` is checked out elsewhere, removed afterwards with `git worktree remove --force .probes/base`) or lies outside the diff's scope goes under `### Out of Scope`, not High/Medium/Low. Reply with exactly these sections: `### High`, `### Medium`, `### Low`, `### Out of Scope`, `### Verification Probes Run` (each probe: command + observed result). Every Low and Out of Scope item that describes wrong behaviour gives a one-line repro: snippet or command, actual result, expected result. If High and Medium are both empty, end your reply with the single token `LGTM`.
+  > First read the dev-loop skill file at `{{DEV_LOOP_SKILL}}` in full, then `AGENTS.md` in `$TARGET_REPO` (and `$PLAN_FILE` if given: `<path or none>`). Review `git diff <BASE>...HEAD` on branch `$WORKING_BRANCH` in `$TARGET_REPO` as a fresh reviewer: look for crashes, logic bugs, boundary leaks, scope violations, and regressions. Check every changed line in `CHANGELOG.md`, `README.md`, and `docs/` against `AGENTS.md` (**Audiences**, **Changelog**, **Docs**) and the skill's **People docs** section: any violation or factually wrong claim for what works as of this diff is a `### Medium` finding, quoted with a suggested rewrite. Run active verification probes per **Probes** (under `.probes/`, deleted afterwards). Do not modify tracked files or commit. A defect that also exists on `<BASE>` (verify with a probe in `git worktree add --detach .probes/base <BASE>`, then `git worktree remove --force .probes/base`) or lies outside the diff's scope goes under `### Out of Scope`, not High/Medium/Low. Reply with: `### High`, `### Medium`, `### Low`, `### Out of Scope`, `### Verification Probes Run` (command + observed result). Every behavioural Low and Out of Scope item must include a one-line repro (snippet/command, actual, expected). If High and Medium are empty, end with the single token `LGTM`.
 
 - `Defect Fixer`:
-  > First read the dev-loop skill file at `{{DEV_LOOP_SKILL}}` in full, then `AGENTS.md` in `$TARGET_REPO`. On branch `$WORKING_BRANCH` in `$TARGET_REPO`, fix ONLY the following High/Medium findings with the smallest change that resolves them; ignore Low and Out of Scope items: `<paste Pass 1 High/Medium findings>`. Re-run the pre-commit gate from `AGENTS.md` Commands until green, then **Safe commit** `"fix(<scope>): address review feedback"` exactly as the skill defines (check staged paths, no stray files). Never amend, rebase, or force-push. `git push`, then reply with the commit hash and a one-line note per finding.
+  > First read the dev-loop skill file at `{{DEV_LOOP_SKILL}}` in full, then `AGENTS.md` in `$TARGET_REPO`. On branch `$WORKING_BRANCH` in `$TARGET_REPO`, fix ONLY these High/Medium findings with the minimal change needed; ignore Low and Out of Scope items: `<paste Pass 1 High/Medium findings>`. Verify test/lint green, then **Safe commit** `"fix(<scope>): address review feedback"`. Never amend, rebase, or force-push. `git push`, then reply with the commit hash and a one-line note per finding.
 
 - `Code Reviewer (Pass 2)`:
-  > First read the dev-loop skill file at `{{DEV_LOOP_SKILL}}` in full, then `AGENTS.md` in `$TARGET_REPO`. Review `git diff <BASE>...HEAD` on branch `$WORKING_BRANCH` in `$TARGET_REPO` with no knowledge of how it was implemented. Verify that each of these Pass 1 findings is resolved without introducing regressions: `<paste Pass 1 High/Medium findings>`. Run verification probes per the skill's **Probes** rule. Disregard Low nits. Reply with `### Resolved`, `### Unresolved`, and `### Verification Probes Run` (command + observed result). If `### Unresolved` is empty, end your reply with the single token `LGTM`.
+  > First read the dev-loop skill file at `{{DEV_LOOP_SKILL}}` in full, then `AGENTS.md` in `$TARGET_REPO`. Review `git diff <BASE>...HEAD` on branch `$WORKING_BRANCH` in `$TARGET_REPO` with no knowledge of how it was implemented. Verify each Pass 1 finding is resolved without regressions: `<paste Pass 1 High/Medium findings>`. Run verification probes per **Probes**. Disregard Low nits. Reply with `### Resolved`, `### Unresolved`, and `### Verification Probes Run` (command + observed result). If `### Unresolved` is empty, end with the single token `LGTM`.
 
 ### Step 4: Finalize PR & Safety Gate
-1. **Record Follow-ups** (skip when `REVIEW_STATUS == PENDING_REVIEW`): append the Pass 1 `### Out of Scope` items and the unfixed behavioural `### Low` items to `plans/follow-ups.md` per **Follow-ups** (dedupe first). If anything was added: **Safe commit** `"docs(<scope>): record review follow-ups"` on `$WORKING_BRANCH` and push (ledger only, post-review; no further review pass).
-2. **Update PR Body**: `gh pr edit "$WORKING_BRANCH" --body "$UPDATED_BODY"`, replacing `*Automated AI review...*` under `## Review Status` with:
-   - **Gate**: `PASSED` or `BLOCKED_BY_DEFECTS` (and which passes ran)
-   - **Findings**: itemized `High` / `Medium` / `Low` / `Out of Scope` with the fix commit hash (or `None required`); `Follow-ups: <N> recorded in plans/follow-ups.md` (or `None`)
-   - The reviewers' `### Verification Probes Run` output, inside a collapsed `<details>` block
-3. **CI Gate** (only if `REVIEW_STATUS == PASSED`): per **CI wait** on `$WORKING_BRANCH`. On `BLOCKED_BY_CI`, add the failing check names to the PR body; on `none configured`, note `CI: none configured` there.
-4. **Safety Gate Evaluation**:
-   - **`REVIEW_STATUS == PASSED`**: Convert PR to ready: `gh pr ready "$WORKING_BRANCH"`. Return PR URL and `REVIEW_STATUS` to caller/user.
-   - **`REVIEW_STATUS == BLOCKED_BY_DEFECTS` or `BLOCKED_BY_CI`**: Leave PR in **Draft** mode. Alert user with unresolved findings or failing checks.
+1. **Record Follow-ups** (skip if `REVIEW_STATUS == PENDING_REVIEW`): append Pass 1 `### Out of Scope` and unfixed behavioural `### Low` items to `plans/follow-ups.md` per **Follow-ups** (dedupe first). If modified, **Safe commit** `"docs(<scope>): record review follow-ups"` on `$WORKING_BRANCH` and push.
+2. **Update PR Body**: `gh pr edit "$WORKING_BRANCH" --body "$UPDATED_BODY"`, replacing `*Automated AI review...*` under `## Review Status` with: **Gate** (`PASSED` or `BLOCKED_BY_DEFECTS` + passes run), **Findings** (`High`/`Medium`/`Low`/`Out of Scope`, fix commit hash or `None required`, and `Follow-ups: <N> recorded in plans/follow-ups.md` or `None`), and a collapsed `<details>` block containing `### Verification Probes Run`.
+3. **CI Gate** (only if `REVIEW_STATUS == PASSED`): run **CI wait** on `$WORKING_BRANCH`. On `BLOCKED_BY_CI`, add failing check names to the PR body; on `none configured`, note `CI: none configured`.
+4. **Safety Gate**: If `REVIEW_STATUS == PASSED`, run `gh pr ready "$WORKING_BRANCH"` and return PR URL + `REVIEW_STATUS`. If `BLOCKED_BY_DEFECTS` or `BLOCKED_BY_CI`, leave PR in **Draft** and alert the user.

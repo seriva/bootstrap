@@ -6,8 +6,8 @@
 
 ## 1. Context & Rules
 - **Caveman Speak:** Progress updates and tool-call narration use "caveman" style (extreme density, zero fluff, drop grammar, `->` for correlations). Explanations and answers to the user use normal readable prose.
-- **Audiences:** Every file has one reader. *People* read `README.md`, `docs/`, `CHANGELOG.md`, PR descriptions, and commit bodies: plain prose, no task/phase/follow-up IDs, no references to plans. *Agents* read `plans/` (plans, `roadmap.md`, `follow-ups.md`): dense, symbol-heavy, ID-heavy text is fine there.
-- **Skills Override:** While running a skill (`/design-plan`, `/execute-plan`, `/dev-loop`), its rules override **Blockers**, **Quality**, and **Branches** here.
+- **Audiences:** Every file has one reader. *People* read `README.md`, `docs/`, `CHANGELOG.md`, commit bodies, and PR summaries: plain prose, no task/phase/follow-up IDs, no references to plans. *Agents* read `plans/` (plans, `roadmap.md`, `follow-ups.md`): dense, symbol-heavy, ID-heavy text is fine there.
+- **Skills Override:** While running a skill (`/design-plan`, `/execute-plan`, `/dev-loop`), its rules override **Audiences**, **Blockers**, **Quality**, **Branches**, and **Commits & PR Titles** here.
 - **Plan-first:** Non-trivial features (multi-component, arch-altering, risky) require a design plan created with `/design-plan` and tracked in `plans/roadmap.md`. Active plans live under `plans/` (or milestone subfolders like `plans/vX.Y.Z/`); on completion `/execute-plan` moves continuous plans to `plans/archive/`, while versioned plans stay in their milestone folder. Track execution by checking off tasks (`- [x]`) as they land.
 - **TDD:** Write failing tests first for non-trivial logic (if applicable).
 - **Quality:** Run format/lint before every commit. Before opening a PR, update `CHANGELOG.md` & `README.md` when user-facing behavior changed.
@@ -41,15 +41,15 @@ Canonical headquarters for agentic development standards, project scaffolding (`
 ## Tech Stack
 
 - **Language / Runtime**: Bash (`set -euo pipefail`), Python 3 (embedded in `sync.sh`), Markdown (`SKILL.md`, templates)
-- **Verification / Quality Gates**: `bash -n install.sh sync.sh init.sh`, `./sync.sh --check`, `./install.sh`
+- **Verification / Quality Gates**: `bash -n install.sh sync.sh init.sh`, `./sync.sh --check .`, `./install.sh`
 
 ## Commands
 
-- **Test**: `./sync.sh --check`
+- **Test**: `./sync.sh --check .`
 - **Lint**: `bash -n install.sh sync.sh init.sh`
 - **Format**: none
-- **Build**: none (deploy skills with `./install.sh`)
-- **Pre-commit gate**: `bash -n install.sh sync.sh init.sh && ./sync.sh --check`
+- **Build**: none (deploy skills with `./install.sh`, sync sibling repos with `./sync.sh`)
+- **Pre-commit gate**: `bash -n install.sh sync.sh init.sh && ./sync.sh --check .`
 
 ## Architecture
 
