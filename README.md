@@ -48,6 +48,8 @@ flowchart LR
     Plan --> EP["/execute-plan<br/>runs it phase by phase"]
     EP -->|"one phase at a time"| DL["/dev-loop<br/>test → code → review → PR"]
     DL -->|"phase PR merged"| EP
+    DL -.->|"logs out-of-scope bugs"| FU["plans/follow-ups.md"]
+    FU -.->|"/design-plan follow-ups"| DP
     EP --> Final["Final PR into main"]
 ```
 
