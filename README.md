@@ -94,10 +94,18 @@ By default it pauses after each phase for you to merge. With `--auto` it merges 
 
 Bugs the reviewer spots outside the change are logged in `plans/follow-ups.md` instead of being fixed on the side.
 
+`/dev-loop` and `/execute-plan` can also have one AI tool write the code and another review it, which can catch blind spots a single model shares with itself. Install and sign in to the `claude`, `agy`, or `codex` CLI, then pass `--pairing` to keep your current tool writing and have another installed CLI review, or choose with `--implementer=<provider>` and `--reviewer=<provider>` (`--implementer` alone picks another installed CLI to review):
+
 ```text
 /dev-loop Fix the race condition in session cleanup
+/dev-loop --pairing Fix the race condition in session cleanup
+/dev-loop --implementer=claude Fix the race condition in session cleanup
+/dev-loop --implementer=claude --reviewer=agy Fix the race condition in session cleanup
 /dev-loop in gofront: Add a benchmark for AST token parsing
 ```
+
+> [!WARNING]
+> When pairing, the other CLI runs without permission prompts (Codex also outside its sandbox) and can run any command your user account can. For isolation, run the workflow in a container or VM.
 
 Each skill's full, step-by-step rules live in its `SKILL.md` under [`skills/`](skills/).
 
@@ -156,7 +164,7 @@ To ignore a new tool's session folder everywhere, add it to `scaffold/.gitignore
 | Cursor (`cursor`) | Installed, untested | `~/.cursor/rules/*.mdc` |
 | GitHub Copilot / VS Code (`code`) | Installed, untested | User prompt files (`.prompt.md`) |
 
-The review steps depend on the tool being able to start a fresh-context subagent. If it can't, implementation still runs but review halts: the PR stays a draft marked `REVIEW_STATUS=PENDING_REVIEW` rather than letting the agent review its own work.
+Review needs a fresh-context reviewer: the current tool's subagents, or the `claude`, `agy`, or `codex` CLI on your `PATH`. Tools without subagents (such as Cursor) implement and fix themselves and hand reviews to one of those CLIs. With neither, implementation still runs but review halts: the PR stays a draft marked `REVIEW_STATUS=PENDING_REVIEW` rather than letting the agent review its own work.
 
 ## Repository Layout
 
