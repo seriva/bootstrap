@@ -14,14 +14,31 @@ Invoking `/dev-loop` authorizes discovering target repos, creating branches, sta
 2. **Project invariants**: read `$TARGET_REPO/AGENTS.md` (Part 2) for stack, boundaries, and **Commands** (test/lint/format/build and pre-commit gate; fallback: `lefthook run pre-commit --all-files` if `lefthook.yml` exists, else ask).
 
 ### Dispatch
-"Spawn subagent `<Role>`" = fresh-context agent (zero chat history) via the host's subagent tool. The invoking agent spawns every role itself; subagents never spawn subagents. Always wait for the result. Prompts referencing this skill use `{{DEV_LOOP_SKILL}}` (substituted by `install.sh`).
+"Spawn subagent `<Role>`" = fresh-context agent (zero chat history), routed below. The invoking agent orchestrates every role; subagents never spawn subagents. Always wait for the result. Prompts referencing this skill use `{{DEV_LOOP_SKILL}}` (substituted by `install.sh`).
 
-| Environment | Spawn call |
-|---|---|
-| Antigravity | `invoke_subagent` (`TypeName: "self"`, `Workspace: "inherit"`, `Model: "inherit"`) |
-| Claude Code | `Agent` tool (`subagent_type: "general-purpose"`, `description: "<Role>"`, omit `model` to inherit). Never `subagent_type: "fork"` (inherits context). |
-| Other subagent-capable host (Copilot, Codex) | Host's fresh-context subagent tool with `<Role>` as description and no inherited history. |
-| No subagent tool (e.g. Cursor) | Implementation and probes run inline; review halts per Step 3 (never self-review). |
+#### Providers
+Providers are `claude`, `agy`, `codex`, or `host` (= `HOST_PROVIDER`). A reviewer from another provider can catch blind spots the implementer's model shares with itself.
+- **`HOST_PROVIDER`**: the tool you run in, from your system prompt and tools: `agy` (Antigravity), `claude` (Claude Code), `codex` (Codex), else `host` (e.g. Cursor, Copilot). Ask if unsure.
+- **`IMPLEMENTER`** (Step 2.2, `Defect Fixer`): `--implementer=<provider>`, default `HOST_PROVIDER`.
+- **`REVIEWER`** (review passes): `--reviewer=<provider>` if given. Else, if `--pairing` / `--cross-provider` or `--implementer` was passed, or the host has no subagent tool: the first of `claude`, `agy`, `codex` that differs from `IMPLEMENTER` and is reachable (`HOST_PROVIDER` with a subagent tool, or `command -v <binary>` succeeds); if none, warn that pairing is unavailable and use `HOST_PROVIDER`. Else `HOST_PROVIDER`. E.g. `--pairing` in Antigravity → `agy` implements, `claude` reviews; in Claude Code → `claude` implements, `agy` reviews; `--implementer=claude` → `agy` reviews.
+- Implement-only mode skips `REVIEWER` resolution.
+
+#### Routing
+A role whose provider differs from `HOST_PROVIDER` runs via that provider's headless CLI. Otherwise: Step 2.2 runs inline (never a nested subagent); `Defect Fixer` uses the native subagent tool, else inline (Pass 2 still reviews independently); reviews use the native subagent tool and never run inline (no tool → `PENDING_REVIEW` per Step 3).
+
+| Provider | Native subagent tool | Headless CLI (`$PROMPT` per rule 2) |
+|---|---|---|
+| `agy` | `invoke_subagent` (`TypeName: "self"`, `Workspace: "inherit"`, `Model: "inherit"`) | `agy --dangerously-skip-permissions -p "$(cat "$PROMPT")"` |
+| `claude` | `Agent` (`subagent_type: "general-purpose"`, `description: "<Role>"`, omit `model` to inherit; never `fork`) | `claude --dangerously-skip-permissions -p "$(cat "$PROMPT")"` |
+| `codex` | Host subagent tool (`<Role>` description, fresh context) | `codex exec --dangerously-bypass-approvals-and-sandbox "$(cat "$PROMPT")"` |
+| `host` (Copilot, Cursor) | Host fresh-context subagent tool, if any | none |
+
+#### CLI Rules
+1. **Binary**: before a CLI run, check `command -v <binary>`. Missing: halt with `Error: Provider CLI '<binary>' not found on PATH` if the provider was given explicitly; else warn and fall back to `HOST_PROVIDER`.
+2. **Prompt**: `DISPATCH_DIR="$(git rev-parse --git-dir)/dev-loop"` (untracked, survives **Probes** cleanup); `mkdir -p "$DISPATCH_DIR"`. Write the filled prompt to `PROMPT="$DISPATCH_DIR/<role-slug>.md"` with the host's file-write tool (not `echo`/heredoc) and pass `"$(cat "$PROMPT")"`: substituted output is not re-expanded, so backticks, quotes, and `$` arrive literally.
+3. **Background**: runs can outlast host command timeouts (Claude Code: 10 min). In `$TARGET_REPO` on `$WORKING_BRANCH`, with `LOG="$DISPATCH_DIR/<role-slug>.log"`, run `( <cli>; echo "DISPATCH_EXIT=$?" ) > "$LOG" 2>&1` via the host's background facility (e.g. `run_in_background`), else detached: `export PROMPT; nohup sh -c '<cli>; echo "DISPATCH_EXIT=$?"' > "$LOG" 2>&1 &`. Wait for `DISPATCH_EXIT=` (task notification or periodic `tail -n 1 "$LOG"`) without starting another role or touching the tree. The reply is in `$LOG`.
+4. **Verify**: after exit, HEAD must still be `$WORKING_BRANCH` and `git status --porcelain` clean. Implementer and `Defect Fixer`: new commits in `git log "$BASE_BRANCH"..HEAD`, then rerun the `AGENTS.md` test and lint commands yourself. Reviews: expected reply sections present. On mismatch: implementation → stop and report; review → re-dispatch once, then `PENDING_REVIEW`. Delete `$DISPATCH_DIR` before returning.
+5. **Permissions**: these commands skip permission prompts (Codex also its sandbox), so the prompt contract is the only guard. Never widen access further; for isolation, run inside a container or VM.
 
 ### Probes
 Throwaway probes go in `$TARGET_REPO/.probes/` or the host's scratch directory, never in source/test dirs. Before writing the first probe, exclude `.probes/` locally: `grep -qx '.probes/' .git/info/exclude || echo '.probes/' >> .git/info/exclude`. Delete probes before returning. A probe worth keeping becomes a real test in the task's `Test:` file.
@@ -51,7 +68,10 @@ Real bugs not caused by this diff (`### Out of Scope`) and unfixed behavioural `
 
 ## Operational Workflow
 
-- **Invocation Modes**: **Full** (default, Steps 1–4) or **Implement-only** (Steps 1–2 only; stop after opening the draft PR and return PR URL + `WORKING_BRANCH`).
+- **Invocation Modes**:
+  - **Full** (default, Steps 1–4): complete loop through implementation, review passes, and PR readiness.
+  - **Implement-only** (Steps 1–2 only): stop after opening the draft PR and return PR URL + `WORKING_BRANCH`.
+- **Role Flags**: resolve `IMPLEMENTER` and `REVIEWER` per **Dispatch**, e.g. `/dev-loop --pairing <task>` or `/dev-loop --implementer=claude --reviewer=agy <task>`.
 
 ### Step 1: Target & Plan Check
 1. Resolve `$TARGET_REPO` and read `AGENTS.md` per **Target**.
@@ -63,13 +83,15 @@ Real bugs not caused by this diff (`### Out of Scope`) and unfixed behavioural `
    - `BASE_BRANCH`: caller/user-specified base (e.g. `feat/<plan-slug>`), else current branch. Fetch upstream.
    - `WORKING_BRANCH`: `feat/<plan-slug>-phase-<N>` for plan phases (`git checkout -b ... $BASE_BRANCH`, or `git checkout` if resuming); for standalone tasks, stay on an existing `feat/` or `fix/` branch or `git checkout -b <type>/<task-slug> $BASE_BRANCH`.
 2. **Implementation**:
+   - `IMPLEMENTER == HOST_PROVIDER`: run Case A or B below inline. Otherwise run `IMPLEMENTER`'s headless CLI per **Dispatch** with this verbatim prompt (placeholders filled), verify per **CLI Rules** 4, then go to Step 2.3:
+     > First read the dev-loop skill file at `{{DEV_LOOP_SKILL}}` in full, then `AGENTS.md` in `$TARGET_REPO` (and `$PLAN_FILE` if given: `<path or none>`). Invoke `/dev-loop` Step 2.2 on branch `$WORKING_BRANCH` in `$TARGET_REPO` for `<Phase N ($PHASE_NAME) from $PLAN_FILE | standalone task: $TASK>`: execute Case A (plan phase) or Case B (standalone task) in full, including TDD, `AGENTS.md` quality gates, **People docs**, and **Safe commit**. Do NOT run `git push` or create/edit a GitHub PR (the orchestrator handles Step 2.3). Reply with the commit hash(es) and a one-line summary per commit.
    - **Case A — Plan Phase (`Phase N from <PLAN_FILE>`)**: Loop through every unchecked `- [ ] Task N.M` in Phase N without pausing:
      1. Write failing tests first (TDD), then implement within `AGENTS.md` boundaries.
      2. Run test and lint commands from `AGENTS.md` Commands until green.
      3. Check off `- [x] Task N.M` in `$PLAN_FILE`. On the phase's last task, if this phase changes user-facing behaviour (or is the final phase), update `CHANGELOG.md` (and user docs when scheduled in this phase) per **People docs**.
      4. **Safe commit** `"feat(<plan-slug>): <summary> (Task N.M)"`.
    - **Case B — Standalone Task (`$TASK`)**:
-     - Optional: spawn subagent `Probe Investigator` to isolate root causes per **Probes**.
+     - Optional: if `IMPLEMENTER == HOST_PROVIDER` and the host has a subagent tool, spawn subagent `Probe Investigator` to isolate root causes per **Probes** (else probe inline).
      - Write failing tests first (TDD), implement within `AGENTS.md` boundaries, update `CHANGELOG.md` (and user docs if behaviour changed) per **People docs**, verify test/lint green, and **Safe commit** `"<type>(<scope>): <summary>"`.
 3. **Draft PR**:
    - `git push -u origin HEAD`. Reuse existing PR for `$WORKING_BRANCH` (`gh pr view "$WORKING_BRANCH"`) or create a draft PR (`PR_TITLE`: `feat(<plan-slug>): phase <N> - <phase-name>` for phases, `<type>(<scope>): <summary>` for standalone; `PR_BODY`: Summary, Completed Tasks/Quality Gates checklist, and `## Review Status: *Automated AI review & fix cycle in progress...*`):
@@ -80,15 +102,15 @@ Real bugs not caused by this diff (`### Out of Scope`) and unfixed behavioural `
 Review `$WORKING_BRANCH` against `$BASE_BRANCH` (max 2 review passes, max 1 fix turn; Low nits never block or trigger fixes; pre-existing/unrelated defects go under `### Out of Scope`).
 
 > [!IMPORTANT]
-> **NO SELF-REVIEW:** Never review your own diff in the current context. Every row below MUST spawn a NEW subagent per **Dispatch**. If no subagent tool is available, leave the PR in **Draft**, inform the user, and return PR URL with `REVIEW_STATUS=PENDING_REVIEW`.
+> **NO SELF-REVIEW:** Never review your own diff in the current context. Dispatch every review pass to `REVIEWER` and the fix turn to `IMPLEMENTER` per **Dispatch**. If `REVIEWER` is unreachable (no native subagent tool, no CLI on `$PATH`), leave the PR in **Draft**, inform the user, and return PR URL with `REVIEW_STATUS=PENDING_REVIEW`.
 
-| Pass | Spawn Subagent | Context | Outcome & Transition |
+| Pass | Role & Dispatch Provider | Context | Outcome & Transition |
 |---|---|---|---|
-| **Pass 1** | `Role: "Code Reviewer (Pass 1)"` | Zero history; `git diff <BASE>...HEAD` | • **Zero High/Medium** (`LGTM`) → `REVIEW_STATUS=PASSED` (Step 4).<br>• **High/Medium found** → Fix Turn. |
-| **Fix Turn** (Max 1) | `Role: "Defect Fixer"` | Pass 1 High/Medium findings | Commits + pushes fix → Pass 2. |
-| **Pass 2** (Terminal) | `Role: "Code Reviewer (Pass 2)"` (NEW) | Zero history; `git diff <BASE>...HEAD` | • **All resolved** (`LGTM`) → `REVIEW_STATUS=PASSED`.<br>• **Unresolved** → `REVIEW_STATUS=BLOCKED_BY_DEFECTS` (terminal stop). |
+| **Pass 1** | `Role: "Code Reviewer (Pass 1)"`<br>Provider: `REVIEWER` | Zero history; `git diff <BASE>...HEAD` | • **Zero High/Medium** (`LGTM`) → `REVIEW_STATUS=PASSED` (Step 4).<br>• **High/Medium found** → Fix Turn. |
+| **Fix Turn** (Max 1) | `Role: "Defect Fixer"`<br>Provider: `IMPLEMENTER` | Pass 1 High/Medium findings | Commits + pushes fix → Pass 2. |
+| **Pass 2** (Terminal) | `Role: "Code Reviewer (Pass 2)"` (NEW)<br>Provider: `REVIEWER` | Zero history; `git diff <BASE>...HEAD` | • **All resolved** (`LGTM`) → `REVIEW_STATUS=PASSED`.<br>• **Unresolved** → `REVIEW_STATUS=BLOCKED_BY_DEFECTS` (terminal stop). |
 
-**Subagent prompts** (use verbatim, filling placeholders):
+**Subagent prompts** (use verbatim, filling placeholders; route per **Dispatch**):
 
 - `Code Reviewer (Pass 1)`:
   > First read the dev-loop skill file at `{{DEV_LOOP_SKILL}}` in full, then `AGENTS.md` in `$TARGET_REPO` (and `$PLAN_FILE` if given: `<path or none>`). Review `git diff <BASE>...HEAD` on branch `$WORKING_BRANCH` in `$TARGET_REPO` as a fresh reviewer: look for crashes, logic bugs, boundary leaks, scope violations, and regressions. Check every changed line in `CHANGELOG.md`, `README.md`, and `docs/` against `AGENTS.md` (**Audiences**, **Changelog**, **Docs**) and the skill's **People docs** section: any violation or factually wrong claim for what works as of this diff is a `### Medium` finding, quoted with a suggested rewrite. Run active verification probes per **Probes** (under `.probes/`, deleted afterwards). Do not modify tracked files or commit. A defect that also exists on `<BASE>` (verify with a probe in `git worktree add --detach .probes/base <BASE>`, then `git worktree remove --force .probes/base`) or lies outside the diff's scope goes under `### Out of Scope`, not High/Medium/Low. Reply with: `### High`, `### Medium`, `### Low`, `### Out of Scope`, `### Verification Probes Run` (command + observed result). Every behavioural Low and Out of Scope item must include a one-line repro (snippet/command, actual, expected). If High and Medium are empty, end with the single token `LGTM`.
