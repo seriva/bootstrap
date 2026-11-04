@@ -8,7 +8,7 @@ Versioning: continuous (rolling `[Unreleased]`, calendar sections `[YYYY-MM]` wh
 ## [Unreleased]
 
 ### Added
-- Three global AI skills, installed once per machine with `install.sh` for whichever tools you have (Antigravity, Claude Code, Codex, Cursor, Copilot):
+- Three global AI skills, installed once per machine with `install.sh` for whichever tools you have (Antigravity, Claude Code, Codex, OpenCode, Pi, Cursor, Copilot):
   - `/design-plan` audits the codebase with real probes and writes a design plan with verified gaps, scope boundaries, and small, testable tasks.
   - `/execute-plan` runs a plan phase by phase on its own branch, one reviewed PR per phase, and can resume where it left off. Add `--auto` to merge passing phases and continue without stopping.
   - `/dev-loop` takes a task from failing test to a draft PR, has a fresh AI reviewer check it (at most two review passes and one fix round), waits for CI, and marks the PR ready only when both are clean.
@@ -18,6 +18,7 @@ Versioning: continuous (rolling `[Unreleased]`, calendar sections `[YYYY-MM]` wh
 - `sync.sh` keeps the shared rules, bridge files, plan template, and the agentic section of `.gitignore` identical across sibling projects; `--check` fails when anything has drifted.
 - `init.sh` sets up a new project in one command, with a changelog and roadmap that fit either continuous or versioned releases, and refuses to overwrite files that already exist unless you pass `--force`.
 - A single README that walks you from setup to your first reviewed PR, explains how the three skills fit together, and lists which tools are tested.
+- A ready-made Docker agent server in `docker/` runs T3 Code and VS Code in the browser with your chosen coding CLIs and the skills already installed, so agents can work in isolation on a homelab or remote machine. It only listens on localhost and needs a `PASSWORD` in `docker/.env` before it starts; see the README for exposing it on your network.
 
 ### Changed
 - CI now runs on every pull request (including phase PRs targeting `feat/<plan-slug>`) and on `main`/`master` pushes, and when a repository has no workflow that runs on a pull request, `/dev-loop` and `/execute-plan` treat `no checks reported` as `CI: none configured` instead of blocking the PR.

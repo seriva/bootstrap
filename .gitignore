@@ -77,3 +77,6 @@ docs/superpowers/
 _agents/
 .gemini/
 .codex/
+
+# Docker agent container: bind-mounted workspace holds cloned repos
+docker/workspace/
