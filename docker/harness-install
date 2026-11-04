@@ -22,11 +22,9 @@ fi
 
 install_claude() {
   echo "==> Installing Claude Code CLI..."
-  if command -v npm >/dev/null 2>&1; then
-    npm install -g @anthropic-ai/claude-code
-  else
-    curl -fsSL https://claude.ai/install.sh | bash
-  fi
+  # Native installer (~/.local/bin/claude). The npm package is only a wrapper whose native
+  # binary arrives via postinstall, which npm can skip and leave a claude that cannot run.
+  curl -fsSL https://claude.ai/install.sh | bash
   mkdir -p "$HOME/.claude"
   echo "  [✓] Claude Code installed"
 }
