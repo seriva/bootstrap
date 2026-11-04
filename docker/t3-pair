@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ==============================================================================
+# t3-pair: Generate a T3 Code pairing URL for browser/mobile access
+# Usage:
+#   t3-pair [label] [additional t3 auth pairing create flags...]
+# Examples:
+#   t3-pair
+#   t3-pair laptop
+#   t3-pair phone --ttl 24h
+# ==============================================================================
+
+BASE_URL="${T3_BASE_URL:-http://localhost:${T3_HOST_PORT:-${T3_PORT:-8011}}}"
+BASE_DIR="${T3CODE_HOME:-/home/coder/.t3}"
+LABEL="${1:-browser}"
+
+if [ "$#" -gt 0 ]; then
+  shift
+fi
+
+exec t3 auth pairing create \
+  --base-dir "$BASE_DIR" \
+  --base-url "$BASE_URL" \
+  --label "$LABEL" \
+  --ttl "${T3_PAIR_TTL:-1h}" \
+  "$@"
+

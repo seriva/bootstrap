@@ -1,0 +1,75 @@
+name: bootstrap-agent
+
+services:
+  agent:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        # Pre-installed worker harnesses at build time (comma-separated):
+        # Options: claude, codex, opencode, pi, agy, all
+        ENABLED_WORKERS: ${ENABLED_WORKERS:-claude,codex,opencode}
+        # Node.js major version installed in the image
+        NODE_MAJOR: ${NODE_MAJOR:-24}
+    image: bootstrap-agent:latest
+    container_name: bootstrap-agent
+    hostname: bootstrap-agent
+    ports:
+      # VS Code Web (code-server): [bind_ip:]host_port:container_port
+      - "${CODE_SERVER_BIND:-127.0.0.1}:${CODE_SERVER_HOST_PORT:-8080}:${CODE_SERVER_PORT:-8080}"
+      # T3 Code Web Orchestrator: [bind_ip:]host_port:container_port
+      - "${T3_BIND:-127.0.0.1}:${T3_HOST_PORT:-8011}:${T3_PORT:-8011}"
+    environment:
+      # Required: code-server grants a shell with passwordless sudo, so there is no default password
+      - PASSWORD=${PASSWORD:?Set PASSWORD in docker/.env}
+      - T3_PORT=${T3_PORT:-8011}
+      - T3_HOST=${T3_HOST:-0.0.0.0}
+      - T3_HOST_PORT=${T3_HOST_PORT:-8011}
+      - T3_BASE_URL=${T3_BASE_URL:-http://localhost:${T3_HOST_PORT:-8011}}
+      - CODE_SERVER_PORT=${CODE_SERVER_PORT:-8080}
+      - CODE_SERVER_HOST=${CODE_SERVER_HOST:-0.0.0.0}
+      - CODE_SERVER_BASE_PATH=${CODE_SERVER_BASE_PATH:-}
+      - ENABLED_WORKERS=${ENABLED_WORKERS:-claude,codex,opencode}
+      # API Keys & Endpoints (optional — or authenticate interactively via CLI)
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - OPENCODE_API_BASE=${OPENCODE_API_BASE:-}
+      - OPENCODE_API_KEY=${OPENCODE_API_KEY:-}
+      - SEMSEARCH_API_BASE=${SEMSEARCH_API_BASE:-}
+      # Git author for commits made by agents inside the container
+      - GIT_USER_NAME=${GIT_USER_NAME:-Agent}
+      - GIT_USER_EMAIL=${GIT_USER_EMAIL:-agent@bootstrap.local}
+    volumes:
+      # Workspace directory mounted to container
+      - ./workspace:/home/coder/workspace
+      # Persist T3 Code orchestration sessions and logs
+      - t3-data:/home/coder/.t3
+      # Persist VS Code extensions and preferences
+      - code-server-data:/home/coder/.local/share/code-server
+      # Persist worker CLI login sessions and credentials
+      - claude-auth:/home/coder/.claude
+      - gemini-auth:/home/coder/.gemini
+      - codex-auth:/home/coder/.codex
+      - opencode-auth:/home/coder/.config/opencode
+      - pi-auth:/home/coder/.pi
+      # Persist GitHub CLI credentials
+      - gh-config:/home/coder/.config/gh
+      # Persist SSH keys & known_hosts
+      - ssh-keys:/home/coder/.ssh
+    shm_size: 1gb
+    security_opt:
+      - seccomp:unconfined
+    restart: unless-stopped
+
+volumes:
+  t3-data:
+  code-server-data:
+  claude-auth:
+  gemini-auth:
+  codex-auth:
+  opencode-auth:
+  pi-auth:
+  gh-config:
+  ssh-keys:
+

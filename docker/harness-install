@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ==============================================================================
+# harness-install: Modular Worker Harness Installer for bootstrap Agent
+# Usage:
+#   harness-install <harness1> [harness2 ...]
+#   harness-install all
+#
+# Supported harnesses:
+#   claude     - Anthropic Claude Code CLI
+#   agy        - Google Antigravity CLI
+#   codex      - OpenAI Codex CLI
+#   opencode   - OpenCode CLI
+#   pi         - Pi coding agent CLI
+# ==============================================================================
+
+if [ "$#" -eq 0 ]; then
+  echo "Usage: harness-install <claude|agy|codex|opencode|pi|all> ..." >&2
+  exit 1
+fi
+
+install_claude() {
+  echo "==> Installing Claude Code CLI..."
+  if command -v npm >/dev/null 2>&1; then
+    npm install -g @anthropic-ai/claude-code
+  else
+    curl -fsSL https://claude.ai/install.sh | bash
+  fi
+  mkdir -p "$HOME/.claude"
+  echo "  [✓] Claude Code installed"
+}
+
+install_agy() {
+  echo "==> Installing Google Antigravity CLI..."
+  curl -fsSL https://antigravity.google/cli/install.sh | bash
+  mkdir -p "$HOME/.gemini"
+  echo "  [✓] Antigravity installed"
+}
+
+install_codex() {
+  echo "==> Installing OpenAI Codex CLI..."
+  npm install -g @openai/codex
+  mkdir -p "$HOME/.codex"
+  echo "  [✓] OpenAI Codex installed"
+}
+
+install_opencode() {
+  echo "==> Installing OpenCode CLI..."
+  npm install -g opencode-ai
+  mkdir -p "${XDG_CONFIG_HOME:-$HOME/.config}/opencode"
+  echo "  [✓] OpenCode installed"
+}
+
+install_pi() {
+  echo "==> Installing Pi coding agent CLI..."
+  # @mariozechner/pi is an unrelated GPU-pod tool; the coding agent ships as pi-coding-agent
+  npm install -g @mariozechner/pi-coding-agent
+  mkdir -p "$HOME/.pi/agent"
+  echo "  [✓] Pi installed"
+}
+
+# Normalize and parse requested harnesses
+TARGETS=()
+for arg in "$@"; do
+  # Split comma-separated values if provided e.g. "claude,codex,opencode"
+  IFS=',' read -ra ADDR <<< "$arg"
+  for t in "${ADDR[@]}"; do
+    t=$(echo "$t" | tr '[:upper:]' '[:lower:]' | xargs)
+    [ -n "$t" ] && TARGETS+=("$t")
+  done
+done
+
+for target in "${TARGETS[@]}"; do
+  case "$target" in
+    all)
+      install_claude
+      install_agy
+      install_codex
+      install_opencode
+      install_pi
+      ;;
+    claude)
+      install_claude
+      ;;
+    agy|antigravity)
+      install_agy
+      ;;
+    codex)
+      install_codex
+      ;;
+    opencode)
+      install_opencode
+      ;;
+    pi)
+      install_pi
+      ;;
+    *)
+      echo "Warning: Unknown harness '$target', skipping." >&2
+      ;;
+  esac
+done
+
+# If bootstrap install script is available, run it to link skills
+if [ -x "/opt/bootstrap/install.sh" ]; then
+  echo "==> Syncing bootstrap skills with newly installed harnesses..."
+  /opt/bootstrap/install.sh
+elif [ -x "$HOME/bootstrap/install.sh" ]; then
+  "$HOME/bootstrap/install.sh"
+fi
+
+echo "==> Harness installation complete."
+

@@ -11,6 +11,8 @@ echo "Scanning available AI tools on this machine..."
 HAS_ANTIGRAVITY=false
 HAS_CLAUDE=false
 HAS_CODEX=false
+HAS_OPENCODE=false
+HAS_PI=false
 HAS_CURSOR=false
 HAS_COPILOT=false
 
@@ -33,6 +35,20 @@ if command -v codex >/dev/null 2>&1 || [ -d "$HOME/.codex" ]; then
   echo "  [✓] OpenAI Codex detected"
 else
   echo "  [ ] OpenAI Codex not detected (skipping)"
+fi
+
+if command -v opencode >/dev/null 2>&1 || [ -d "$HOME/.config/opencode" ] || [ -d "$HOME/.opencode" ]; then
+  HAS_OPENCODE=true
+  echo "  [✓] OpenCode detected"
+else
+  echo "  [ ] OpenCode not detected (skipping)"
+fi
+
+if command -v pi >/dev/null 2>&1 || [ -d "$HOME/.pi" ]; then
+  HAS_PI=true
+  echo "  [✓] Pi detected"
+else
+  echo "  [ ] Pi not detected (skipping)"
 fi
 
 if command -v cursor >/dev/null 2>&1 || [ -d "$HOME/.cursor" ] || [ -d "$HOME/.config/Cursor" ]; then
@@ -124,7 +140,21 @@ EOF
     echo "  -> [Codex] Installed to ~/.codex/skills/$skill_name"
   fi
 
-  # 4. Cursor (MDC Rule) — description-triggered; no `globs` so it is not auto-attached to every file
+  # 4. OpenCode (Agent Skills format)
+  if [ "$HAS_OPENCODE" = true ]; then
+    opencode_target="${XDG_CONFIG_HOME:-$HOME/.config}/opencode/skills/$skill_name"
+    copy_skill "$skill_path" "$opencode_target" "${XDG_CONFIG_HOME:-$HOME/.config}/opencode/skills/dev-loop/SKILL.md"
+    echo "  -> [OpenCode] Installed to $opencode_target"
+  fi
+
+  # 5. Pi (Agent Skills format)
+  if [ "$HAS_PI" = true ]; then
+    pi_target="$HOME/.pi/agent/skills/$skill_name"
+    copy_skill "$skill_path" "$pi_target" "$HOME/.pi/agent/skills/dev-loop/SKILL.md"
+    echo "  -> [Pi] Installed to ~/.pi/agent/skills/$skill_name"
+  fi
+
+  # 6. Cursor (MDC Rule) — description-triggered; no `globs` so it is not auto-attached to every file
   if [ "$HAS_CURSOR" = true ]; then
     cursor_rules_dir="$HOME/.cursor/rules"
     mkdir -p "$cursor_rules_dir"
@@ -135,7 +165,7 @@ EOF
     echo "  -> [Cursor] Installed rule to ~/.cursor/rules/$skill_name.mdc"
   fi
 
-  # 5. VS Code / GitHub Copilot (Prompt File)
+  # 7. VS Code / GitHub Copilot (Prompt File)
   if [ "$HAS_COPILOT" = true ]; then
     copilot_targets=(
       "$HOME/.config/Code/User/prompts"

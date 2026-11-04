@@ -1,193 +1,259 @@
 # Agentic Development Bootstrap
 
-A starter kit and a set of AI workflows for building software with coding agents (Claude Code, Antigravity, Codex, Cursor, Copilot).
+A complete starter kit, workflow engine, and runtime environment for building software autonomously with coding agents (Claude Code, Antigravity, OpenAI Codex, OpenCode, Pi, Cursor, and Copilot).
 
-It gives you two things:
+It gives you three things:
 
-- **A project scaffold** — one command sets up a new repository with an agent rulebook (`AGENTS.md`), a pre-commit quality gate, CI, and a `plans/` folder for design docs.
-- **Three global skills** — `/design-plan`, `/execute-plan`, and `/dev-loop`, installed once per machine, that take work from idea to reviewed pull request.
+1. **A project scaffold** — One command sets up a new repository with an agent rulebook (`AGENTS.md`), pre-commit quality gate (`lefthook`), CI, and a `plans/` architecture structure.
+2. **Three global skills** — `/design-plan`, `/execute-plan`, and `/dev-loop`, installed once per machine, that autonomously drive work from concept to reviewed PR.
+3. **A turnkey agent container** — An isolated Docker runtime in `docker/` combining **T3 Code** (orchestrator), web-based VS Code (`code-server`), and configurable worker harnesses with skills pre-baked.
+
+---
 
 ## Quick Start
 
-**1. Install the skills (once per machine).**
+### 1. Choose Your Environment
+
+#### Option A: Local Machine (Install Once)
+Installs skills into your local AI tools:
 
 ```bash
 cd ~/dev/bootstrap
 ./install.sh
 ```
+*The installer automatically detects your installed tools and registers the skills.*
 
-The installer detects which AI tools you have and installs the skills only for those.
-
-**2. Scaffold a project.**
+#### Option B: Docker Agent Server (Isolated / Homelab)
+Spins up a headless server with T3 Code and web-based VS Code:
 
 ```bash
-# Apps, sites, games, services (default)
+cd ~/dev/bootstrap/docker
+cp .env.example .env   # then set PASSWORD in .env
+docker compose up -d
+docker compose exec agent t3-pair
+```
+*Click the generated URL to open T3 Code on your laptop or phone.*
+
+### 2. Scaffold a New Project
+
+```bash
+# Continuous release (apps, websites, games, microservices)
 ~/dev/bootstrap/init.sh ~/dev/my-app --type continuous
 
-# Libraries, compilers, anything with release versions
+# Versioned release (libraries, compilers, packages with SemVer)
 ~/dev/bootstrap/init.sh ~/dev/my-lib --type versioned
 ```
+*Existing files are preserved unless you pass `--force`.*
 
-Existing files are never overwritten unless you pass `--force`.
+### 3. Configure the Quality Gate
 
-**3. Configure the quality gate.**
+1. Fill in every `[PLACEHOLDER]` in `AGENTS.md` and `.github/workflows/ci.yml`.
+2. In `lefthook.yml`, specify your project's formatting, linting, and test commands (and mirror them under **Commands** in `AGENTS.md`).
+3. Ensure [lefthook](https://github.com/evilmartians/lefthook) (`brew install lefthook` or `npm i -D lefthook && lefthook install`) and [gitleaks](https://github.com/gitleaks/gitleaks) 8.19+ are installed.
 
-- Fill in every `[PLACEHOLDER]` in `AGENTS.md` and `.github/workflows/ci.yml`.
-- In `lefthook.yml`, replace the placeholder commands with your real format, lint, and test commands, and list the same commands under **Commands** in `AGENTS.md`. The skills run those commands as their quality gate.
-- Install [lefthook](https://github.com/evilmartians/lefthook) (`brew install lefthook` or `npm install --save-dev lefthook`, then `lefthook install`) and [gitleaks](https://github.com/gitleaks/gitleaks#installing) 8.19 or newer for the secret scan.
+*The quality gate intentionally blocks commits until configured, preventing unverified code from slipping through.*
 
-The gate fails until it is configured, so an unconfigured project can't pass by accident. CI runs the same gate, so the commands only live in `lefthook.yml`.
+---
 
 ## How It Works
 
-The skills split work into three roles. Use `/dev-loop` alone for small tasks; use all three for larger features.
+The three skills divide work into clean, accountable roles. Use `/dev-loop` alone for standalone fixes; chain all three for larger features.
 
 ```mermaid
 flowchart LR
-    DP["/design-plan<br/>writes the plan"] --> Plan["plans/…-plan.md"]
-    Plan --> EP["/execute-plan<br/>runs it phase by phase"]
-    EP -->|"one phase at a time"| DL["/dev-loop<br/>test → code → review → PR"]
-    DL -->|"phase PR merged"| EP
-    DL -.->|"logs out-of-scope bugs"| FU["plans/follow-ups.md"]
+    DP["/design-plan<br/>Probes & writes plan"] --> Plan["plans/…-plan.md"]
+    Plan --> EP["/execute-plan<br/>Runs phase by phase"]
+    EP -->|"One phase at a time"| DL["/dev-loop<br/>TDD → Gate → Review → PR"]
+    DL -->|"Phase PR merged"| EP
+    DL -.->|"Logs side-effect bugs"| FU["plans/follow-ups.md"]
     FU -.->|"/design-plan follow-ups"| DP
     EP --> Final["Final PR into main"]
 ```
 
-| Skill | Use it for | What you get |
+| Skill | Purpose | Output |
 | :--- | :--- | :--- |
-| `/design-plan` | Features that touch several parts of the code, migrations, risky changes | A design plan with verified gaps, a clear scope, and small testable tasks |
-| `/execute-plan` | Carrying out an approved plan | One reviewed PR per phase, then a final PR into `main` |
-| `/dev-loop` | Bug fixes and standalone tasks (and each phase of a plan) | A tested, AI-reviewed PR that is marked ready only when review and CI are clean |
+| **`/design-plan`** | Complex features, refactors, architectural migrations | Verified gap audit, strict scope boundaries, small testable tasks |
+| **`/execute-plan`** | Executing an approved plan phase-by-phase | One AI-reviewed PR per phase, followed by a final PR into `main` |
+| **`/dev-loop`** | Bug fixes, isolated tasks, or single plan phases | TDD implementation, quality gate run, fresh AI review, clean PR |
 
-Agents never commit on their own. Running `/dev-loop` or `/execute-plan` counts as permission to branch, commit, push, and open PRs as that workflow describes.
+> [!NOTE]
+> Agents never commit on their own. Invoking `/dev-loop` or `/execute-plan` grants explicit permission to branch, commit, push, and open PRs according to the workflow rules.
 
-### `/design-plan` — plan before you build
+---
 
-Before writing a plan, it probes the codebase to prove every problem it claims exists, so the plan isn't built on guesses. The plan lists what is in and out of scope (with reasons), states how "done" will be checked, and splits the work into phases small enough for one reviewed PR each. The plan is linked from `plans/roadmap.md`. Commit the plan and roadmap before running `/execute-plan`, which won't start with uncommitted changes.
+### The Three Skills
 
-`/design-plan follow-ups` turns the open bugs in `plans/follow-ups.md` into fix phases.
-
+#### 1. `/design-plan` — Probe Before You Build
+Probes the codebase empirically to prove every claimed problem exists before drafting architecture. Defines what is in and out of scope, establishes done criteria, and splits work into atomic phases small enough for a single PR.
 ```text
 /design-plan Add WebSocket reconnection with exponential backoff
 /design-plan in gofront: Implement the encoding/csv stdlib package
 /design-plan follow-ups plans/v1.8.0/portable-go-plan.md
 ```
 
-### `/execute-plan` — run the plan
-
-Works on a branch named `feat/<plan-slug>` and handles one phase at a time: a subagent implements the phase with `/dev-loop` on its own branch, then the phase PR is reviewed. Progress is tracked by ticking the plan's checkboxes, so an interrupted run picks up where it stopped.
-
-By default it pauses after each phase for you to merge. With `--auto` it merges passing phases itself and keeps going. When all tasks are done, it checks the follow-up list, has a fresh agent turn the plan's changelog entries into readable release notes, has another fresh agent audit the whole branch against the plan, and opens the final PR into `main`.
-
+#### 2. `/execute-plan` — Phase-by-Phase Orchestration
+Operates on a dedicated `feat/<plan-slug>` branch. Runs subagents via `/dev-loop` for each phase, tracking progress by checking off plan task boxes (allowing interrupted runs to resume seamlessly). Pauses after each phase for human review, or uses `--auto` to merge clean phases automatically. Concludes with an independent whole-branch audit against the original plan.
 ```text
 /execute-plan plans/v1.8.0/portable-go-plan.md
 /execute-plan --auto plans/v1.8.0/portable-go-plan.md
 ```
 
-### `/dev-loop` — from failing test to ready PR
+#### 3. `/dev-loop` — From Failing Test to Reviewed PR
+1. **TDD:** Writes a failing test first, then writes minimal code to pass.
+2. **Quality Gate:** Executes the project's lefthook gate and drafts user-facing changelog notes.
+3. **Draft PR:** Pushes branch and opens a draft pull request.
+4. **Fresh-Context AI Review:** A fresh reviewer agent audits the diff. Critical findings receive one fix turn followed by a re-review.
+5. **CI Gate:** Verifies remote CI status before marking the PR ready for merge.
 
-1. Writes a failing test, then the code to make it pass.
-2. Runs the project's quality gate and writes a changelog entry for the people using the project (not a list of what the code does).
-3. Opens a draft PR.
-4. A fresh AI reviewer (never the agent that wrote the code) checks it, including whether the changelog and docs make sense to a user. Serious findings get one fix round, followed by a second and final review.
-5. Waits for CI, and marks the PR ready only if review and CI are both clean. Otherwise the PR stays a draft with the findings in its description.
-
-Bugs the reviewer spots outside the change are logged in `plans/follow-ups.md` instead of being fixed on the side.
-
-`/dev-loop` and `/execute-plan` can also have one AI tool write the code and another review it, which can catch blind spots a single model shares with itself. Install and sign in to the `claude`, `agy`, or `codex` CLI, then pass `--pairing` to keep your current tool writing and have another installed CLI review, or choose with `--implementer=<provider>` and `--reviewer=<provider>` (`--implementer` alone picks another installed CLI to review):
-
+#### Multi-Model Pairing
+To eliminate blind spots, you can pair different models (e.g. Claude implements, Antigravity reviews):
 ```text
-/dev-loop Fix the race condition in session cleanup
-/dev-loop --pairing Fix the race condition in session cleanup
-/dev-loop --implementer=claude Fix the race condition in session cleanup
-/dev-loop --implementer=claude --reviewer=agy Fix the race condition in session cleanup
-/dev-loop in gofront: Add a benchmark for AST token parsing
+/dev-loop --pairing Fix race condition in session cleanup
+/dev-loop --implementer=claude --reviewer=agy Fix race condition in session cleanup
 ```
 
 > [!WARNING]
-> When pairing, the other CLI runs without permission prompts (Codex also outside its sandbox) and can run any command your user account can. For isolation, run the workflow in a container or VM.
+> During pairing, reviewer CLIs execute without interactive permission prompts. For full isolation, run paired workflows inside the Docker container.
 
-Each skill's full, step-by-step rules live in its `SKILL.md` under [`skills/`](skills/).
+---
 
-## Principles
+## Docker Agent Server
 
-1. **`AGENTS.md` is the single source of truth.** Tool-specific files (`CLAUDE.md`, `.github/copilot-instructions.md`) only point to it. Cursor reads it directly.
-2. **Plan first.** Non-trivial work starts with a written plan in `plans/`, which stays as the record of *why* the code looks the way it does.
-3. **The gate is independent of the tool.** The pre-commit hook and CI block bad commits no matter which agent (or person) wrote the code.
-4. **No session clutter in git.** Agent scratchpads and tool session state are ignored.
-5. **Write for the reader.** `README.md`, `docs/`, and `CHANGELOG.md` are written for people: short and plain, with no task IDs or file paths. Plans in `plans/` are written for agents and can be as dense as they need to be.
+For homelabs, remote servers, or sandboxed execution, `bootstrap` includes a turnkey container in [`docker/`](docker/):
 
-## Plans and Follow-ups
+```mermaid
+flowchart TD
+    User["Developer Client (Browser / Mobile)"]
+    
+    subgraph Container["Agent Runtime Container"]
+        T3["T3 Code Web Server<br/>★ Central Orchestrator (Configurable Port)"]
+        CS["code-server<br/>VS Code Web IDE (Configurable Port)"]
+        
+        Workers["Pluggable Workers<br/>Claude Code · Codex · OpenCode · Pi · Antigravity"]
+        Skills["bootstrap Skills Engine<br/>/design-plan · /execute-plan · /dev-loop"]
+        Workspace[("Mounted Workspace<br/>/home/coder/workspace")]
+        
+        T3 --> Workers
+        CS --> Workspace
+        Skills -.-> Workers
+        Workers --> Workspace
+    end
 
-Everything the skills read and write lives in `plans/`. The `docs/` folder is left for documentation written for people.
+    User -->|"Pairing Token (t3-pair)"| T3
+    User -->|"Password Auth"| CS
+```
+
+### Quickstart
+
+```bash
+cd docker
+cp .env.example .env   # then set PASSWORD in .env
+docker compose up -d --build
+docker compose exec agent t3-pair
+```
+Open the generated pairing link to access T3 Code, or open VS Code web in your browser at `http://localhost:${CODE_SERVER_HOST_PORT:-8080}`.
+
+`PASSWORD` is required: the container gives VS Code a shell with passwordless sudo and access to your API keys, so `docker compose` refuses to start without one.
+
+### Customizing Ports & Network Endpoints
+Both web UIs listen on `127.0.0.1` only by default. All networking is configurable in `docker/.env`:
+```bash
+# Host ports & interface bindings
+CODE_SERVER_HOST_PORT=8002       # Host port for VS Code web
+T3_HOST_PORT=8011                # Host port for T3 Code
+CODE_SERVER_BIND=0.0.0.0         # Expose VS Code web on the LAN (default 127.0.0.1)
+T3_BIND=0.0.0.0                  # Expose T3 Code on the LAN (default 127.0.0.1)
+T3_BASE_URL=http://my-host.lan:8011  # URL minted in t3-pair links
+GIT_USER_NAME=Agent              # Author for commits agents make in the container
+GIT_USER_EMAIL=agent@bootstrap.local
+```
+
+### Worker Management
+Select which agent CLIs to enable via `docker/.env`:
+```bash
+ENABLED_WORKERS=claude,codex,opencode  # Available: claude, codex, opencode, pi, agy, all
+```
+* **Install dynamically:** `docker compose exec agent harness-install codex`
+* **In-place live upgrade:** Run `./upgrade.sh` on the host (or `agent-upgrade` inside container) to update T3 Code, packages, and workers without resetting state.
+* **Clean rebuild:** Run `./rebuild.sh` on the host for a cacheless build from scratch. The code-server base image is pinned; change `CODE_SERVER_VERSION` in `docker/Dockerfile` to move to a newer release.
+
+---
+
+## Workflow Principles
+
+1. **`AGENTS.md` is the single source of truth:** Tool-specific files (`CLAUDE.md`, `.github/copilot-instructions.md`) only point to it. Cursor reads it directly.
+2. **Plan before building:** Non-trivial work starts with a written, probed plan in `plans/`.
+3. **Tool-independent quality gate:** The pre-commit hook and CI enforce standards identically regardless of who or what wrote the code.
+4. **Zero git clutter:** Agent scratchpads, tool configurations, and local session caches are strictly gitignored.
+5. **Write for the reader:** Documentation, READMEs, and changelogs are written plainly for humans. Plans are written for agents.
+
+---
+
+## Managing Plans & Follow-ups
+
+All planning artifacts live exclusively in `plans/` (leaving `docs/` for human user guides):
 
 ```text
-Versioned (library / compiler):          Continuous (app / game / site):
+Versioned (Libraries / Compilers):       Continuous (Apps / Sites / Services):
 plans/                                   plans/
   roadmap.md                               roadmap.md
   template.md                              template.md
   follow-ups.md                            follow-ups.md
-  v0.2.0/                                  archive/
-    auth-redesign-plan.md                    old-feature-plan.md
-  v0.3.0/                                  active-feature-plan.md
+  v1.0.0/                                  archive/
+    auth-redesign-plan.md                    legacy-feature-plan.md
+  v1.1.0/                                  active-feature-plan.md
     websocket-support-plan.md
 ```
 
-- **`template.md`** is the starting point for new plans.
-- **`roadmap.md`** lists plans by release (versioned) or as Upcoming/Completed tables (continuous).
-- **`follow-ups.md`** collects bugs noticed outside the current task, each with a way to reproduce it. `/design-plan follow-ups` schedules them, so the list only holds open bugs.
+- **`template.md`:** Canonical plan template with gap audits, scopes, and phased tasks.
+- **`roadmap.md`:** Release roadmap (versioned) or Upcoming/Completed ledger (continuous).
+- **`follow-ups.md`:** Out-of-scope bugs discovered during implementation. Resolved systematically via `/design-plan follow-ups`.
 
-**Versioned vs. continuous.** Versioned projects group plans by release (`plans/vX.Y.Z/`) and use SemVer changelog sections. Continuous projects keep active plans directly in `plans/`, use `## [Unreleased]` or calendar sections (`## [YYYY-MM]`) in the changelog, and move finished plans to `plans/archive/`.
+---
 
-## Keeping Projects in Sync
+## Multi-Repo Rule Synchronization
 
-Shared rules are edited here, then pushed to your other projects:
+Keep shared conventions synchronized across all your repositories using `sync.sh`:
 
 ```bash
-./sync.sh             # update every sibling project in ~/dev that has an AGENTS.md
-./sync.sh --dry-run   # preview changes
-./sync.sh --check     # exit 1 if any project has drifted
-./sync.sh ~/dev/app   # sync specific projects only
+./sync.sh             # Updates every sibling repo in ~/dev containing an AGENTS.md
+./sync.sh --dry-run   # Preview changes without modifying files
+./sync.sh --check     # Quality gate mode: exits 1 if any repository has drifted
+./sync.sh ~/dev/app   # Target specific repositories
 ```
 
-`sync.sh` copies Part 1 of `scaffold/AGENTS.md`, the bridge files, `plans/template.md`, and the shared `.gitignore` block (between the `# >>> bootstrap-managed` and `# <<< bootstrap-managed` markers). Part 2 of each project's `AGENTS.md` and any ignores outside the markers are never touched.
+`sync.sh` propagates Part 1 of `scaffold/AGENTS.md`, bridge files, `plans/template.md`, and the managed block in `.gitignore` (delimited by `# >>> bootstrap-managed` and `# <<< bootstrap-managed`). Project-specific rules in Part 2 are never modified.
 
-To ignore a new tool's session folder everywhere, add it to `scaffold/.gitignore` here and run `./sync.sh`.
+---
 
-## Supported Tools
+## Supported Tools & Harnesses
 
-| Tool | Status | Installed to |
-|---|---|---|
-| Google Antigravity (`agy`) | Tested | `~/.gemini/config/skills/` |
-| Claude Code (`claude`) | Tested | `~/.claude/skills/` and `~/.claude/commands/` |
-| OpenAI Codex (`codex`) | Installed, untested | `~/.codex/skills/` |
-| Cursor (`cursor`) | Installed, untested | `~/.cursor/rules/*.mdc` |
-| GitHub Copilot / VS Code (`code`) | Installed, untested | User prompt files (`.prompt.md`) |
+| Tool / CLI | Status | Skill Location | Notes |
+| :--- | :--- | :--- | :--- |
+| **Google Antigravity (`agy`)** | Supported | `~/.gemini/config/skills/` | Native subagent review |
+| **Claude Code (`claude`)** | Supported | `~/.claude/skills/` & `/commands` | Native subagent review |
+| **OpenAI Codex (`codex`)** | Supported | `~/.codex/skills/` | Supports pairing review |
+| **OpenCode (`opencode`)** | Supported | `~/.config/opencode/skills/` | Local & remote models |
+| **Pi (`pi`)** | Supported | `~/.pi/agent/skills/` | Minimalist terminal runner |
+| **Cursor (`cursor`)** | Supported | `~/.cursor/rules/*.mdc` | Uses external CLI for review |
+| **GitHub Copilot / VS Code (`code`)** | Supported | User prompt files (`.prompt.md`) | Prompts triggered via chat |
 
-Review needs a fresh-context reviewer: the current tool's subagents, or the `claude`, `agy`, or `codex` CLI on your `PATH`. Tools without subagents (such as Cursor) implement and fix themselves and hand reviews to one of those CLIs. With neither, implementation still runs but review halts: the PR stays a draft marked `REVIEW_STATUS=PENDING_REVIEW` rather than letting the agent review its own work.
+*Review requires a fresh-context reviewer: either the tool's native subagents, or a secondary installed CLI (`claude`, `agy`, or `codex`).*
+
+---
 
 ## Repository Layout
 
 ```text
 bootstrap/
-├── install.sh          Installs the skills for the AI tools on this machine
-├── init.sh             Scaffolds a new project (--type continuous|versioned, --force)
-├── sync.sh             Pushes shared rules to sibling projects (--check, --dry-run)
-├── AGENTS.md           Agent guide for this repo (Part 1 synced from scaffold/AGENTS.md)
-├── skills/             The three skills; installed globally, never copied into projects
+├── docker/             Turnkey agent container (T3 Code, code-server, workers, upgrade scripts)
+├── scaffold/           Template files copied into new projects by init.sh
+├── skills/             The three universal AI skills (installed globally, never copied)
 │   ├── design-plan/SKILL.md
 │   ├── execute-plan/SKILL.md
 │   └── dev-loop/SKILL.md
-└── scaffold/           Copied into new projects by init.sh
-    ├── AGENTS.md                         Rules (Part 1) + project context to fill in (Part 2)
-    ├── CLAUDE.md                         Points to AGENTS.md; don't edit
-    ├── .github/copilot-instructions.md   Points to AGENTS.md; don't edit
-    ├── .github/workflows/ci.yml          Runs the lefthook gate on every PR and on main/master pushes
-    ├── .github/dependabot.yml            Monthly dependency and Actions updates
-    ├── lefthook.yml                      Gate: format → lint → test, secret scan, commit message check
-    ├── .gitignore                        Common ignores + the bootstrap-managed block
-    ├── plans/                            template.md and an empty follow-ups.md
-    └── templates/                        CHANGELOG.md and roadmap.md per release model
-        ├── continuous/
-        └── versioned/
+├── install.sh          Installs skills across detected AI tools on host
+├── init.sh             Scaffolds a new project (--type continuous|versioned)
+├── sync.sh             Synchronizes shared rules across projects (--check, --dry-run)
+└── AGENTS.md           Agent guide for this repository
 ```

@@ -1,0 +1,8 @@
+# Build context is the repo root; send only what the agent image copies in.
+# Keeps docker/workspace (cloned repos) and docker/.env (API keys) out of the context.
+*
+!skills/
+!install.sh
+!docker/
+docker/workspace/
+docker/.env
