@@ -48,7 +48,7 @@ docker compose exec agent t3-pair
 ### 3. Configure the Quality Gate
 
 1. Fill in every `[PLACEHOLDER]` in `AGENTS.md` and `.github/workflows/ci.yml`.
-2. In `lefthook.yml`, specify your project's formatting, linting, and test commands (and mirror them under **Commands** in `AGENTS.md`).
+2. In `lefthook.yml`, specify your project's formatting, linting, and test commands (and mirror them under **Commands** in `AGENTS.md`). Leave the `extends: - lefthook-bootstrap.yml` line in place: that file holds the shared commit-message check and is kept up to date by `sync.sh`.
 3. Ensure [lefthook](https://github.com/evilmartians/lefthook) (`brew install lefthook` or `npm i -D lefthook && lefthook install`) and [gitleaks](https://github.com/gitleaks/gitleaks) 8.19+ are installed.
 
 *The quality gate intentionally blocks commits until configured, preventing unverified code from slipping through.*
@@ -222,7 +222,7 @@ Keep shared conventions synchronized across all your repositories using `sync.sh
 ./sync.sh ~/dev/app   # Target specific repositories
 ```
 
-`sync.sh` propagates Part 1 of `scaffold/AGENTS.md`, bridge files, `plans/template.md`, and the managed block in `.gitignore` (delimited by `# >>> bootstrap-managed` and `# <<< bootstrap-managed`). Project-specific rules in Part 2 are never modified.
+`sync.sh` propagates Part 1 of `scaffold/AGENTS.md`, bridge files, `plans/template.md`, the shared hooks in `lefthook-bootstrap.yml`, and the managed block in `.gitignore` (delimited by `# >>> bootstrap-managed` and `# <<< bootstrap-managed`). Project-specific rules in Part 2 and your own `lefthook.yml` are never modified; `--check` fails if `lefthook.yml` does not extend `lefthook-bootstrap.yml`, and `sync.sh` warns when a clone still needs `lefthook install`.
 
 ---
 

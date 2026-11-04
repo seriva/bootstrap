@@ -90,6 +90,7 @@ FILES=(
   "AGENTS.md|$SCAFFOLD_DIR/AGENTS.md"
   "CLAUDE.md|$SCAFFOLD_DIR/CLAUDE.md"
   "lefthook.yml|$SCAFFOLD_DIR/lefthook.yml"
+  "lefthook-bootstrap.yml|$SCAFFOLD_DIR/lefthook-bootstrap.yml"
   ".gitignore|$SCAFFOLD_DIR/.gitignore"
   ".github/dependabot.yml|$SCAFFOLD_DIR/.github/dependabot.yml"
   ".github/copilot-instructions.md|$SCAFFOLD_DIR/.github/copilot-instructions.md"

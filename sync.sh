@@ -4,8 +4,8 @@ set -euo pipefail
 # ==============================================================================
 # Bootstrap Agentic Workflow Sync Script
 # Propagates canonical Part 1 from scaffold/AGENTS.md, standard tool bridge
-# files, plans/template.md, and the bootstrap-managed .gitignore
-# block to sibling repositories.
+# files, plans/template.md, the shared lefthook-bootstrap.yml hooks, and the
+# bootstrap-managed .gitignore block to sibling repositories.
 # ==============================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -22,8 +22,8 @@ for arg in "$@"; do
     echo "Usage: $0 [options] [target_dir ...]"
     echo ""
     echo "Synchronizes Part 1 of AGENTS.md, bridge files, plans/template.md,"
-    echo "and the bootstrap-managed .gitignore block from the bootstrap repository to"
-    echo "sibling repositories."
+    echo "lefthook-bootstrap.yml, and the bootstrap-managed .gitignore block from the"
+    echo "bootstrap repository to sibling repositories."
     echo ""
     echo "Options:"
     echo "  -c, --check    Check targets for drift; exit 1 if drift detected, 0 if clean"
@@ -82,6 +82,7 @@ CHECK="$CHECK" DRY_RUN="$DRY_RUN" \
 python3 - "${TARGETS[@]}" <<'EOF'
 import os
 import re
+import subprocess
 import sys
 
 canonical_path = os.environ["BOOTSTRAP_AGENTS"]
@@ -97,6 +98,9 @@ GITIGNORE_BLOCK_RE = re.compile(r"# >>> bootstrap-managed\n[\s\S]*?# <<< bootstr
 # Broad tool-dir ignores from the pre-managed-block scaffold. The managed block
 # narrows them to session/state subpaths, so they must go or project config such
 # as .claude/skills/ stays uncommittable. Only exact-line matches are removed.
+# Top-level `extends:` key in lefthook.yml, block list or inline list form.
+LEFTHOOK_EXTENDS_RE = re.compile(r"^extends:.*(?:\n[ \t]+-.*)*", re.MULTILINE)
+SHARED_HOOKS_REL = "lefthook-bootstrap.yml"
 LEGACY_BROAD_IGNORES = {".claude/", ".agents/", ".gemini/", ".codex/"}
 
 
@@ -152,6 +156,35 @@ for rel_path in bridge_rel_paths:
     src_path = os.path.join(scaffold_dir, rel_path)
     if os.path.isfile(src_path):
         bridges[rel_path] = read_text(src_path)
+
+shared_hooks_src = os.path.join(scaffold_dir, SHARED_HOOKS_REL)
+shared_hooks = read_text(shared_hooks_src) if os.path.isfile(shared_hooks_src) else None
+
+
+def check_lefthook(target_dir):
+    """The synced shared hooks only run if lefthook.yml extends them; returns True on drift.
+    lefthook.yml is project-owned, so it is never rewritten."""
+    lefthook_path = os.path.join(target_dir, "lefthook.yml")
+    if not os.path.isfile(lefthook_path):
+        print(f"  - lefthook.yml: [DRIFT] missing, so {SHARED_HOOKS_REL} is inactive; fix manually")
+        return True
+    extends = LEFTHOOK_EXTENDS_RE.search(read_text(lefthook_path))
+    if not extends or SHARED_HOOKS_REL not in extends.group(0):
+        print(f"  - lefthook.yml: [DRIFT] does not list {SHARED_HOOKS_REL} under `extends:`; fix manually")
+        return True
+    print(f"  - lefthook.yml: extends {SHARED_HOOKS_REL}")
+    # Installed hooks are per-clone state, not repo content: warn, never count as drift.
+    try:
+        hooks_dir = subprocess.run(
+            ["git", "-C", target_dir, "rev-parse", "--path-format=absolute", "--git-path", "hooks"],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        return False
+    if not os.path.isfile(os.path.join(hooks_dir, "commit-msg")):
+        print("    warning: commit-msg hook not installed; run `lefthook install` in this repo")
+    return False
+
 
 # Managed .gitignore block: everything between the markers (inclusive) in scaffold/.gitignore
 managed_gitignore_block = None
@@ -241,6 +274,12 @@ for target_dir in targets:
 
     for rel_path, content in bridges.items():
         if sync_file(rel_path, os.path.join(target_dir, rel_path), content):
+            has_drift = True
+
+    if shared_hooks is not None:
+        if sync_file(SHARED_HOOKS_REL, os.path.join(target_dir, SHARED_HOOKS_REL), shared_hooks):
+            has_drift = True
+        if check_lefthook(target_dir):
             has_drift = True
 
     # Plan template lives in plans/ (everything the skills read and write); docs/ is for people.

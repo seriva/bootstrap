@@ -46,7 +46,7 @@ Throwaway probes go in `$TARGET_REPO/.probes/` or the host's scratch directory, 
 ### Safe commit
 1. `git add -A`
 2. `git diff --cached --name-only` → every path must be in the current task's `Files:`, its test files, `$PLAN_FILE`, `plans/follow-ups.md`, or `CHANGELOG.md`/`README.md`/`docs/` (standalone: files the task needed). Unexpected path → `git restore --staged <path>` and delete/fix it (or explain in commit body if required).
-3. Run the pre-commit gate from `AGENTS.md` Commands on the staged diff (so `stage_fixed` and `gitleaks git --staged` apply), then `git commit -m "<message>"`. Subject ≤72 chars including `<type>(<scope>):` and any `(Task N.M)` suffix; truncate `<summary>`, never scope or task ID.
+3. Run the pre-commit gate from `AGENTS.md` Commands on the staged diff (so `stage_fixed` and `gitleaks git --staged` apply), then `git commit -m "<message>"`. Subject ≤72 chars including `<type>[(<scope>)]:` and any `(Task N.M)` suffix; truncate `<summary>`, never scope or task ID. Plan work always uses `(<plan-slug>)` as scope.
 
 ### People docs
 Follow `AGENTS.md` **Audiences**, **Changelog**, and **Docs**. In addition:
@@ -92,9 +92,9 @@ Real bugs not caused by this diff (`### Out of Scope`) and unfixed behavioural `
      4. **Safe commit** `"feat(<plan-slug>): <summary> (Task N.M)"`.
    - **Case B — Standalone Task (`$TASK`)**:
      - Optional: if `IMPLEMENTER == HOST_PROVIDER` and the host has a subagent tool, spawn subagent `Probe Investigator` to isolate root causes per **Probes** (else probe inline).
-     - Write failing tests first (TDD), implement within `AGENTS.md` boundaries, update `CHANGELOG.md` (and user docs if behaviour changed) per **People docs**, verify test/lint green, and **Safe commit** `"<type>(<scope>): <summary>"`.
+     - Write failing tests first (TDD), implement within `AGENTS.md` boundaries, update `CHANGELOG.md` (and user docs if behaviour changed) per **People docs**, verify test/lint green, and **Safe commit** `"<type>[(<scope>)]: <summary>"` (scope per `AGENTS.md` **Commits & PR Titles**).
 3. **Draft PR**:
-   - `git push -u origin HEAD`. Reuse existing PR for `$WORKING_BRANCH` (`gh pr view "$WORKING_BRANCH"`) or create a draft PR (`PR_TITLE`: `feat(<plan-slug>): phase <N> - <phase-name>` for phases, `<type>(<scope>): <summary>` for standalone; `PR_BODY`: Summary, Completed Tasks/Quality Gates checklist, and `## Review Status: *Automated AI review & fix cycle in progress...*`):
+   - `git push -u origin HEAD`. Reuse existing PR for `$WORKING_BRANCH` (`gh pr view "$WORKING_BRANCH"`) or create a draft PR (`PR_TITLE`: `feat(<plan-slug>): phase <N> - <phase-name>` for phases, `<type>[(<scope>)]: <summary>` for standalone; `PR_BODY`: Summary, Completed Tasks/Quality Gates checklist, and `## Review Status: *Automated AI review & fix cycle in progress...*`):
      `gh pr create --draft --base "$BASE_BRANCH" --title "$PR_TITLE" --body "$PR_BODY"`
    - **Implement-only mode**: STOP here and return PR URL + `WORKING_BRANCH`.
 
