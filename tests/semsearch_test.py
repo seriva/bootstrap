@@ -534,5 +534,115 @@ class RerankTest(RepoCase):
         self.assertEqual(self.stub.calls("/chat/completions"), [])
 
 
+# --------------------------------------------------------------------------- Task 1.4: fail-open
+
+def closed_port():
+    s = socket.socket()
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()
+    return port
+
+
+class HangingServer:
+    """Accepts connections and never answers."""
+
+    def __init__(self):
+        self.sock = socket.socket()
+        self.sock.bind(("127.0.0.1", 0))
+        self.sock.listen()
+        self.conns = []
+        self.base = f"http://127.0.0.1:{self.sock.getsockname()[1]}/v1"
+        threading.Thread(target=self.accept, daemon=True).start()
+
+    def accept(self):
+        while True:
+            try:
+                self.conns.append(self.sock.accept()[0])
+            except OSError:
+                return
+
+    def close(self):
+        for c in self.conns:
+            c.close()
+        self.sock.close()
+
+
+class FailOpenTest(RepoCase):
+    def setUp(self):
+        super().setUp()
+        self.write("svc/handler.go", "package svc\n\nfunc HandleRequest() {\n\t// serve http request\n}\n")
+        r = self.run_cli("--index")  # warm index so timings measure the query path only
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.stub.reset()
+
+    def test_unset_base_exits_zero_with_hint(self):
+        r = self.run_cli("serve request", SEMSEARCH_API_BASE=None)
+        self.assertEqual(r.returncode, 0)
+        self.assertEqual(r.stderr.strip(), ss.UNAVAILABLE)
+        self.assertIn("svc/handler.go", r.stdout)  # keyword results still served
+
+    def test_closed_port_fails_open_fast(self):
+        t = time.monotonic()
+        r = self.run_cli("serve request", SEMSEARCH_API_BASE=f"http://127.0.0.1:{closed_port()}/v1")
+        elapsed = time.monotonic() - t
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("use rg", r.stderr)
+        self.assertLess(elapsed, 0.5)
+
+    def test_slow_but_working_server_is_not_timed_out_by_preflight(self):
+        self.stub.embed_delay = 1.5
+        r = self.run_cli("serve request", "--json", "--fast")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("use rg", r.stderr)
+        self.assertEqual(json.loads(r.stdout)["mode"], "hybrid")
+
+    def test_hanging_server_degrades_within_request_timeout(self):
+        hang = HangingServer()
+        self.addCleanup(hang.close)
+        t = time.monotonic()
+        r = self.run_cli("serve request", "--json", "--fast", SEMSEARCH_API_BASE=hang.base)
+        elapsed = time.monotonic() - t
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("use rg", r.stderr)
+        self.assertEqual(json.loads(r.stdout)["mode"], "keyword")
+        self.assertLess(elapsed, 4.5)  # plan: query embed timeout 3 s (literal, so a raised constant fails here)
+
+    def test_not_a_git_repo_exits_two(self):
+        plain = os.path.join(self.tmp, "plain")
+        os.makedirs(plain)
+        r = self.run_cli("anything", cwd=plain)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("not a git repository", r.stderr)
+
+    def test_corrupt_index_is_rebuilt(self):
+        db_file = [f for f in os.listdir(self.cache) if f.endswith(".db")][0]
+        for suffix in ("-wal", "-shm"):
+            try:
+                os.remove(os.path.join(self.cache, db_file + suffix))
+            except FileNotFoundError:
+                pass
+        with open(os.path.join(self.cache, db_file), "wb") as f:
+            f.write(b"this is not a sqlite database" * 100)
+        r = self.run_cli("serve request", "--fast")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("Traceback", r.stderr)
+        self.assertIn("svc/handler.go", r.stdout)
+
+    def test_model_change_rebuilds_index(self):
+        with self.db() as con:
+            total = con.execute("select count(*) from chunks").fetchone()[0]
+        r = self.run_cli("--index", SEMSEARCH_EMBED_MODEL="other-model")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(len(self.stub.embedded_inputs()), total)
+        self.assertTrue(all(b["model"] == "other-model" for b in self.stub.calls("/embeddings")))
+        with self.db() as con:
+            self.assertEqual(dict(con.execute("select key, value from meta"))["model"], "other-model")
+
+    def test_usage_error_exits_two(self):
+        r = self.run_cli()
+        self.assertEqual(r.returncode, 2)
+
+
 if __name__ == "__main__":
     unittest.main()
