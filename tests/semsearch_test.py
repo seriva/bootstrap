@@ -465,5 +465,74 @@ class SearchTest(RepoCase):
         self.assertEqual(r.stdout.strip(), "no matches")
 
 
+# --------------------------------------------------------------------------- Task 1.3: rerank
+
+class RerankTest(RepoCase):
+    QUERY = ("token", "parser", "stream")
+
+    def seed(self):
+        for i in range(6):  # decoys: strong word overlap with the query, no marker
+            self.write(f"decoy/d{i}.py", f"def decoy_{i}():\n    # token parser stream token parser stream {i}\n    return {i}\n")
+        long_body = "".join(f"    step_{n} = {n}\n" for n in range(40))
+        self.write("real/target.py", "def target():\n    # token relevantmarker\n" + long_body)
+
+    def ranked_paths(self, *extra, **env):
+        r = self.run_cli(*self.QUERY, "--json", "-k", "10", *extra, SEMSEARCH_RERANK_MODEL="qwen3-reranker-0.6b", **env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        data = json.loads(r.stdout)
+        return [x["path"] for x in data["results"]], data["mode"]
+
+    def test_rerank_reorders_and_sends_verified_request_shape(self):
+        self.seed()
+        fast, mode = self.ranked_paths("--fast")
+        self.assertEqual(mode, "hybrid")
+        self.assertNotEqual(fast[0], "real/target.py")
+        self.assertEqual(self.stub.calls("/chat/completions"), [], "--fast must not rerank")
+
+        self.stub.reset()
+        reranked, mode = self.ranked_paths()
+        self.assertEqual(mode, "rerank")
+        self.assertEqual(reranked[0], "real/target.py")
+
+        calls = self.stub.calls("/chat/completions")
+        self.assertTrue(0 < len(calls) <= ss.RERANK_TOP)
+        body = calls[0]
+        self.assertEqual(body["model"], "qwen3-reranker-0.6b")
+        self.assertEqual((body["temperature"], body["max_tokens"], body["logprobs"], body["top_logprobs"]), (0, 2, True, 10))
+        roles = [m["role"] for m in body["messages"]]
+        self.assertEqual(roles, ["system", "user", "assistant"])
+        self.assertEqual(body["messages"][2]["content"], "<think>\n\n</think>\n\n")
+        user = body["messages"][1]["content"]
+        self.assertIn("<Query>: token parser stream", user)
+        for b in calls:
+            doc = b["messages"][1]["content"].split("<Document>: ", 1)[1]
+            self.assertLessEqual(len(doc.split("\n")), ss.RERANK_LINES + 1)  # +1: path header line
+
+    def test_failures_fall_back_to_rrf_order(self):
+        self.seed()
+        fast, _ = self.ranked_paths("--fast")
+        for mode in ("null", "error200", "http500"):
+            self.stub.chat_mode = mode
+            paths, got_mode = self.ranked_paths()
+            self.assertEqual(got_mode, "hybrid", mode)
+            self.assertEqual(paths, fast, mode)
+
+    def test_deadline_falls_back_to_rrf(self):
+        self.seed()
+        fast, _ = self.ranked_paths("--fast")
+        self.stub.chat_delay = 0.7  # 7 pairs x 0.7 s > 4 s deadline
+        t = time.monotonic()
+        paths, mode = self.ranked_paths()
+        self.assertEqual(mode, "hybrid")
+        self.assertEqual(paths, fast)
+        self.assertLess(time.monotonic() - t, ss.RERANK_DEADLINE + 2.5)
+
+    def test_no_rerank_model_means_no_rerank(self):
+        self.seed()
+        r = self.run_cli(*self.QUERY, "--json")
+        self.assertEqual(json.loads(r.stdout)["mode"], "hybrid")
+        self.assertEqual(self.stub.calls("/chat/completions"), [])
+
+
 if __name__ == "__main__":
     unittest.main()

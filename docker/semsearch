@@ -44,6 +44,10 @@ KEYWORD_TOP = 10  # stage 1 BM25 candidates
 MAX_CANDIDATES = 25
 RRF_K = 60
 SNIPPET_LINES = 20
+RERANK_TOP = 10  # ~190 ms per pair on the target GPU, serialised: 10 pairs ~ 2 s
+RERANK_LINES = 20
+RERANK_DEADLINE = 4.0
+RERANK_PAIR_TIMEOUT = 2.0
 
 PREFLIGHT_TIMEOUT = 0.4
 QUERY_EMBED_TIMEOUT = 3.0
@@ -215,6 +219,41 @@ def unpack(blob):
     return array.array("f", blob)
 
 
+# --------------------------------------------------------------------------- reranker request
+
+RERANK_SYSTEM = ('Judge whether the Document meets the requirements based on the Query and the Instruct provided. '
+                 'Note that the answer can only be "yes" or "no".')
+RERANK_INSTRUCT = "Given a code search query, retrieve relevant code"
+
+
+def rerank_request(model, query, document):
+    """Qwen3-Reranker as a yes/no judge over /v1/chat/completions.
+
+    Verified against LM Studio on 2026-11-04 (LM Studio build on busybox; probed via its
+    OpenAI-compatible API) with qwen3-reranker-0.6b Q8_0:
+      * /v1/rerank does not exist: LM Studio answers HTTP 200 + {"error": "Unexpected endpoint..."}.
+      * /v1/completions returns logprobs: null, so it cannot score.
+      * This exact shape works: the trailing assistant message is continued, not wrapped in a
+        new turn, so the first generated token is "yes"/"No". Without the "<think>\\n\\n</think>\\n\\n"
+        prefill the first token is junk ("immer", ":\\n"). max_tokens 1 returns logprobs: null,
+        so 2 is required. Relevant code scored 0.95-0.999, irrelevant 0.000.
+    If a server or chat-template update breaks this, rerank_score() sees no yes/no token and
+    search() falls back to the RRF order instead of mis-ranking.
+    """
+    return {
+        "model": model,
+        "temperature": 0,
+        "max_tokens": 2,
+        "logprobs": True,
+        "top_logprobs": 10,
+        "messages": [
+            {"role": "system", "content": RERANK_SYSTEM},
+            {"role": "user", "content": f"<Instruct>: {RERANK_INSTRUCT}\n<Query>: {query}\n<Document>: {document}"},
+            {"role": "assistant", "content": "<think>\n\n</think>\n\n"},
+        ],
+    }
+
+
 # --------------------------------------------------------------------------- endpoint client
 
 class Client:
@@ -243,6 +282,19 @@ class Client:
         if not isinstance(data, dict) or "error" in data:  # LM Studio answers unknown routes with 200 + error
             raise EndpointError(f"server error: {data!r:.200}")
         return data
+
+    def rerank_score(self, query, document, timeout):
+        """P(yes) that `document` answers `query`, from the reranker's first-token logprobs."""
+        data = self.post("/chat/completions", rerank_request(self.cfg.rerank_model, query, document), timeout)
+        try:
+            top = data["choices"][0]["logprobs"]["content"][0]["top_logprobs"]
+        except (KeyError, IndexError, TypeError) as e:  # logprobs: null when the server ignores the request
+            raise EndpointError(f"no logprobs in rerank response: {e}") from e
+        yes = sum(math.exp(t["logprob"]) for t in top if t.get("token", "").strip().lower() == "yes")
+        no = sum(math.exp(t["logprob"]) for t in top if t.get("token", "").strip().lower() == "no")
+        if yes + no == 0:  # model did not answer yes/no first: prompt format broke, don't trust the order
+            raise EndpointError("rerank answer is not yes/no")
+        return yes / (yes + no)
 
     def embed(self, texts, timeout):
         data = self.post("/embeddings", {"model": self.cfg.embed_model, "input": texts}, timeout)
@@ -426,6 +478,27 @@ def rrf_fuse(*rankings, k=RRF_K, limit=MAX_CANDIDATES):
     return sorted(scores.items(), key=lambda kv: (-kv[1], kv[0]))[:limit]
 
 
+def rerank(client, query, candidates, rows):
+    """Rescore candidates with the reranker; None (keep RRF order) on any failure or deadline.
+
+    Sequential on purpose: LM Studio serialises requests, so threads only add overhead.
+    """
+    deadline = time.monotonic() + RERANK_DEADLINE
+    scored = []
+    for cid, _ in candidates:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return None
+        _, path, _, _, _, text = rows[cid]
+        document = path + "\n" + "\n".join(text.split("\n")[:RERANK_LINES])
+        try:
+            scored.append((client.rerank_score(query, document, min(RERANK_PAIR_TIMEOUT, remaining)), cid))
+        except EndpointError:
+            return None
+    order = sorted(range(len(scored)), key=lambda i: (-scored[i][0], i))  # stable on RRF order for ties
+    return [(scored[i][1], scored[i][0]) for i in order]
+
+
 def search(con, client, query, k, fast, cfg):
     """Returns (results, mode); mode is hybrid | keyword | rerank."""
     dense = []
@@ -442,6 +515,11 @@ def search(con, client, query, k, fast, cfg):
     rows = {r[0]: r for r in con.execute(
         f"SELECT id, path, start, end, symbol, text FROM chunks WHERE id IN ({','.join('?' * len(ranked))})",
         [cid for cid, _ in ranked])} if ranked else {}
+    if client is not None and cfg.rerank_model and not fast and ranked:
+        reranked = rerank(client, query, ranked[:RERANK_TOP], rows)
+        if reranked is not None:
+            ranked = reranked + ranked[RERANK_TOP:]
+            mode = "rerank"
     results = []
     for cid, score in ranked[:k]:
         _, path, start, end, symbol, text = rows[cid]
