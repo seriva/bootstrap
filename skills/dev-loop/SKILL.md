@@ -12,6 +12,7 @@ Invoking `/dev-loop` authorizes discovering target repos, creating branches, sta
 ### Target
 1. **`TARGET_REPO`**: in a git repo, `git rev-parse --show-toplevel`. In an umbrella workspace (e.g. `~/dev/`): resolve via prompt (`in <repo>: ...`), active editor tab, or immediate subdirectory with `.git` and `AGENTS.md`. Ask if ambiguous. All commands and edits MUST run in `$TARGET_REPO`.
 2. **Project invariants**: read `$TARGET_REPO/AGENTS.md` (Part 2) for stack, boundaries, and **Commands** (test/lint/format/build and pre-commit gate; fallback: `lefthook run pre-commit --all-files` if `lefthook.yml` exists, else ask).
+3. **Optional discovery**: if `command -v semsearch >/dev/null 2>&1`, use `semsearch "<intent>"` for meaning-based discovery (and `sentrux` if available for structural dependency checks) alongside `rg`, especially in `/design-plan` audits, `Probe Investigator`, and `Code Reviewer` passes. Treat its hits as leads; confirm with `rg`/reads before citing. If missing or it prints `use rg`, use `rg` without comment.
 
 ### Dispatch
 "Spawn subagent `<Role>`" = fresh-context agent (zero chat history), routed below. The invoking agent orchestrates every role; subagents never spawn subagents. Always wait for the result. Prompts referencing this skill use `{{DEV_LOOP_SKILL}}` (substituted by `install.sh`).
