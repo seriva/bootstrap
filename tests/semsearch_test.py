@@ -381,5 +381,89 @@ class IndexTest(RepoCase):
         self.assertAlmostEqual(math.sqrt(sum(v * v for v in vec)), 1.0, places=4)
 
 
+# --------------------------------------------------------------------------- Task 1.2: recall + output
+
+HEADER_RE = re.compile(r"^\S+:\d+-\d+ ")
+
+
+class SearchTest(RepoCase):
+    def seed(self):
+        self.write("config/loader.go", "package config\n\nfunc LoadSettingsFile(path string) error {\n"
+                                       "\t// parse yaml configuration settings file from disk\n\treturn nil\n}\n")
+        self.write("net/socket.go", "package net\n\nfunc DialTimeout(addr string) error {\n"
+                                    "\t// open tcp connection with deadline\n\treturn nil\n}\n")
+        self.write("ui/zz.js", "function zzqUniqueName() {\n  return 42;\n}\n")
+        for i in range(30):
+            self.write(f"filler/f{i}.py", f"def filler_{i}():\n    return 'apple banana cherry {i}'\n")
+
+    def headers(self, out):
+        return [line for line in out.splitlines() if HEADER_RE.match(line)]
+
+    def test_semantic_query_ranks_matching_chunk_first(self):
+        self.seed()
+        r = self.run_cli("parse", "yaml", "configuration", "settings", "--fast")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        heads = self.headers(r.stdout)
+        self.assertTrue(heads, r.stdout)
+        self.assertTrue(heads[0].startswith("config/loader.go:3-6 "), heads)
+        queries = [b["input"] for b in self.stub.calls("/embeddings") if any("search_query" in t for t in b["input"])]
+        self.assertEqual(queries, [["search_query: parse yaml configuration settings"]])
+
+    def test_exact_symbol_found_by_keyword_search_without_endpoint(self):
+        self.seed()
+        r = self.run_cli("zzqUniqueName", SEMSEARCH_API_BASE=None)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("use rg", r.stderr)
+        self.assertTrue(self.headers(r.stdout)[0].startswith("ui/zz.js:1-3 "), r.stdout)
+
+    def test_camel_case_symbol_matches_split_words(self):
+        self.seed()
+        r = self.run_cli("unique", "name", SEMSEARCH_API_BASE=None)
+        self.assertTrue(self.headers(r.stdout)[0].startswith("ui/zz.js:1-3 "), r.stdout)
+
+    def test_operator_heavy_queries_do_not_crash(self):
+        self.seed()
+        for q in ['api.go', '--fast', 'NOT', 'fix: AND', 'foo-bar: "baz" (qux)', '!!!']:
+            r = self.run_cli("--", q, "--fast") if q.startswith("-") else self.run_cli(q, "--fast")
+            self.assertEqual(r.returncode, 0, (q, r.stderr))
+            self.assertNotIn("Traceback", r.stderr, q)
+
+    def test_fts_query_quotes_every_token(self):
+        self.assertEqual(ss.fts_query('foo-bar: "baz" (qux)'), '"foo" OR "bar" OR "baz" OR "qux"')
+        self.assertEqual(ss.fts_query("!!!"), "")
+
+    def test_rrf_dedupes_and_caps_candidates(self):
+        dense = list(range(20))
+        keyword = [5, 3, 100, 101, 102, 103, 104, 105, 106, 107]
+        fused = ss.rrf_fuse(dense, keyword)
+        ids = [i for i, _ in fused]
+        self.assertEqual(len(ids), len(set(ids)))
+        self.assertLessEqual(len(ids), ss.MAX_CANDIDATES)
+        self.assertEqual(ids[:2], [3, 5])  # in both lists -> fused ahead
+
+    def test_k_and_output_format(self):
+        self.seed()
+        r = self.run_cli("apple", "banana", "-k", "3", "--fast")
+        heads = self.headers(r.stdout)
+        self.assertEqual(len(heads), 3, r.stdout)
+        for line in r.stdout.splitlines():
+            self.assertTrue(line == "" or HEADER_RE.match(line) or line.startswith("    "), line)
+
+    def test_json_output(self):
+        self.seed()
+        r = self.run_cli("open tcp connection", "--json", "--fast")
+        data = json.loads(r.stdout)
+        top = data["results"][0]
+        self.assertEqual((top["path"], top["start"], top["end"]), ("net/socket.go", 3, 6))
+        self.assertIn("DialTimeout", top["text"])
+        self.assertEqual(data["mode"], "hybrid")
+
+    def test_no_matches(self):
+        self.write("a.txt", "hello\n")
+        r = self.run_cli("zzzz", SEMSEARCH_API_BASE=None)
+        self.assertEqual(r.returncode, 0)
+        self.assertEqual(r.stdout.strip(), "no matches")
+
+
 if __name__ == "__main__":
     unittest.main()
