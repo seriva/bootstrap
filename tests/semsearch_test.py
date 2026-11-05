@@ -1,0 +1,385 @@
+"""Tests for docker/semsearch. Stdlib only; a stub HTTP server stands in for LM Studio.
+
+Run: python3 -m unittest discover -s tests -p '*_test.py'
+"""
+
+import hashlib
+import importlib.machinery
+import importlib.util
+import json
+import math
+import os
+import re
+import shutil
+import socket
+import sqlite3
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+import unittest
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SCRIPT = os.path.join(ROOT, "docker", "semsearch")
+
+
+def load_module():
+    loader = importlib.machinery.SourceFileLoader("semsearch", SCRIPT)
+    spec = importlib.util.spec_from_loader("semsearch", loader)
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    return mod
+
+
+ss = load_module()
+
+# --------------------------------------------------------------------------- stub server
+
+WORD_RE = re.compile(r"[a-z0-9]+")
+
+
+def bag_vector(text, dims=768):
+    """Deterministic embedding: hashed bag of words, so shared words mean higher cosine."""
+    for prefix in ("search_query: ", "search_document: "):
+        if text.startswith(prefix):
+            text = text[len(prefix):]
+    vec = [0.0] * dims
+    for word in WORD_RE.findall(text.lower()):
+        h = int(hashlib.md5(word.encode()).hexdigest(), 16)
+        vec[h % 256] += 1.0  # land in the first 256 dims so Matryoshka truncation keeps signal
+    return vec
+
+
+class Stub:
+    """Configurable fake of the LM Studio OpenAI-compatible API."""
+
+    def __init__(self):
+        self.requests = []  # (path, parsed body)
+        self.embed_delay = 0.0
+        self.chat_delay = 0.0
+        self.chat_mode = "marker"  # marker | null | error200 | http500
+        self.marker = "relevantmarker"
+        self.lock = threading.Lock()
+        stub = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_POST(self):
+                body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                with stub.lock:
+                    stub.requests.append((self.path, body))
+                if self.path.endswith("/embeddings"):
+                    time.sleep(stub.embed_delay)
+                    data = [{"object": "embedding", "index": i, "embedding": bag_vector(t)}
+                            for i, t in enumerate(body["input"])]
+                    return self.reply(200, {"object": "list", "data": data})
+                if self.path.endswith("/chat/completions"):
+                    time.sleep(stub.chat_delay)
+                    return stub.chat(self, body)
+                self.reply(200, {"error": "Unexpected endpoint or method."})
+
+            def reply(self, code, obj):
+                raw = json.dumps(obj).encode()
+                try:
+                    self.send_response(code)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(raw)))
+                    self.end_headers()
+                    self.wfile.write(raw)
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
+
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.server.daemon_threads = True
+        self.base = f"http://127.0.0.1:{self.server.server_address[1]}/v1"
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    def chat(self, handler, body):
+        if self.chat_mode == "http500":
+            return handler.reply(500, {"error": "boom"})
+        if self.chat_mode == "error200":
+            return handler.reply(200, {"error": "Unexpected endpoint or method."})
+        if self.chat_mode == "null":
+            return handler.reply(200, {"choices": [{"message": {"content": "yes"}, "logprobs": None}]})
+        doc = body["messages"][1]["content"]
+        yes = 0.95 if self.marker in doc else 0.02
+        top = [{"token": "yes", "logprob": math.log(yes)},
+               {"token": "No", "logprob": math.log(1 - yes)}]
+        return handler.reply(200, {"choices": [{"message": {"content": "yes"},
+                                                "logprobs": {"content": [{"token": "yes", "top_logprobs": top}]}}]})
+
+    def calls(self, suffix):
+        with self.lock:
+            return [b for p, b in self.requests if p.endswith(suffix)]
+
+    def embedded_inputs(self):
+        return [t for b in self.calls("/embeddings") for t in b["input"]]
+
+    def reset(self):
+        with self.lock:
+            self.requests.clear()
+
+    def close(self):
+        self.server.shutdown()
+        self.server.server_close()
+
+
+# --------------------------------------------------------------------------- fixtures
+
+PY_SRC = '''import os
+
+
+def alpha():
+    return 1
+
+
+@decorator
+def beta(x):
+    return x * 2
+
+
+class Gamma:
+    def method(self):
+        return 3
+'''
+
+JS_SRC = '''const x = 1;
+
+function shrinkSlice(a) {
+  return a.slice(0, a.length / 2);
+}
+
+export const openFile = async (p) => {
+  return fs.open(p);
+};
+
+class Widget {
+  render() {}
+}
+'''
+
+GO_SRC = '''package main
+
+import "os"
+
+func main() {
+	os.Exit(0)
+}
+
+func (s *Server) Start() error {
+	return nil
+}
+
+type Config struct {
+	Port int
+}
+'''
+
+SH_SRC = '''#!/usr/bin/env bash
+set -e
+
+install_claude() {
+  echo claude
+}
+
+function install_agy {
+  echo agy
+}
+'''
+
+
+class RepoCase(unittest.TestCase):
+    """Temp git repo + temp cache + stub server per test."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="semsearch-test-")
+        self.repo = os.path.join(self.tmp, "repo")
+        self.cache = os.path.join(self.tmp, "cache")
+        os.makedirs(self.repo)
+        subprocess.run(["git", "init", "-q", self.repo], check=True)
+        self.stub = Stub()
+
+    def tearDown(self):
+        self.stub.close()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def write(self, rel, text):
+        path = os.path.join(self.repo, rel)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as f:
+            f.write(text)
+        return path
+
+    def env(self, **extra):
+        env = {k: v for k, v in os.environ.items() if not k.startswith("SEMSEARCH_")}
+        env.update(SEMSEARCH_API_BASE=self.stub.base, SEMSEARCH_CACHE=self.cache,
+                   SEMSEARCH_EMBED_MODEL="test-embed", SEMSEARCH_RERANK_MODEL="")
+        env.update({k: v for k, v in extra.items() if v is not None})
+        for k, v in extra.items():
+            if v is None:
+                env.pop(k, None)
+        return env
+
+    def run_cli(self, *args, cwd=None, timeout=30, **env):
+        return subprocess.run([sys.executable, SCRIPT, *args], cwd=cwd or self.repo, env=self.env(**env),
+                              capture_output=True, text=True, timeout=timeout)
+
+    def db(self):
+        files = [f for f in os.listdir(self.cache) if f.endswith(".db")]
+        self.assertEqual(len(files), 1, files)
+        return sqlite3.connect(os.path.join(self.cache, files[0]))
+
+    def chunk_paths(self):
+        with self.db() as con:
+            return sorted({r[0] for r in con.execute("select path from chunks")})
+
+
+# --------------------------------------------------------------------------- Task 1.1: index
+
+class ChunkingTest(unittest.TestCase):
+    def spans(self, path, src):
+        return [(c[0], c[2]) for c in ss.chunk_file(path, src)]  # (start, symbol)
+
+    def test_python_uses_ast_boundaries_including_decorators(self):
+        spans = self.spans("a.py", PY_SRC)
+        self.assertIn((4, "alpha"), spans)
+        self.assertIn((8, "beta"), spans)  # decorator line, not the def line
+        self.assertIn((13, "Gamma"), spans)
+
+    def test_js_headers(self):
+        symbols = [s for _, s in self.spans("a.js", JS_SRC)]
+        self.assertIn("shrinkSlice", symbols)
+        self.assertIn("openFile", symbols)
+        self.assertIn("Widget", symbols)
+
+    def test_go_headers(self):
+        symbols = [s for _, s in self.spans("main.go", GO_SRC)]
+        self.assertEqual(symbols[-3:], ["main", "Start", "Config"])
+
+    def test_bash_headers(self):
+        symbols = [s for _, s in self.spans("install.sh", SH_SRC)]
+        self.assertIn("install_claude", symbols)
+        self.assertIn("install_agy", symbols)
+
+    def test_chunks_cover_lines_and_respect_max_size(self):
+        src = "\n".join(f"line {i}" for i in range(1, 151)) + "\n"
+        chunks = ss.chunk_file("notes.txt", src)
+        self.assertTrue(all(c[1] - c[0] + 1 <= ss.MAX_CHUNK_LINES for c in chunks))
+        self.assertEqual(chunks[0][0], 1)
+        self.assertEqual(chunks[-1][1], 150)
+        long_fn = "def big():\n" + "".join(f"    x{i} = {i}\n" for i in range(200))
+        chunks = ss.chunk_file("big.py", long_fn)
+        self.assertGreater(len(chunks), 1)
+        self.assertTrue(all(c[1] - c[0] + 1 <= ss.MAX_CHUNK_LINES for c in chunks))
+
+    def test_python_syntax_error_falls_back_to_windows(self):
+        chunks = ss.chunk_file("broken.py", "def (:\n" * 10)
+        self.assertEqual(len(chunks), 1)
+
+    def test_skips_binary_minified_and_lockfiles(self):
+        self.assertFalse(ss.indexable("a.png", b"\x89PNG\x00\x00"))
+        self.assertFalse(ss.indexable("app.min.js", b"var a=1;"))
+        self.assertFalse(ss.indexable("package-lock.json", b"{}"))
+        self.assertFalse(ss.indexable("bundle.js", b"x" * 5000))  # one giant line
+        self.assertTrue(ss.indexable("a.py", PY_SRC.encode()))
+
+
+class IndexTest(RepoCase):
+    def seed(self):
+        self.write("src/a.py", PY_SRC)
+        self.write("web/app.js", JS_SRC)
+        self.write("main.go", GO_SRC)
+
+    def test_incremental_reindex(self):
+        self.seed()
+        r = self.run_cli("--index")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        first = len(self.stub.embedded_inputs())
+        self.assertGreater(first, 0)
+        self.assertTrue(all(t.startswith("search_document: ") for t in self.stub.embedded_inputs()))
+
+        self.stub.reset()
+        self.run_cli("--index")
+        self.assertEqual(self.stub.embedded_inputs(), [], "unchanged repo must not re-embed")
+
+        self.stub.reset()
+        time.sleep(0.01)
+        self.write("main.go", GO_SRC + "\nfunc extra() {}\n")
+        self.run_cli("--index")
+        inputs = self.stub.embedded_inputs()
+        self.assertTrue(inputs)
+        self.assertTrue(all(":: " in t and t.split(" :: ")[0].endswith("main.go") for t in inputs), inputs)
+
+        os.remove(os.path.join(self.repo, "web/app.js"))
+        self.run_cli("--index")
+        self.assertEqual(self.chunk_paths(), ["main.go", "src/a.py"])
+        with self.db() as con:
+            fts = {r[0] for r in con.execute("select path from chunks_fts")}
+        self.assertEqual(fts, {"main.go", "src/a.py"})
+
+    def test_mtime_only_change_does_not_reembed(self):
+        self.seed()
+        self.run_cli("--index")
+        self.stub.reset()
+        os.utime(os.path.join(self.repo, "main.go"), (time.time() + 100, time.time() + 100))
+        self.run_cli("--index")
+        self.assertEqual(self.stub.embedded_inputs(), [])
+
+    def test_paths_are_repo_relative_from_subdirectory(self):
+        self.seed()
+        r = self.run_cli("--index", cwd=os.path.join(self.repo, "src"))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.chunk_paths(), ["main.go", "src/a.py", "web/app.js"])
+
+    def test_tracked_untracked_and_ignored(self):
+        self.write(".gitignore", "secret/\n")
+        self.write("tracked.py", PY_SRC)
+        subprocess.run(["git", "-C", self.repo, "add", "tracked.py", ".gitignore"], check=True)
+        subprocess.run(["git", "-C", self.repo, "-c", "user.name=t", "-c", "user.email=t@t", "-c",
+                        "core.hooksPath=/dev/null", "commit", "-qm", "init"], check=True)
+        self.write("new_untracked.py", PY_SRC)
+        self.write("secret/hidden.py", PY_SRC)
+        self.run_cli("--index")
+        paths = self.chunk_paths()
+        self.assertIn("tracked.py", paths)
+        self.assertIn("new_untracked.py", paths)
+        self.assertNotIn("secret/hidden.py", paths)
+
+    def test_budget_stops_early_commits_and_resumes(self):
+        for i in range(80):  # 80 files -> > 2 batches of 32 chunks
+            self.write(f"pkg/f{i}.go", f"package pkg\n\nfunc F{i}() int {{\n\treturn {i}\n}}\n")
+        self.stub.embed_delay = 0.2
+        r = self.run_cli("needle", SEMSEARCH_INDEX_BUDGET="0.1")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        m = re.search(r"indexed (\d+)/(\d+) chunks", r.stderr)
+        self.assertTrue(m, r.stderr)
+        done, total = int(m.group(1)), int(m.group(2))
+        self.assertTrue(0 < done < total, (done, total))
+        with self.db() as con:
+            stored = con.execute("select count(*) from chunks where vec is not null").fetchone()[0]
+        self.assertEqual(stored, done)
+
+        self.stub.reset()
+        self.stub.embed_delay = 0
+        r = self.run_cli("--index", SEMSEARCH_INDEX_BUDGET="0.1")  # --index ignores the budget
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(len(self.stub.embedded_inputs()), total - done, "resume must skip committed batches")
+        with self.db() as con:
+            self.assertEqual(con.execute("select count(*) from chunks where vec is null").fetchone()[0], 0)
+
+    def test_vectors_are_truncated_and_normalised(self):
+        self.seed()
+        self.run_cli("--index")
+        with self.db() as con:
+            blob = con.execute("select vec from chunks where vec is not null limit 1").fetchone()[0]
+        vec = ss.unpack(blob)
+        self.assertEqual(len(vec), ss.DIMS)
+        self.assertAlmostEqual(math.sqrt(sum(v * v for v in vec)), 1.0, places=4)
+
+
+if __name__ == "__main__":
+    unittest.main()
