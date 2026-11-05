@@ -36,10 +36,6 @@ services:
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - OPENCODE_API_BASE=${OPENCODE_API_BASE:-}
       - OPENCODE_API_KEY=${OPENCODE_API_KEY:-}
-      # semsearch: OpenAI-compatible embedding server (unset = keyword search only)
-      - SEMSEARCH_API_BASE=${SEMSEARCH_API_BASE:-}
-      - SEMSEARCH_EMBED_MODEL=${SEMSEARCH_EMBED_MODEL:-}
-      - SEMSEARCH_RERANK_MODEL=${SEMSEARCH_RERANK_MODEL:-}
       # Git author for commits made by agents inside the container
       - GIT_USER_NAME=${GIT_USER_NAME:-Agent}
       - GIT_USER_EMAIL=${GIT_USER_EMAIL:-agent@bootstrap.local}
@@ -60,8 +56,6 @@ services:
       - gh-config:/home/coder/.config/gh
       # Persist SSH keys & known_hosts
       - ssh-keys:/home/coder/.ssh
-      # Persist the semsearch index so recreating the container does not re-embed every repo
-      - semsearch-cache:/home/coder/.cache/semsearch
     shm_size: 1gb
     security_opt:
       - seccomp:unconfined
@@ -77,5 +71,4 @@ volumes:
   pi-auth:
   gh-config:
   ssh-keys:
-  semsearch-cache:
 
