@@ -18,7 +18,6 @@ Versioning: continuous (rolling `[Unreleased]`, calendar sections `[YYYY-MM]` wh
 - `sync.sh` keeps the shared rules, bridge files, plan template, the shared commit-message check, and the agentic section of `.gitignore` identical across sibling projects; `--check` fails when anything has drifted.
 - `init.sh` sets up a new project in one command, with a changelog and roadmap that fit either continuous or versioned releases, and refuses to overwrite files that already exist unless you pass `--force`.
 - A single README that walks you from setup to your first reviewed PR, explains how the three skills fit together, and lists which tools are tested.
-- The agent container now ships `semsearch`, a local code search that finds code by meaning as well as by keyword, and the skills use it automatically when it is available. Set `SEMSEARCH_API_BASE` to an OpenAI-compatible embedding server (such as LM Studio) to turn it on; without it, everything works as before.
 - A ready-made Docker agent server in `docker/` runs T3 Code and VS Code in the browser with your chosen coding CLIs and the skills already installed, so agents can work in isolation on a homelab or remote machine. It only listens on localhost and needs a `PASSWORD` in `docker/.env` before it starts; see the README for exposing it on your network.
 
 ### Changed

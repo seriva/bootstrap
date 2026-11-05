@@ -5,7 +5,7 @@ description: Conducts an empirical codebase audit with probe verification, defin
 
 # Autonomous Design Plan Generator (design-plan)
 
-Invoking `/design-plan` authorizes inspecting code, running non-destructive probes/tests, writing a plan under `plans/`, and linking it in `plans/roadmap.md`. Shared conventions (**Target**, **Code Search**, **Probes**, **People docs**, **Follow-ups**) are defined in `/dev-loop`.
+Invoking `/design-plan` authorizes inspecting code, running non-destructive probes/tests, writing a plan under `plans/`, and linking it in `plans/roadmap.md`. Shared conventions (**Target**, **Probes**, **People docs**, **Follow-ups**) are defined in `/dev-loop`.
 
 ## Operational Workflow
 
@@ -15,7 +15,7 @@ Invoking `/design-plan` authorizes inspecting code, running non-destructive prob
 
 ### Step 2: Empirical Audit & Probing (NO ASSUMPTIONS)
 Never draft a plan from assumptions alone:
-1. **Codebase Inspection**: Locate exact files, modules, types, and existing test runners. If `command -v semsearch` succeeds, start each where/how question with `semsearch "<intent>"` and confirm its hits with Grep/`rg` before citing them (`/dev-loop` **Code Search**); if it is missing or prints `use rg`, use Grep/`rg` without comment. Note useful `semsearch` queries with the evidence in the Verified Gaps table.
+1. **Codebase Inspection**: Locate exact files, modules, types, and existing test runners.
 2. **Empirical Probes**: Run small, non-destructive probes or inspect compilation outputs to prove existing limitations, wrong results, or bottlenecks per `/dev-loop` **Probes**. Record each probe's command and observed result in the `Verified Gaps & Baseline Audit` table (`Area | Finding | Evidence & Probe Reference`) so the evidence survives cleanup.
 
 ### Step 3: Scope Boundaries & Done Contract

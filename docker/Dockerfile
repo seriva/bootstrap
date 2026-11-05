@@ -54,8 +54,6 @@ COPY --chmod=755 docker/harness-install /usr/local/bin/harness-install
 COPY --chmod=755 docker/t3-pair /usr/local/bin/t3-pair
 COPY --chmod=755 docker/upgrade.sh /usr/local/bin/agent-upgrade
 COPY --chmod=755 docker/entrypoint.sh /home/coder/entrypoint.sh
-# Hybrid code search for agents (stdlib Python; off until SEMSEARCH_API_BASE is set)
-COPY --chmod=755 docker/semsearch /usr/local/bin/semsearch
 
 # Copy bootstrap skills & installer so they are pre-baked into the image
 RUN mkdir -p /opt/bootstrap
@@ -77,7 +75,6 @@ RUN mkdir -p /home/coder/.npm-global \
     /home/coder/.config/opencode \
     /home/coder/.pi/agent \
     /home/coder/.ssh \
-    /home/coder/.cache/semsearch \
     /home/coder/workspace
 
 # Build-time worker harnesses to pre-install (comma-separated: claude,codex,opencode,pi,agy).
