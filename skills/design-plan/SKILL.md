@@ -15,7 +15,7 @@ Invoking `/design-plan` authorizes inspecting code, running non-destructive prob
 
 ### Step 2: Empirical Audit & Probing (NO ASSUMPTIONS)
 Never draft a plan from assumptions alone:
-1. **Codebase Inspection**: Locate exact files, modules, types, and existing test runners. If `command -v semsearch` succeeds, start each where/how question with `semsearch "<intent>"` and confirm its hits with Grep/`rg` before citing them (`/dev-loop` **Code Search**); otherwise use Grep/`rg`.
+1. **Codebase Inspection**: Locate exact files, modules, types, and existing test runners. If `command -v semsearch` succeeds, start each where/how question with `semsearch "<intent>"` and confirm its hits with Grep/`rg` before citing them (`/dev-loop` **Code Search**); if it is missing or prints `use rg`, use Grep/`rg` without comment. Note useful `semsearch` queries with the evidence in the Verified Gaps table.
 2. **Empirical Probes**: Run small, non-destructive probes or inspect compilation outputs to prove existing limitations, wrong results, or bottlenecks per `/dev-loop` **Probes**. Record each probe's command and observed result in the `Verified Gaps & Baseline Audit` table (`Area | Finding | Evidence & Probe Reference`) so the evidence survives cleanup.
 
 ### Step 3: Scope Boundaries & Done Contract
