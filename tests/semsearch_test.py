@@ -568,6 +568,36 @@ class HangingServer:
         self.sock.close()
 
 
+class RawReplyServer(HangingServer):
+    """Answers every request with fixed raw bytes, then closes (not necessarily valid HTTP)."""
+
+    def __init__(self, reply):
+        self.reply = reply
+        super().__init__()
+
+    def accept(self):
+        while True:
+            try:
+                conn = self.sock.accept()[0]
+            except OSError:
+                return
+            self.conns.append(conn)
+            threading.Thread(target=self.answer, args=(conn,), daemon=True).start()
+
+    def answer(self, conn):
+        try:
+            buf = b""
+            while b"\r\n\r\n" not in buf:  # read the request head so closing does not reset the connection
+                chunk = conn.recv(65536)
+                if not chunk:
+                    return  # preflight connect-and-close
+                buf += chunk
+            conn.sendall(self.reply)
+            conn.shutdown(socket.SHUT_WR)
+        except OSError:
+            pass
+
+
 class FailOpenTest(RepoCase):
     def setUp(self):
         super().setUp()
@@ -607,6 +637,22 @@ class FailOpenTest(RepoCase):
         self.assertIn("use rg", r.stderr)
         self.assertEqual(json.loads(r.stdout)["mode"], "keyword")
         self.assertLess(elapsed, 4.5)  # plan: query embed timeout 3 s (literal, so a raised constant fails here)
+
+    def assert_fails_open_on_raw_reply(self, reply):
+        srv = RawReplyServer(reply)
+        self.addCleanup(srv.close)
+        r = self.run_cli("serve request", SEMSEARCH_API_BASE=srv.base)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("Traceback", r.stderr)
+        self.assertEqual(r.stderr.strip(), ss.UNAVAILABLE)
+        self.assertIn("svc/handler.go", r.stdout)
+
+    def test_non_http_server_fails_open(self):  # BadStatusLine, e.g. API base pointed at an SSH port
+        self.assert_fails_open_on_raw_reply(b"SSH-2.0-OpenSSH_9.6\r\n")
+
+    def test_truncated_response_fails_open(self):  # IncompleteRead
+        self.assert_fails_open_on_raw_reply(
+            b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 1000\r\n\r\n{\"data\": [")
 
     def test_not_a_git_repo_exits_two(self):
         plain = os.path.join(self.tmp, "plain")

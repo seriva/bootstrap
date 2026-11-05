@@ -19,6 +19,7 @@ import argparse
 import array
 import ast
 import hashlib
+import http.client
 import json
 import math
 import os
@@ -277,7 +278,7 @@ class Client:
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 data = json.load(resp)
-        except (OSError, ValueError, urllib.error.URLError) as e:  # timeouts are OSError
+        except (OSError, ValueError, urllib.error.URLError, http.client.HTTPException) as e:  # timeouts are OSError
             raise EndpointError(str(e)) from e
         if not isinstance(data, dict) or "error" in data:  # LM Studio answers unknown routes with 200 + error
             raise EndpointError(f"server error: {data!r:.200}")
