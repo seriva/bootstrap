@@ -177,6 +177,24 @@ ENABLED_WORKERS=claude,codex,opencode  # Available: claude, codex, opencode, pi,
 * **In-place live upgrade:** Run `./upgrade.sh` on the host (or `agent-upgrade` inside container) to update T3 Code, packages, and workers without resetting state.
 * **Clean rebuild:** Run `./rebuild.sh` on the host for a cacheless build from scratch. The code-server base image is pinned; change `CODE_SERVER_VERSION` in `docker/Dockerfile` to move to a newer release.
 
+### Code Search (`semsearch`)
+The container includes `semsearch`, which finds code by what it does as well as by name. When it is set up, the skills use it next to `rg` to find relevant code faster; when it is not, they use `rg` as before.
+
+Point it at an OpenAI-compatible embedding server, such as LM Studio, in `docker/.env`:
+```bash
+SEMSEARCH_API_BASE=http://192.168.1.10:1234/v1
+SEMSEARCH_RERANK_MODEL=qwen3-reranker-0.6b   # optional: better ordering of the top results
+```
+Then, inside any repository in the workspace:
+```bash
+semsearch "where are retries handled for failed uploads"
+```
+It prints the best matching code as `path:start-end` with a short snippet.
+
+* **First run:** keyword search covers the whole repository right away. Matching by meaning needs an index, and each search spends up to 20 seconds building it before answering, so a large repository gets better over its first few searches. Run `semsearch --index` once to build it all up front.
+* **Options:** `-k N` for more results, `--fast` to skip reranking (well under a second instead of about 2–3 seconds), `--json` for scripts, `--reindex` to rebuild the index.
+* **Without a server:** `semsearch` falls back to keyword search, prints a hint to use `rg`, and never fails the command.
+
 ---
 
 ## Workflow Principles
@@ -246,7 +264,7 @@ Keep shared conventions synchronized across all your repositories using `sync.sh
 
 ```text
 bootstrap/
-├── docker/             Turnkey agent container (T3 Code, code-server, workers, upgrade scripts)
+├── docker/             Turnkey agent container (T3 Code, code-server, workers, upgrade scripts, semsearch)
 ├── scaffold/           Template files copied into new projects by init.sh
 ├── skills/             The three universal AI skills (installed globally, never copied)
 │   ├── design-plan/SKILL.md
@@ -255,5 +273,6 @@ bootstrap/
 ├── install.sh          Installs skills across detected AI tools on host
 ├── init.sh             Scaffolds a new project (--type continuous|versioned)
 ├── sync.sh             Synchronizes shared rules across projects (--check, --dry-run)
+├── tests/              Tests for semsearch (python3 -m unittest discover -s tests -p '*_test.py')
 └── AGENTS.md           Agent guide for this repository
 ```
