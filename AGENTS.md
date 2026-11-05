@@ -40,16 +40,16 @@ Canonical headquarters for agentic development standards, project scaffolding (`
 
 ## Tech Stack
 
-- **Language / Runtime**: Bash (`set -euo pipefail`), Python 3 (embedded in `sync.sh`), Markdown (`SKILL.md`, templates)
-- **Verification / Quality Gates**: `bash -n install.sh sync.sh init.sh docker/*.sh docker/harness-install docker/t3-pair`, `./sync.sh --check .`, `./install.sh`
+- **Language / Runtime**: Bash (`set -euo pipefail`), Python 3 stdlib only (embedded in `sync.sh`; `docker/semsearch`), Markdown (`SKILL.md`, templates)
+- **Verification / Quality Gates**: `bash -n install.sh sync.sh init.sh docker/*.sh docker/harness-install docker/t3-pair`, `python3 -m py_compile docker/semsearch`, `./sync.sh --check .`, `python3 -m unittest discover -s tests -p '*_test.py'`, `./install.sh`
 
 ## Commands
 
-- **Test**: `./sync.sh --check .`
-- **Lint**: `bash -n install.sh sync.sh init.sh docker/*.sh docker/harness-install docker/t3-pair`
+- **Test**: `./sync.sh --check . && python3 -m unittest discover -s tests -p '*_test.py'`
+- **Lint**: `bash -n install.sh sync.sh init.sh docker/*.sh docker/harness-install docker/t3-pair && python3 -m py_compile docker/semsearch`
 - **Format**: none
 - **Build**: none (deploy skills with `./install.sh`, sync sibling repos with `./sync.sh`)
-- **Pre-commit gate**: `bash -n install.sh sync.sh init.sh docker/*.sh docker/harness-install docker/t3-pair && ./sync.sh --check .`
+- **Pre-commit gate**: `bash -n install.sh sync.sh init.sh docker/*.sh docker/harness-install docker/t3-pair && python3 -m py_compile docker/semsearch && ./sync.sh --check . && python3 -m unittest discover -s tests -p '*_test.py'`
 
 ## Architecture
 
