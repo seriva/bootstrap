@@ -5,7 +5,7 @@ A complete starter kit, workflow engine, and runtime environment for building so
 It gives you three things:
 
 1. **A project scaffold** — One command sets up a new repository with an agent rulebook (`AGENTS.md`), pre-commit quality gate (`lefthook`), CI, and a `plans/` architecture structure.
-2. **Three global skills** — `/design-plan`, `/execute-plan`, and `/dev-loop`, installed once per machine, that autonomously drive work from concept to reviewed PR.
+2. **Three global skills** — `/design-plan`, `/execute-plan`, and `/dev-loop`, installed once per machine. The agent probes, scopes and drafts the plan under your guidance; execution from first phase to reviewed PR then runs autonomously.
 3. **A turnkey agent container** — An isolated Docker runtime in `docker/` combining **T3 Code** (orchestrator), web-based VS Code (`code-server`), and configurable worker harnesses with skills pre-baked.
 
 ---
@@ -57,18 +57,24 @@ docker compose exec agent t3-pair
 
 ## How the Agentic Workflow Works
 
-The three skills divide work into clean, accountable stages. Use `/dev-loop` alone for standalone fixes; chain all three for larger features.
+The three skills divide work into clean, accountable stages. Planning is interactive: `/design-plan` asks you to settle every scope and design trade-off. Execution is autonomous: `/execute-plan` and `/dev-loop` run without you until a PR is merged or a review gate blocks it. Use `/dev-loop` alone for standalone fixes; chain all three for larger features.
 
 ```mermaid
 flowchart LR
-    DP["/design-plan<br/>Probes & writes plan"] --> Plan["plans/…-plan.md"]
-    Plan -.->|"/design-plan review<br/>(fresh session / model)"| Plan
-    Plan --> EP["/execute-plan<br/>Runs phase by phase"]
-    EP -->|"One phase at a time"| DL["/dev-loop<br/>TDD → Gate → Review → PR"]
-    DL -->|"Phase PR merged"| EP
-    DL -.->|"Logs out-of-scope bugs"| FU["plans/follow-ups.md"]
+    subgraph Manual["Agent-driven, you guide"]
+        DP["/design-plan<br/>Probes & writes plan"] --> Plan["plans/…-plan.md"]
+        Plan -.->|"/design-plan review<br/>(fresh session / model)"| Plan
+    end
+    subgraph Auto["Autonomous"]
+        EP["/execute-plan<br/>Runs phase by phase"]
+        EP -->|"One phase at a time"| DL["/dev-loop<br/>TDD → Gate → 2-pass review → PR"]
+        DL -->|"Phase PR merged"| EP
+        DL -.->|"Logs out-of-scope bugs"| FU["plans/follow-ups.md"]
+        EP --> Final["Final PR into main"]
+    end
+    Plan --> EP
+    DL -->|"Blocked after pass 2"| Human["Draft PR, human steps in"]
     FU -.->|"/design-plan follow-ups"| DP
-    EP --> Final["Final PR into main"]
 ```
 
 | Skill | Role | Output |
@@ -81,7 +87,7 @@ flowchart LR
 > Agents never commit on their own. Invoking `/dev-loop` or `/execute-plan` grants explicit permission to branch, commit, push, and open PRs according to the workflow rules.
 
 ### 1. `/design-plan` — Probe Before You Build
-Probes the codebase empirically to prove every claimed problem exists before drafting architecture. Defines what is in and out of scope, establishes falsifiable done criteria, and splits work into atomic phases small enough for a single PR.
+Probes the codebase empirically to prove every claimed problem exists before drafting architecture. Defines what is in and out of scope, establishes falsifiable done criteria, and splits work into atomic phases small enough for a single PR. This is the human-in-the-loop stage: the skill stops and asks you on every scope or design trade-off, and you commit the plan before handing it to `/execute-plan`.
 ```text
 /design-plan Add WebSocket reconnection with exponential backoff
 /design-plan in gofront: Implement the encoding/csv stdlib package
@@ -90,7 +96,7 @@ Probes the codebase empirically to prove every claimed problem exists before dra
 ```
 
 ### 2. `/execute-plan` — Phase-by-Phase Orchestration
-Operates on a dedicated `feat/<plan-slug>` branch and runs `/dev-loop` for each phase, checking off `- [x] Task N.M` boxes as commits land so interrupted runs resume seamlessly. Pauses after each phase PR for human merge, or merges passing phases automatically with `--auto`. Finishes with follow-up triage, release-note polishing, and a full-branch audit against the plan.
+Operates on a dedicated `feat/<plan-slug>` branch and runs `/dev-loop` for each phase, checking off `- [x] Task N.M` boxes as commits land so interrupted runs resume seamlessly. Pauses after each phase PR for human merge, or merges passing phases automatically with `--auto`. If a phase PR is blocked by the review gate or CI, it halts (even with `--auto`), leaves the PR in Draft, and alerts you to step in. Finishes with follow-up triage, release-note polishing, and a full-branch audit against the plan.
 ```text
 /execute-plan plans/v1.8.0/portable-go-plan.md
 /execute-plan --auto plans/v1.8.0/portable-go-plan.md
@@ -100,7 +106,7 @@ Operates on a dedicated `feat/<plan-slug>` branch and runs `/dev-loop` for each 
 1. **TDD:** Writes a failing test first, then the minimal implementation to pass.
 2. **Quality Gate & Docs:** Runs the project's pre-commit gate and updates `CHANGELOG.md` / user docs when behavior changed.
 3. **Draft PR:** Pushes the branch and opens a draft PR.
-4. **2-Pass Fresh AI Review:** A fresh reviewer agent audits the diff with active `.probes/` checks (max 2 review passes, max 1 fix turn; out-of-scope bugs are logged to `plans/follow-ups.md`).
+4. **2-Pass Fresh AI Review:** A fresh reviewer agent audits the diff with active `.probes/` checks. High/Medium findings get at most one fix turn, after which a *new* fresh reviewer verifies the fixes. Pass 2 is terminal: `LGTM` passes the gate; anything unresolved leaves the PR in Draft as `BLOCKED_BY_DEFECTS` for you to investigate. Out-of-scope bugs are logged to `plans/follow-ups.md`.
 5. **CI Gate:** Waits for remote CI checks before marking the PR ready.
 
 ### Multi-Model Pairing
