@@ -8,39 +8,21 @@ Versioning: continuous (rolling `[Unreleased]`, calendar sections `[YYYY-MM]` wh
 ## [Unreleased]
 
 ### Added
-- Three global AI skills, installed once per machine with `install.sh` for whichever tools you have (Antigravity, Claude Code, Codex, OpenCode, Pi, Cursor, Copilot):
-  - `/design-plan` audits the codebase with real probes and writes a design plan with verified gaps, scope boundaries, and small, testable tasks. Run `/design-plan review` to have another AI tool check a plan against the codebase before starting work.
-  - `/execute-plan` runs a plan phase by phase on its own branch, one reviewed PR per phase, and can resume where it left off. Add `--auto` to merge passing phases and continue without stopping.
-  - `/dev-loop` takes a task from failing test to a draft PR, has a fresh AI reviewer check it (at most two review passes and one fix round), waits for CI, and marks the PR ready only when both are clean.
-- `/dev-loop` and `/execute-plan` can have one AI tool write the code and another review it: add `--pairing` to review with another installed CLI (`claude`, `agy`, or `codex`), or choose with `--implementer` and `--reviewer`. Tools without subagents, such as Cursor, now get reviews this way instead of stopping at a draft PR.
-- Bugs a reviewer finds outside the current work go into a follow-up list with a way to reproduce each one, instead of getting lost in PR descriptions. `/design-plan follow-ups` turns the list into fix phases, and `/execute-plan` asks about anything still open before the final merge.
-- A `scaffold/` starter kit for new projects: `AGENTS.md` as the single source of truth with thin bridge files for each tool, a pre-commit gate (format, lint, test, secret scan, Conventional Commits such as `feat(api): …` or `fix: …`), a CI workflow that runs that same gate, Dependabot, a plan template, and a roadmap that works for both versioned and continuous projects.
-- `sync.sh` keeps the shared rules, bridge files, plan template, the shared commit-message check, and the agentic section of `.gitignore` identical across sibling projects; `--check` fails when anything has drifted.
-- `init.sh` sets up a new project in one command, with a changelog and roadmap that fit either continuous or versioned releases, and refuses to overwrite files that already exist unless you pass `--force`.
-- A single README that walks you from setup to your first reviewed PR, explains how the three skills fit together, and lists which tools are tested.
-- A ready-made Docker agent server in `docker/` runs T3 Code and VS Code in the browser with your chosen coding CLIs and the skills already installed, so agents can work in isolation on a homelab or remote machine. It only listens on localhost and needs a `PASSWORD` in `docker/.env` before it starts; see the README for exposing it on your network.
+- **Global agentic workflow skills (`install.sh`)** for Antigravity, Claude Code, Codex, OpenCode, Pi, Cursor, and Copilot:
+  - **`/design-plan`** probes the codebase empirically and writes a phased design plan in `plans/` with verified gaps, a scope boundary matrix, and atomic TDD tasks. `/design-plan review` audits and tightens a draft plan in a fresh session or second tool; `/design-plan follow-ups` turns open bugs from `plans/follow-ups.md` into scheduled fix phases.
+  - **`/execute-plan`** runs an approved plan phase by phase on `feat/<plan-slug>`, delivering one reviewed PR per phase (`--auto` merges passing phases automatically), triaging follow-ups, polishing release notes, and running an independent full-branch audit before the final PR into `main`.
+  - **`/dev-loop`** drives a phase or standalone task from failing test through local quality gates, a draft PR, a fresh-context 2-pass AI review (with at most one fix turn), and remote CI verification before marking the PR ready.
+- **Cross-model pairing (`--pairing`, `--implementer`, `--reviewer`)**: `/dev-loop` and `/execute-plan` can pair one AI tool for implementation with another (`claude`, `agy`, or `codex`) for independent review—including in editors without native subagents like Cursor.
+- **Follow-up bug ledger (`plans/follow-ups.md`)**: out-of-scope defects and unfixed behavioral nits found during work or review are recorded with one-line repros instead of getting lost in PR comments or causing scope creep.
+- **Project scaffolding (`init.sh`) & rule sync (`sync.sh`)**:
+  - `init.sh --type continuous|versioned` sets up `AGENTS.md` (single source of truth), thin tool bridge files, a `plans/` workspace (`template.md`, `roadmap.md`, `follow-ups.md`), `lefthook.yml` + `lefthook-bootstrap.yml` pre-commit gates, and matching GitHub Actions CI.
+  - `sync.sh` (and `sync.sh --check`) keeps `AGENTS.md` Part 1, bridge files, `plans/template.md`, `lefthook-bootstrap.yml`, and the managed `.gitignore` block identical across sibling repositories while preserving project-specific Part 2 rules.
+- **Turnkey Docker agent server (`docker/`)**: isolated container combining T3 Code, web-based VS Code (`code-server`), and configurable worker CLIs with the bootstrap skills pre-installed.
 
 ### Changed
-- The commit-message check now lives in its own `lefthook-bootstrap.yml` that `sync.sh` keeps current, and the scope is optional (`fix: …` passes). Existing projects: run `./sync.sh`, add `lefthook-bootstrap.yml` under `extends:` in `lefthook.yml`, then run `lefthook install`.
-- CI now runs on every pull request (including phase PRs targeting `feat/<plan-slug>`) and on `main`/`master` pushes, and when a repository has no workflow that runs on a pull request, `/dev-loop` and `/execute-plan` treat `no checks reported` as `CI: none configured` instead of blocking the PR.
-- The starter quality gate fails until you configure it, so an unconfigured project cannot pass silently.
-- Agents keep terse "caveman" style for progress updates only. Docs, commit bodies, PR summaries, and changelog entries are written for people in plain language, and reviewers send them back when they aren't; plans stay dense because agents read them.
-- Finishing a plan now includes a pass that turns its changelog entries into a few readable release notes, starting from a one-line release note written in the plan, while purely internal phases skip changelog updates until a user-facing phase lands.
-- New projects ignore only tool session data, so shared editor settings and project-level agent config stay committable.
-- Cursor projects no longer get a bridge rule file; Cursor reads `AGENTS.md` directly, and `sync.sh` leaves any existing `.cursorrules` untouched.
-- When a project first receives the shared ignore block, the old catch-all ignores for agent tool folders are removed so project-level agent settings become committable.
-- Finished plans in continuous projects move to `plans/archive/` so the active plans folder stays short; plans in versioned projects stay in their release folder.
-- Plans, the roadmap, the plan template, and the follow-up list now live in their own `plans/` folder instead of `docs/`, so project documentation for people is no longer mixed with the files the workflows maintain. `sync.sh` removes the old template copy from `docs/`.
-- The plan template is shorter: what a plan will not do lives only in the boundary matrix, and how each goal is verified is stated next to the goal itself.
-- Any agent session, not only the review loop, is told to log bugs it notices outside its task in the follow-up list instead of fixing them on the side, and new projects start with an empty list in place.
-- The installer now writes each tool's own location of the `dev-loop` skill into the workflows, so reviewer subagents find it without guessing between tool folders.
-
-### Fixed
-- Skill files and the rules `install.sh` generates are valid YAML again, so tools no longer reject them.
-- Workflows stage only the files they changed, run the quality gate on exactly what is being committed, stop instead of guessing when the working tree is dirty, and never review their own code; where no fresh reviewer is available the PR stays in draft.
-- Reviewers' throwaway probe folder is excluded locally instead of by editing the project's ignore file, so review runs no longer leave the working tree dirty.
-- Resuming a plan from any branch targets the same base branch as the first run, and end-of-plan checks no longer miss bugs that reviewers reported more than once.
-- `sync.sh` works for project paths containing quotes and reports a project whose `AGENTS.md` lost its shared section instead of only warning.
+- **Audience separation**: `README.md`, `docs/`, `CHANGELOG.md`, commit bodies, and PR summaries are written in plain prose for people (starting from the plan's **Release note:** line and consolidated at plan completion), while `plans/` stays dense and symbol-heavy for agents.
+- **Strict safety & git discipline**: workflows require a clean working tree, stage only task-scoped files, isolate throwaway verification scripts in `.probes/` (excluded via `.git/info/exclude`), never self-review in the same context, and treat repositories without PR workflows as `CI: none configured` instead of blocking.
+- **Clean active `plans/` directory**: completed continuous plans move to `plans/archive/`, while versioned plans remain in their `plans/vX.Y.Z/` milestone folder.
 
 <!-- Add changes here as you work. When cutting a milestone, move this block to a calendar section:
 ## [YYYY-MM]
