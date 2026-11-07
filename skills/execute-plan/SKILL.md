@@ -11,11 +11,11 @@ Invoking `/execute-plan` authorizes managing plan branches, running `/dev-loop` 
 
 ### Step 1: Target Discovery & Epic Branch Setup
 1. **Execution Mode & Role Flags**: `AUTO_MODE=true` if invoked with `--auto` / `--auto-merge` (auto-merges passing phase PRs into `$PLAN_BRANCH` through Step 4, halting on any blocked phase); otherwise `AUTO_MODE=false` (pauses after each phase PR for human merge). Resolve `IMPLEMENTER` and `REVIEWER` from role flags per `/dev-loop` **Dispatch**.
-2. **Target & Plan (`PLAN_FILE`)**: Resolve `$TARGET_REPO` and read `AGENTS.md` per `/dev-loop` **Target**. Use the explicit plan path or find the active plan (`Status: Draft` or `In Progress`) in `plans/v*/` or top-level `plans/` (ignoring `plans/archive/`). Derive `<plan-slug>` by stripping `.md` and any trailing `-plan`.
+2. **Target & Plan (`PLAN_FILE`)**: Resolve `$TARGET_REPO` and read `AGENTS.md` per `/dev-loop` **Target**. Use the explicit plan path or find the active plan (`Status: Draft` or `In Progress`) in `plans/v*/` or top-level `plans/` ignoring `plans/archive/` (ask if multiple match). Derive `<plan-slug>` by stripping `.md` and any trailing `-plan`.
 3. **Branch Hierarchy**:
    - Require clean working tree (`git status --porcelain`); if dirty (e.g. uncommitted `/design-plan` output), stop and ask the user to commit or clean it first. Fetch `origin`.
    - `PLAN_BRANCH`: `feat/<plan-slug>`. Record `START_BRANCH`, then if `$PLAN_BRANCH` or `origin/$PLAN_BRANCH` exists, check it out and pull so `$PLAN_FILE` has any persisted `**Base branch:**` line.
-   - `BASE_BRANCH`: Use `**Base branch:** <name>` from `$PLAN_FILE` if present and `git rev-parse --verify --quiet "origin/<name>"` succeeds; else `START_BRANCH` if on `main`/version branch; else default branch. If `$PLAN_BRANCH` did not exist yet, create it (`git checkout -b "$PLAN_BRANCH" "$BASE_BRANCH"`) and push tracking branch.
+   - `BASE_BRANCH`: Use `**Base branch:** <name>` from `$PLAN_FILE` (strip surrounding backticks) if present and `git rev-parse --verify --quiet "origin/<name>"` succeeds; else `START_BRANCH` if on `main`/version branch; else default branch. If `$PLAN_BRANCH` did not exist yet, create it (`git checkout -b "$PLAN_BRANCH" "$BASE_BRANCH"`) and push tracking branch.
    - Persist base: if `$PLAN_FILE` lacks a valid `**Base branch:**` line, insert `**Base branch:** $BASE_BRANCH  ` (two trailing spaces) after `**Status:**` (replacing any invalid one). If `**Status:** Draft`, set `**Status:** In Progress  `. If changed, stage only `$PLAN_FILE`, commit `docs(<plan-slug>): start plan`, and push on `$PLAN_BRANCH`.
 
 ### Step 2: Plan State Analysis

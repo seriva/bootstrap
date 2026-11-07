@@ -9,7 +9,7 @@ Versioning: continuous (rolling `[Unreleased]`, calendar sections `[YYYY-MM]` wh
 
 ### Added
 - Three global AI skills, installed once per machine with `install.sh` for whichever tools you have (Antigravity, Claude Code, Codex, OpenCode, Pi, Cursor, Copilot):
-  - `/design-plan` audits the codebase with real probes and writes a design plan with verified gaps, scope boundaries, and small, testable tasks.
+  - `/design-plan` audits the codebase with real probes and writes a design plan with verified gaps, scope boundaries, and small, testable tasks. Run `/design-plan review` to have another AI tool check a plan against the codebase before starting work.
   - `/execute-plan` runs a plan phase by phase on its own branch, one reviewed PR per phase, and can resume where it left off. Add `--auto` to merge passing phases and continue without stopping.
   - `/dev-loop` takes a task from failing test to a draft PR, has a fresh AI reviewer check it (at most two review passes and one fix round), waits for CI, and marks the PR ready only when both are clean.
 - `/dev-loop` and `/execute-plan` can have one AI tool write the code and another review it: add `--pairing` to review with another installed CLI (`claude`, `agy`, or `codex`), or choose with `--implementer` and `--reviewer`. Tools without subagents, such as Cursor, now get reviews this way instead of stopping at a draft PR.

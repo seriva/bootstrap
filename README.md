@@ -84,10 +84,11 @@ flowchart LR
 ### The Three Skills
 
 #### 1. `/design-plan` — Probe Before You Build
-Probes the codebase empirically to prove every claimed problem exists before drafting architecture. Defines what is in and out of scope, establishes done criteria, and splits work into atomic phases small enough for a single PR.
+Probes the codebase empirically to prove every claimed problem exists before drafting architecture. Defines what is in and out of scope, establishes done criteria, and splits work into atomic phases small enough for a single PR. Run `/design-plan review` to have another model family check the plan against the codebase before execution, or `/design-plan follow-ups` to schedule open follow-up items into fix phases.
 ```text
 /design-plan Add WebSocket reconnection with exponential backoff
 /design-plan in gofront: Implement the encoding/csv stdlib package
+/design-plan review plans/v1.8.0/portable-go-plan.md
 /design-plan follow-ups plans/v1.8.0/portable-go-plan.md
 ```
 
