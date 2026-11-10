@@ -60,20 +60,21 @@ docker compose exec agent t3-pair
 The three skills divide work into clean, accountable stages. Planning is interactive: `/design-plan` asks you to settle every scope and design trade-off. Execution is autonomous: `/execute-plan` and `/dev-loop` run without you until a PR is merged or a review gate blocks it. Use `/dev-loop` alone for standalone fixes; chain all three for larger features.
 
 ```mermaid
-flowchart LR
-    subgraph Manual["Agent-driven, you guide"]
-        DP["/design-plan<br/>Probes & writes plan"] --> Plan["plans/…-plan.md"]
-        Plan -.->|"/design-plan review<br/>(fresh session / model)"| Plan
+flowchart TD
+    subgraph Guide["1. Guided Planning"]
+        DP["/design-plan<br/>Probes & drafts plan"] --> DPreview["/design-plan review<br/>Fresh session / model audit"]
+        DPreview --> Plan["plans/…-plan.md<br/>Signed-off spec"]
     end
-    subgraph Auto["Autonomous"]
-        EP["/execute-plan<br/>Runs phase by phase"]
-        EP -->|"One phase at a time"| DL["/dev-loop<br/>TDD → Gate → 2-pass review → PR"]
+
+    subgraph Auto["2. Autonomous Execution"]
+        Plan --> EP["/execute-plan<br/>Drives phase by phase"]
+        EP --> DL["/dev-loop<br/>TDD → Gates → 2-pass review → PR"]
         DL -->|"Phase PR merged"| EP
-        DL -.->|"Logs out-of-scope bugs"| FU["plans/follow-ups.md"]
         EP --> Final["Final PR into main"]
     end
-    Plan --> EP
+
     DL -->|"Blocked after pass 2"| Human["Draft PR, human steps in"]
+    DL -.->|"Logs out-of-scope bugs"| FU["plans/follow-ups.md"]
     FU -.->|"/design-plan follow-ups"| DP
 ```
 
