@@ -12,8 +12,16 @@ on:
   #   types: [published]
   # workflow_dispatch:
 
+# Cancel in-progress runs for the same branch or PR when a new commit is pushed.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
+    # Skip intermediate phase PRs (they are verified locally before push).
+    # Full CI runs on the final PR to main/master when the plan completes.
+    if: "!contains(github.head_ref, 'phase')"
     runs-on: ubuntu-latest
 
     steps:
