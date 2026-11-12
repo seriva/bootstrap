@@ -26,7 +26,7 @@ Providers are `claude`, `agy`, `codex`, or `host` (= `HOST_PROVIDER`). A reviewe
 #### Routing
 Dispatch routes through the highest-capability mechanism available:
 
-1. **Orchestrator tool (e.g. T3 Code):** if an MCP orchestrator tool (`delegate_task` or `spawn_thread`) is in your toolset, dispatch cross-provider roles through it (e.g. `delegate_task(provider="<provider>", prompt="...")`), so the run shows as a live thread in the orchestrator UI:
+1. **Orchestrator tool (e.g. T3 Code):** if an MCP orchestrator tool (`delegate_task`) is in your toolset, dispatch cross-provider roles through it (e.g. `delegate_task(provider="<provider>", prompt="...")`), so the run shows as a live thread in the orchestrator UI:
    - The delegated thread MUST run in `$TARGET_REPO` on `$WORKING_BRANCH` in the same checkout (no new worktree or branch).
    - It runs with the orchestrator's permission settings; **CLI Rules** 5 applies to it as well.
    - Output the **CLI Rules** 3 status line, wait for the reply, then echo and verify it per **CLI Rules** 4.
