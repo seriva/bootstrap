@@ -20,11 +20,21 @@ Invoking `/dev-loop` authorizes discovering target repos, creating branches, sta
 Providers are `claude`, `agy`, `codex`, or `host` (= `HOST_PROVIDER`). A reviewer from another provider can catch blind spots the implementer's model shares with itself.
 - **`HOST_PROVIDER`**: the tool you run in, from your system prompt and tools: `agy` (Antigravity), `claude` (Claude Code), `codex` (Codex), else `host` (e.g. Cursor, Copilot). Ask if unsure.
 - **`IMPLEMENTER`** (Step 2.2, `Defect Fixer`): `--implementer=<provider>`, default `HOST_PROVIDER`.
-- **`REVIEWER`** (review passes): `--reviewer=<provider>` if given. Else, if `--pairing` / `--cross-provider` or `--implementer` was passed, or the host has no subagent tool: the first of `claude`, `agy`, `codex` that differs from `IMPLEMENTER` and is reachable (`HOST_PROVIDER` with a subagent tool, or `command -v <binary>` succeeds); if none, warn that pairing is unavailable and use `HOST_PROVIDER`. Else `HOST_PROVIDER`. E.g. `--pairing` in Antigravity → `agy` implements, `claude` reviews; in Claude Code → `claude` implements, `agy` reviews; `--implementer=claude` → `agy` reviews.
+- **`REVIEWER`** (review passes): `--reviewer=<provider>` if given. Else, if `--pairing` / `--cross-provider` or `--implementer` was passed, or the host has no subagent tool: the first of `claude`, `agy`, `codex` that differs from `IMPLEMENTER` and is reachable (`HOST_PROVIDER` with a subagent tool, an orchestrator tool per **Routing**, or `command -v <binary>` succeeds); if none, warn that pairing is unavailable and use `HOST_PROVIDER`. Else `HOST_PROVIDER`. E.g. `--pairing` in Antigravity → `agy` implements, `claude` reviews; in Claude Code → `claude` implements, `agy` reviews; `--implementer=claude` → `agy` reviews.
 - Implement-only mode skips `REVIEWER` resolution.
 
 #### Routing
-A role whose provider differs from `HOST_PROVIDER` runs via that provider's headless CLI. Otherwise: Step 2.2 runs inline (never a nested subagent); `Defect Fixer` uses the native subagent tool, else inline (Pass 2 still reviews independently); reviews use the native subagent tool and never run inline (no tool → `PENDING_REVIEW` per Step 3).
+Dispatch routes through the highest-capability mechanism available:
+
+1. **Orchestrator tool (e.g. T3 Code):** if an MCP orchestrator tool (`delegate_task` or `spawn_thread`) is in your toolset, dispatch cross-provider roles through it (e.g. `delegate_task(provider="<provider>", prompt="...")`), so the run shows as a live thread in the orchestrator UI:
+   - The delegated thread MUST run in `$TARGET_REPO` on `$WORKING_BRANCH` in the same checkout (no new worktree or branch).
+   - It runs with the orchestrator's permission settings; **CLI Rules** 5 applies to it as well.
+   - Output the **CLI Rules** 3 status line, wait for the reply, then echo and verify it per **CLI Rules** 4.
+2. **Same provider:** if the role's provider matches `HOST_PROVIDER`:
+   - Step 2.2 runs inline (never a nested subagent).
+   - `Defect Fixer` uses the native subagent tool, else inline (Pass 2 still reviews independently).
+   - Reviews use the native subagent tool in a fresh context and never run inline (no tool → `PENDING_REVIEW` per Step 3).
+3. **Headless CLI fallback:** a cross-provider role with no orchestrator tool available runs via that provider's headless CLI per the table and **CLI Rules** below.
 
 | Provider | Native subagent tool | Headless CLI (`$PROMPT` per rule 2) |
 |---|---|---|
@@ -36,8 +46,8 @@ A role whose provider differs from `HOST_PROVIDER` runs via that provider's head
 #### CLI Rules
 1. **Binary**: before a CLI run, check `command -v <binary>`. Missing: halt with `Error: Provider CLI '<binary>' not found on PATH` if the provider was given explicitly; else warn and fall back to `HOST_PROVIDER`.
 2. **Prompt**: `DISPATCH_DIR="$(git rev-parse --git-dir)/dev-loop"` (untracked, survives **Probes** cleanup); `mkdir -p "$DISPATCH_DIR"`. Write the filled prompt to `PROMPT="$DISPATCH_DIR/<role-slug>.md"` with the host's file-write tool (not `echo`/heredoc) and pass `"$(cat "$PROMPT")"`: substituted output is not re-expanded, so backticks, quotes, and `$` arrive literally.
-3. **Notify & Background**: Before dispatching, output a status line in chat: `> 🤖 **Dispatching <Role>** to <provider> (<binary or native>). Waiting for completion...`. Runs can outlast host command timeouts (Claude Code: 10 min). In `$TARGET_REPO` on `$WORKING_BRANCH`, with `LOG="$DISPATCH_DIR/<role-slug>.log"`, run `( <cli>; echo "DISPATCH_EXIT=$?" ) > "$LOG" 2>&1` via the host's background facility (e.g. `run_in_background`), else detached: `export PROMPT; nohup sh -c '<cli>; echo "DISPATCH_EXIT=$?"' > "$LOG" 2>&1 &`. Wait for `DISPATCH_EXIT=` (task notification where available; if polling, avoid rapid tool spam by waiting 10–15s between `tail -n 1 "$LOG"` checks) without starting another role or touching the tree. The reply is in `$LOG`.
-4. **Echo & Verify**: After exit, read `$LOG` and echo the dispatched role's full reply directly in chat under `### 🤖 <Role> Output (<provider>)` (for reviews: all findings sections, probe results, and verdict; for implementation/fix: commit hashes and summaries) so progress is clearly visible in the UI. HEAD must still be `$WORKING_BRANCH` and `git status --porcelain` clean. Implementer and `Defect Fixer`: new commits in `git log "$BASE_BRANCH"..HEAD`, then rerun the `AGENTS.md` test and lint commands yourself. Reviews: expected reply sections present. On mismatch: implementation → stop and report; review → re-dispatch once, then `PENDING_REVIEW`. Delete `$DISPATCH_DIR` before returning.
+3. **Notify & Background**: Before dispatching, output a status line in chat: `> 🤖 **Dispatching <Role>** to <provider> (<binary or native>). Waiting for completion...`. Runs can outlast host command timeouts (Claude Code: 10 min). In `$TARGET_REPO` on `$WORKING_BRANCH`, with `LOG="$DISPATCH_DIR/<role-slug>.log"`, run `( <cli>; echo "DISPATCH_EXIT=$?" ) 2>&1 | tee "$LOG"` via the host's background facility (e.g. `run_in_background`), else detached: `export PROMPT; nohup sh -c '<cli>; echo "DISPATCH_EXIT=$?"' > "$LOG" 2>&1 &`. Wait for `DISPATCH_EXIT=` (task notification where available; if polling, wait 10–15s between `tail -n 1 "$LOG"` checks, optionally tailing the last progress line to chat) without starting another role or touching the tree. The reply is in `$LOG`.
+4. **Echo & Verify**: After exit, read `$LOG` (or the orchestrator thread's reply) and echo the dispatched role's full reply directly in chat under `### 🤖 <Role> Output (<provider>)` (for reviews: all findings sections, probe results, and verdict; for implementation/fix: commit hashes and summaries) so progress is clearly visible in the UI. HEAD must still be `$WORKING_BRANCH` and `git status --porcelain` clean. Implementer and `Defect Fixer`: new commits in `git log "$BASE_BRANCH"..HEAD`, then rerun the `AGENTS.md` test and lint commands yourself. Reviews: expected reply sections present. On mismatch: implementation → stop and report; review → re-dispatch once, then `PENDING_REVIEW`. Delete `$DISPATCH_DIR` before returning.
 5. **Permissions**: these commands skip permission prompts (Codex also its sandbox), so the prompt contract is the only guard. Never widen access further; for isolation, run inside a container or VM.
 
 ### Probes
@@ -83,7 +93,7 @@ Real bugs not caused by this diff (`### Out of Scope`) and unfixed behavioural `
    - `BASE_BRANCH`: caller/user-specified base (e.g. `feat/<plan-slug>`), else current branch. Fetch upstream.
    - `WORKING_BRANCH`: `feat/<plan-slug>-phase-<N>` for plan phases (`git checkout -b ... $BASE_BRANCH`, or `git checkout` if resuming); for standalone tasks, stay on an existing `feat/` or `fix/` branch or `git checkout -b <type>/<task-slug> $BASE_BRANCH`.
 2. **Implementation**:
-   - `IMPLEMENTER == HOST_PROVIDER`: run Case A or B below inline. Otherwise run `IMPLEMENTER`'s headless CLI per **Dispatch** with this verbatim prompt (placeholders filled), verify per **CLI Rules** 4, then go to Step 2.3:
+   - `IMPLEMENTER == HOST_PROVIDER`: run Case A or B below inline. Otherwise dispatch `IMPLEMENTER` per **Dispatch** with this verbatim prompt (placeholders filled), verify per **CLI Rules** 4, then go to Step 2.3:
      > First read the dev-loop skill file at `{{DEV_LOOP_SKILL}}` in full, then `AGENTS.md` in `$TARGET_REPO` (and `$PLAN_FILE` if given: `<path or none>`). Invoke `/dev-loop` Step 2.2 on branch `$WORKING_BRANCH` in `$TARGET_REPO` for `<Phase N ($PHASE_NAME) from $PLAN_FILE | standalone task: $TASK>`: execute Case A (plan phase) or Case B (standalone task) in full, including TDD, `AGENTS.md` quality gates, **People docs**, and **Safe commit**. Do NOT run `git push` or create/edit a GitHub PR (the orchestrator handles Step 2.3). Reply with the commit hash(es) and a one-line summary per commit.
    - **Case A — Plan Phase (`Phase N from <PLAN_FILE>`)**: Loop through every unchecked `- [ ] Task N.M` in Phase N without pausing:
      1. Write failing tests first (TDD), then implement within `AGENTS.md` boundaries.
@@ -102,7 +112,7 @@ Real bugs not caused by this diff (`### Out of Scope`) and unfixed behavioural `
 Review `$WORKING_BRANCH` against `$BASE_BRANCH` (max 2 review passes, max 1 fix turn; Low nits never block or trigger fixes; pre-existing/unrelated defects go under `### Out of Scope`).
 
 > [!IMPORTANT]
-> **NO SELF-REVIEW:** Never review your own diff in the current context. Dispatch every review pass to `REVIEWER` and the fix turn to `IMPLEMENTER` per **Dispatch**. If `REVIEWER` is unreachable (no native subagent tool, no CLI on `$PATH`), leave the PR in **Draft**, inform the user, and return PR URL with `REVIEW_STATUS=PENDING_REVIEW`. Notify the user upon dispatching and echo each pass's full findings in chat upon return.
+> **NO SELF-REVIEW:** Never review your own diff in the current context. Dispatch every review pass to `REVIEWER` and the fix turn to `IMPLEMENTER` per **Dispatch**. If `REVIEWER` is unreachable (no native subagent tool, no orchestrator tool, no CLI on `$PATH`), leave the PR in **Draft**, inform the user, and return PR URL with `REVIEW_STATUS=PENDING_REVIEW`. Notify the user upon dispatching and echo each pass's full findings in chat upon return.
 
 | Pass | Role & Dispatch Provider | Context | Outcome & Transition |
 |---|---|---|---|
