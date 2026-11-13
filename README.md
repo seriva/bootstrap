@@ -111,10 +111,10 @@ Operates on a dedicated `feat/<plan-slug>` branch and runs `/dev-loop` for each 
 5. **CI Gate:** Waits for remote CI checks before marking the PR ready.
 
 ### Multi-Model Pairing
-Pair different model families so the reviewer doesn't share the implementer's blind spots:
+Pair different model families so the reviewer doesn't share the implementer's blind spots. When pairing across providers, defaults are pre-configured (`claude-sonnet-5-5` for Claude, `gemini-4-hydrogen-high` for Antigravity, `gpt-6-luna` for Codex) and can be customized with explicit role model flags:
 ```text
 /dev-loop --pairing Fix race condition in session cleanup
-/dev-loop --implementer=claude --reviewer=agy Fix race condition in session cleanup
+/dev-loop --implementer=claude --reviewer=agy --reviewer-model=gemini-4-hydrogen-high Fix race condition in session cleanup
 /execute-plan --auto --pairing plans/v1.8.0/portable-go-plan.md
 ```
 
