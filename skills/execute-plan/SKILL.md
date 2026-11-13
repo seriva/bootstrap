@@ -10,7 +10,7 @@ Invoking `/execute-plan` authorizes managing plan branches, running `/dev-loop` 
 ## Operational Workflow
 
 ### Step 1: Target Discovery & Epic Branch Setup
-1. **Execution Mode & Role Flags**: `AUTO_MODE=true` if invoked with `--auto` / `--auto-merge` (auto-merges passing phase PRs into `$PLAN_BRANCH` through Step 4, halting on any blocked phase); otherwise `AUTO_MODE=false` (pauses after each phase PR for human merge). Resolve `IMPLEMENTER`, `REVIEWER`, and their models from role/model flags per `/dev-loop` **Dispatch**.
+1. **Execution Mode & Role Flags**: `AUTO_MODE=true` if invoked with `--auto` / `--auto-merge`, else `false`. Resolve `IMPLEMENTER`, `REVIEWER`, and their models from role/model flags per `/dev-loop` **Dispatch**.
 2. **Target & Plan (`PLAN_FILE`)**: Resolve `$TARGET_REPO` and read `AGENTS.md` per `/dev-loop` **Target**. Use the explicit plan path or find the active plan (`Status: Draft` or `In Progress`) in `plans/v*/` or top-level `plans/` ignoring `plans/archive/` (ask if multiple match). Derive `<plan-slug>` by stripping `.md` and any trailing `-plan`.
 3. **Branch Hierarchy**:
    - Require clean working tree (`git status --porcelain`); if dirty (e.g. uncommitted `/design-plan` output), stop and ask the user to commit or clean it first. Fetch `origin`.
@@ -30,14 +30,12 @@ Invoking `/execute-plan` authorizes managing plan branches, running `/dev-loop` 
 1. **Implement**:
    - `IMPLEMENTER == HOST_PROVIDER` and the host has a subagent tool: spawn subagent `Phase Implementer` (with `--implementer-model`, if set, as the subagent's model per `/dev-loop` **Model Selection & Inheritance**; do not pass the flag in the prompt, where the phase runs inline):
      > Prompt: `First read the dev-loop skill file at {{DEV_LOOP_SKILL}} in full. Then run /dev-loop in implement-only mode (Steps 1–2, --implementer=host) in $TARGET_REPO on base branch $PLAN_BRANCH for Phase $PHASE_NUM ($PHASE_NAME) from $PLAN_FILE. Return the PR URL and WORKING_BRANCH.`
-   - Otherwise: run `/dev-loop` Steps 1–2 yourself for Phase N with `BASE_BRANCH="$PLAN_BRANCH"` (Step 2.2 routes per **Dispatch**, forwarding any role and model flags; you push and open the draft PR).
-2. **Review**: Run `/dev-loop` Steps 3–4 on `$PHASE_BRANCH` against `$PLAN_BRANCH`, routing roles and forwarding model flags per `/dev-loop` **Dispatch**.
+   - Otherwise: run `/dev-loop` Steps 1–2 yourself for Phase N with `BASE_BRANCH="$PLAN_BRANCH"` (Step 2.2 routes per **Dispatch**; you push and open the draft PR).
+2. **Review**: Run `/dev-loop` Steps 3–4 on `$PHASE_BRANCH` against `$PLAN_BRANCH`, routing roles per `/dev-loop` **Dispatch**.
 3. **Phase Gate**:
    - If `REVIEW_STATUS` is `BLOCKED_BY_DEFECTS`, `BLOCKED_BY_CI`, or `PENDING_REVIEW`: unconditionally halt (even in `--auto`), leave PR in **Draft**, and alert the user.
    - If `REVIEW_STATUS == PASSED` and `AUTO_MODE=false`: report phase PR URL and stop (re-running `/execute-plan` after merge resumes at the next phase).
-4. **Auto-Merge** (`REVIEW_STATUS == PASSED` and `AUTO_MODE=true`):
-   1. Re-verify CI per **CI wait** on `$PHASE_BRANCH`; on `BLOCKED_BY_CI`, `gh pr ready "$PHASE_BRANCH" --undo`, halt, and alert user (`none configured` is not a failure).
-   2. `gh pr merge "$PHASE_BRANCH" --merge --delete-branch && git checkout "$PLAN_BRANCH" && git pull`, then loop back to **Step 2**.
+4. **Auto-Merge** (`REVIEW_STATUS == PASSED` and `AUTO_MODE=true`): `gh pr merge "$PHASE_BRANCH" --merge --delete-branch && git checkout "$PLAN_BRANCH" && git pull`, then loop back to **Step 2**.
 
 ### Step 4: Full-Branch Final Audit & Merge Preparation
 1. **Sync & Test**: `git checkout "$PLAN_BRANCH" && git pull`, then run the pre-commit gate from `AGENTS.md` Commands.
