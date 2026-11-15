@@ -67,7 +67,7 @@ Throwaway probes go in `$TARGET_REPO/.probes/` or the host's scratch directory, 
 ### Safe commit
 1. `git add -A`
 2. `git diff --cached --name-only` → every path must be in the current task's `Files:`, its test files, `$PLAN_FILE`, `plans/follow-ups.md`, or `CHANGELOG.md`/`README.md`/`docs/` (standalone: files the task needed). Unexpected path → `git restore --staged <path>` and delete/fix it (or explain in commit body if required).
-3. Run the pre-commit gate from `AGENTS.md` Commands on the staged diff (so `stage_fixed` and `gitleaks git --staged` apply), then `git commit -m "<message>"`. Subject ≤72 chars including `<type>[(<scope>)]:` and any `(Task N.M)` suffix; truncate `<summary>`, never scope or task ID. Plan work always uses `(<plan-slug>)` as scope.
+3. On intermediate phase tasks (`Task N.1 .. N.(M-1)`), run `lefthook run pre-commit` (or `AGENTS.md` format/lint commands if no `lefthook.yml`) plus the task's `Test:` file(s) so `stage_fixed` and `gitleaks` apply without re-running the full repo suite on every commit. On the phase's final task (`Task N.M`), standalone tasks, and `Defect Fixer`, run the full pre-commit gate from `AGENTS.md` Commands on the staged diff. Then `git commit -m "<message>"`. Subject ≤72 chars including `<type>[(<scope>)]:` and any `(Task N.M)` suffix; truncate `<summary>`, never scope or task ID. Plan work always uses `(<plan-slug>)` as scope.
 
 ### People docs
 Follow `AGENTS.md` **Audiences**, **Changelog**, and **Docs**. In addition:
@@ -108,7 +108,7 @@ Real bugs not caused by this diff (`### Out of Scope`) and unfixed behavioural `
      > First read the dev-loop skill file at `{{DEV_LOOP_SKILL}}` in full, then `AGENTS.md` in `$TARGET_REPO` (and `$PLAN_FILE` if given: `<path or none>`). Invoke `/dev-loop` Step 2.2 on branch `$WORKING_BRANCH` in `$TARGET_REPO` for `<Phase N ($PHASE_NAME) from $PLAN_FILE | standalone task: $TASK>`: execute Case A (plan phase) or Case B (standalone task) in full. Do NOT run `git push` or create/edit a GitHub PR (the orchestrator handles Step 2.3). Reply with the commit hash(es) and a one-line summary per commit.
    - **Case A — Plan Phase (`Phase N from <PLAN_FILE>`)**: Loop through every unchecked `- [ ] Task N.M` in Phase N without pausing:
      1. Write failing tests first (TDD), then implement within `AGENTS.md` boundaries.
-     2. Run test and lint commands from `AGENTS.md` Commands until green.
+     2. On intermediate tasks (`Task N.1 .. N.(M-1)`), run the task's `Test:` file(s) and `AGENTS.md` lint command until green; on the phase's last task (`Task N.M`), run the full test and lint commands from `AGENTS.md` Commands until green.
      3. Check off `- [x] Task N.M` in `$PLAN_FILE`. On the phase's last task, if this phase changes user-facing behaviour (or is the final phase), update `CHANGELOG.md` (and user docs when scheduled in this phase) per **People docs**.
      4. **Safe commit** `"feat(<plan-slug>): <summary> (Task N.M)"`.
    - **Case B — Standalone Task (`$TASK`)**:
