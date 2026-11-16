@@ -25,7 +25,7 @@ Providers are `claude`, `agy`, `codex`, or `host` (= `HOST_PROVIDER`).
 
 ##### Model Selection & Inheritance
 1. **Host role:** a role on `HOST_PROVIDER` inherits the session's model (pass no model) unless `--implementer-model` / `--reviewer-model` is given; then pass it to the native subagent tool (Claude Code's `Agent` tool takes only the tier names `sonnet`, `opus`, `haiku`, never full model strings). Inline work runs on the session's model: when `--implementer-model` is set and Step 2.2 runs inline, say in chat that it applies only to `Defect Fixer`.
-2. **Other-provider role** (headless CLI or orchestrator): its model flag, else the provider's default paired model: `claude` → `claude-sonnet-5-5`, `agy` → `gemini-4-hydrogen`, `codex` → `gpt-6-luna`. A model flag never selects a provider: it applies to the provider its role resolved to.
+2. **Other-provider role** (headless CLI or orchestrator): its model flag, else the provider's default paired model: `claude` → `claude-sonnet-5-5`, `agy` → `gemini-4-hydrogen`, `codex` → `gpt-6-luna`. A model flag never selects a provider: it applies to the provider its role resolved to. Use `medium` reasoning/effort for `gemini-4-hydrogen` and `claude-sonnet-*` (`effort: "medium"` on `claudeAgent`, `thinking_level: "medium"` on `antigravity`, `--effort medium` on headless CLIs).
 3. **Rejected Model:** never substitute silently.
    - An explicitly requested model that a provider CLI, native tool, or orchestrator rejects: say so in chat and stop that role (implementation or fix → stop and report; review → `PENDING_REVIEW`).
    - A default paired model rejected by a headless CLI: warn (`> ⚠️ **Warning:** Default model '<model>' was rejected by <provider>. Retrying with the CLI's configured default.`) and retry once without `--model`. Orchestrator dispatch follows **Routing** 1 instead.
@@ -34,8 +34,8 @@ Providers are `claude`, `agy`, `codex`, or `host` (= `HOST_PROVIDER`).
 Dispatch routes through the highest-capability mechanism available:
 
 1. **Orchestrator tool (e.g. T3 Code):** if an MCP orchestrator tool (`delegate_task`) is in your toolset, dispatch cross-provider roles through it. Also use it for a `HOST_PROVIDER` review or `Defect Fixer` when an explicit `--implementer-model` / `--reviewer-model` names a model the native subagent tool cannot select:
-   - **Discover first:** call `orchestrator_capabilities` once per run, when resolving `REVIEWER` or before the first `delegate_task`, whichever comes first. Map the role's provider to a `providerInstanceId` from its list (instance ids are not `claude`/`agy`/`codex`; match by `driverKind` with `canRunCrossProviderChildTask: true`). Check the resolved model is advertised (use its `search` input for unlisted models).
-   - **Call:** `delegate_task(task="<filled prompt>", target={providerInstanceId: "<id>", model: "<resolved model>"}, role="implementation"|"review", isolation="shared", mode="wait", timeoutMs=1800000, clientRequestId="<role-slug>-<HEAD short SHA>-<unix time>")`. Every dispatch, including each review round and re-dispatch, is a new `delegate_task` with a fresh `clientRequestId` (a repeated id replays the earlier task), never `t3_thread_send`; reuse an id only to retry that same call after a transport error.
+   - **Discover first:** call `orchestrator_capabilities` once per run, when resolving `REVIEWER` or before the first `delegate_task`, whichever comes first. Map the role's provider to a `providerInstanceId` from its list (instance ids are not `claude`/`agy`/`codex`; match by `driverKind` with `canRunCrossProviderChildTask: true`). Check the resolved model is advertised (use its `search` input for unlisted models) and inspect its `options` (`effort` or `thinking_level`).
+   - **Call:** `delegate_task(task="<filled prompt>", target={providerInstanceId: "<id>", model: "<resolved model>", options: {<optionId>: "medium"}}, role="implementation"|"review", isolation="shared", mode="wait", timeoutMs=1800000, clientRequestId="<role-slug>-<HEAD short SHA>-<unix time>")` (for `gemini-4-hydrogen` or `claude-sonnet-*`, pass whichever of `effort` or `thinking_level` the model's `options` advertises; omit `options` if neither is advertised). Every dispatch, including each review round and re-dispatch, is a new `delegate_task` with a fresh `clientRequestId` (a repeated id replays the earlier task), never `t3_thread_send`; reuse an id only to retry that same call after a transport error.
    - **Unavailable:** if the provider or model is not available, say so in chat and stop that role as in **Rejected Model** (a default model gets no retry here); never switch provider or model or fall back to native tools or CLIs.
    - **Checkout:** the child must work in `$TARGET_REPO` on `$WORKING_BRANCH` in the parent checkout: never `isolation="worktree"`.
    - It runs with the orchestrator's permission settings; **CLI Rules** 5 applies to it as well.
@@ -49,8 +49,8 @@ Dispatch routes through the highest-capability mechanism available:
 
 | Provider | Native subagent tool | Headless CLI (`$PROMPT` per rule 2, `<model>` per rule 1) |
 |---|---|---|
-| `agy` | `invoke_subagent` (`TypeName: "self"`, `Workspace: "inherit"`, `Model: "inherit"`) | `agy --model "<model>" --dangerously-skip-permissions -p "$(cat "$PROMPT")"` |
-| `claude` | `Agent` (`subagent_type: "general-purpose"`, `description: "<Role>"`, omit `model` to inherit; never `fork`) | `claude --model "<model>" --dangerously-skip-permissions -p "$(cat "$PROMPT")"` |
+| `agy` | `invoke_subagent` (`TypeName: "self"`, `Workspace: "inherit"`, `Model: "inherit"`) | `agy --model "<model>" --effort medium --dangerously-skip-permissions -p "$(cat "$PROMPT")"` |
+| `claude` | `Agent` (`subagent_type: "general-purpose"`, `description: "<Role>"`, omit `model` to inherit; never `fork`) | `claude --model "<model>" --effort medium --dangerously-skip-permissions -p "$(cat "$PROMPT")"` |
 | `codex` | Host subagent tool (`<Role>` description, fresh context) | `codex exec --model "<model>" --dangerously-bypass-approvals-and-sandbox "$(cat "$PROMPT")"` |
 | `host` (Copilot, Cursor) | Host fresh-context subagent tool, if any | none |
 
