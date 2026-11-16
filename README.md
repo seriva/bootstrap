@@ -111,7 +111,7 @@ Operates on a dedicated `feat/<plan-slug>` branch and runs `/dev-loop` for each 
 5. **CI Gate:** For a standalone task, waits for remote CI checks before marking the PR ready. A plan's phase PRs skip this step; CI runs on the plan's final PR instead.
 
 ### Multi-Model Pairing
-Pair different model families so the reviewer doesn't share the implementer's blind spots. `--pairing` keeps the tool you are in as implementer and picks the first other available tool (Claude Code, Antigravity, then Codex) as reviewer; `--implementer` and `--reviewer` name them explicitly. A paired tool runs on a default model (`claude-sonnet-5-5` for Claude, `gemini-4-hydrogen-high` for Antigravity, `gpt-6-luna` for Codex) unless you pass `--implementer-model` or `--reviewer-model`:
+Pair different model families so the reviewer doesn't share the implementer's blind spots. `--pairing` keeps the tool you are in as implementer and picks the first other available tool (Claude Code, Antigravity, then Codex) as reviewer; `--implementer` and `--reviewer` name them explicitly. A paired tool runs on a default model (`claude-sonnet-5-5` for Claude, `gemini-4-hydrogen-medium` for Antigravity, `gpt-6-luna` for Codex) unless you pass `--implementer-model` or `--reviewer-model`:
 ```text
 /dev-loop --pairing Fix race condition in session cleanup
 /dev-loop --implementer=claude --reviewer=agy --reviewer-model=gemini-4-hydrogen-high Fix race condition in session cleanup

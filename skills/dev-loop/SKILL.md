@@ -25,7 +25,7 @@ Providers are `claude`, `agy`, `codex`, or `host` (= `HOST_PROVIDER`).
 
 ##### Model Selection & Inheritance
 1. **Host role:** a role on `HOST_PROVIDER` inherits the session's model (pass no model) unless `--implementer-model` / `--reviewer-model` is given; then pass it to the native subagent tool (Claude Code's `Agent` tool takes only the tier names `sonnet`, `opus`, `haiku`, never full model strings). Inline work runs on the session's model: when `--implementer-model` is set and Step 2.2 runs inline, say in chat that it applies only to `Defect Fixer`.
-2. **Other-provider role** (headless CLI or orchestrator): its model flag, else the provider's default paired model: `claude` → `claude-sonnet-5-5`, `agy` → `gemini-4-hydrogen-high`, `codex` → `gpt-6-luna`. A model flag never selects a provider: it applies to the provider its role resolved to.
+2. **Other-provider role** (headless CLI or orchestrator): its model flag, else the provider's default paired model: `claude` → `claude-sonnet-5-5`, `agy` → `gemini-4-hydrogen-medium`, `codex` → `gpt-6-luna`. A model flag never selects a provider: it applies to the provider its role resolved to.
 3. **Rejected Model:** never substitute silently.
    - An explicitly requested model that a provider CLI, native tool, or orchestrator rejects: say so in chat and stop that role (implementation or fix → stop and report; review → `PENDING_REVIEW`).
    - A default paired model rejected by a headless CLI: warn (`> ⚠️ **Warning:** Default model '<model>' was rejected by <provider>. Retrying with the CLI's configured default.`) and retry once without `--model`. Orchestrator dispatch follows **Routing** 1 instead.
