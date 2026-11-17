@@ -80,7 +80,7 @@ flowchart TD
 
 | Skill | Role | Output |
 | :--- | :--- | :--- |
-| **`/design-plan`** | Probe the codebase, define scope boundaries, and split work into small TDD phases (`review` audits a plan; `follow-ups` schedules logged bugs) | Verified design plan in `plans/` |
+| **`/design-plan`** | Probe the codebase, define scope boundaries, and split work into small TDD phases (`review` audits a plan; `follow-ups` schedules logged bugs by root cause) | Verified design plan in `plans/` |
 | **`/execute-plan`** | Orchestrate an approved plan phase by phase on `feat/<plan-slug>`, then audit the full branch | One reviewed PR per phase + CI-verified final PR into `main` |
 | **`/dev-loop`** | Implement a single phase or standalone task via TDD, quality gates, and 2-pass fresh AI review | Tested, AI-reviewed PR (CI-verified for standalone tasks) |
 
@@ -93,7 +93,7 @@ Probes the codebase empirically to prove every claimed problem exists before dra
 /design-plan Add WebSocket reconnection with exponential backoff
 /design-plan in gofront: Implement the encoding/csv stdlib package
 /design-plan review plans/v1.8.0/portable-go-plan.md       # Audit & tighten in a fresh session/model
-/design-plan follow-ups plans/v1.8.0/portable-go-plan.md   # Turn follow-ups.md into fix phases
+/design-plan follow-ups plans/v1.8.0/portable-go-plan.md   # Turn follow-ups.md into fix phases, grouped by root cause
 ```
 
 ### 2. `/execute-plan` — Phase-by-Phase Orchestration

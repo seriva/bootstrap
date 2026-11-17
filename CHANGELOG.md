@@ -22,6 +22,7 @@ Versioning: continuous (rolling `[Unreleased]`, calendar sections `[YYYY-MM]` wh
 ### Changed
 - **Audience separation**: `README.md`, `docs/`, `CHANGELOG.md`, commit bodies, and PR summaries are written in plain prose for people (starting from the plan's **Release note:** line and consolidated at plan completion), while `plans/` stays dense and symbol-heavy for agents.
 - **Strict safety & git discipline**: workflows require a clean working tree, stage only task-scoped files, isolate throwaway verification scripts in `.probes/` (excluded via `.git/info/exclude`), never self-review in the same context, and treat repositories without PR workflows as `CI: none configured` instead of blocking.
+- **Root-cause follow-ups**: a bug with the same cause as the one being fixed is now fixed in the same change instead of being logged for later, and logged bugs record their cause and the plan that should fix them, so related bugs are scheduled and fixed together rather than one report at a time.
 - **Clean active `plans/` directory**: completed continuous plans move to `plans/archive/`, while versioned plans remain in their `plans/vX.Y.Z/` milestone folder.
 
 <!-- Add changes here as you work. When cutting a milestone, move this block to a calendar section:

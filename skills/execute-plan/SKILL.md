@@ -17,6 +17,7 @@ Invoking `/execute-plan` authorizes managing plan branches, running `/dev-loop` 
    - `PLAN_BRANCH`: `feat/<plan-slug>`. Record `START_BRANCH`, then if `$PLAN_BRANCH` or `origin/$PLAN_BRANCH` exists, check it out and pull so `$PLAN_FILE` has any persisted `**Base branch:**` line.
    - `BASE_BRANCH`: Use `**Base branch:** <name>` from `$PLAN_FILE` (strip surrounding backticks) if present and `git rev-parse --verify --quiet "origin/<name>"` succeeds; else `START_BRANCH` if on `main`/version branch; else default branch. If `$PLAN_BRANCH` did not exist yet, create it (`git checkout -b "$PLAN_BRANCH" "$BASE_BRANCH"`) and push tracking branch.
    - Persist base: if `$PLAN_FILE` lacks a valid `**Base branch:**` line, insert `**Base branch:** $BASE_BRANCH  ` (two trailing spaces) after `**Status:**` (replacing any invalid one). If `**Status:** Draft`, set `**Status:** In Progress  `. If changed, stage only `$PLAN_FILE`, commit `docs(<plan-slug>): start plan`, and push on `$PLAN_BRANCH`.
+4. **Routed Follow-ups**: if no task is checked yet and `plans/follow-ups.md` has entries routed to this plan (`→ <plan-slug>`), list them and ask the user (even in `--auto` mode; if the host cannot ask and wait, stop) whether to run `/design-plan follow-ups $PLAN_FILE` first, so same-root defects are fixed with their root instead of after it.
 
 ### Step 2: Plan State Analysis
 1. `git checkout "$PLAN_BRANCH" && git pull`. Inspect `- [ ] Task N.M` lines under `## Implementation Tasks` in `$PLAN_FILE`.
@@ -39,11 +40,11 @@ Invoking `/execute-plan` authorizes managing plan branches, running `/dev-loop` 
 
 ### Step 4: Full-Branch Final Audit & Merge Preparation
 1. **Sync & Test**: `git checkout "$PLAN_BRANCH" && git pull`, then run the pre-commit gate from `AGENTS.md` Commands.
-2. **Follow-up Triage** (when `plans/follow-ups.md` has entries referencing `<plan-slug>`):
+2. **Follow-up Triage** (when `plans/follow-ups.md` has entries referencing `<plan-slug>` or routed to it, `→ <plan-slug>`):
    - Spawn subagent `Follow-up Triager` (or run inline if no subagent tool):
-     > Prompt: `In $TARGET_REPO on branch $PLAN_BRANCH, re-run the repro of every entry in plans/follow-ups.md that references plan <plan-slug>, following the /dev-loop Probes rule (under .probes/, deleted afterwards). Do not modify tracked files. Reply with one line per entry: the entry text, then STILL REPRODUCES or FIXED, with the observed result.`
+     > Prompt: `In $TARGET_REPO on branch $PLAN_BRANCH, re-run the repro of every entry in plans/follow-ups.md that references plan <plan-slug> or is routed to it (→ <plan-slug>), following the /dev-loop Probes rule (under .probes/, deleted afterwards). Do not modify tracked files. Reply with one line per entry: the entry text, then STILL REPRODUCES or FIXED, with the observed result.`
    - Delete `FIXED` entries; if modified, stage only `plans/follow-ups.md`, commit `docs(<plan-slug>): triage review follow-ups`, and push.
-   - If any entry still reproduces: **pause and ask the user, even in `--auto` mode** (if the host cannot ask and wait, stop):
+   - If any entry still reproduces: **pause and ask the user, even in `--auto` mode** (if the host cannot ask and wait, stop). Mark each entry whose `Root:` falls under this plan's `In scope` rows as a plan defect: the plan's own scope rule covers it, so recommend **Schedule** for it; **Defer** it only with a reason from the user, recorded in the `Excluded: deferred` row.
      - **Schedule**: user runs `/design-plan follow-ups $PLAN_FILE`, commits the updated plan on `$PLAN_BRANCH`, and re-runs `/execute-plan`.
      - **Defer**: move reproducing entries (with repros) to the plan's `Excluded: deferred` row, delete them from `plans/follow-ups.md`, stage only those two files, commit `docs(<plan-slug>): defer review follow-ups`, push, and continue to Step 4.3.
 3. **Release Notes Pass**: Spawn subagent `Release Notes Editor` (or run inline if no subagent tool):
