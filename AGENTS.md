@@ -7,8 +7,8 @@
 ## 1. Context & Rules
 - **Caveman Speak:** Progress updates and tool-call narration use "caveman" style (extreme density, zero fluff, drop grammar, `->` for correlations). Explanations and answers to the user use normal readable prose.
 - **Audiences:** Every file has one reader. *People* read `README.md`, `docs/`, `CHANGELOG.md`, commit bodies, and PR summaries: plain prose, no task/phase/follow-up IDs, no references to plans. *Agents* read `plans/` (plans, `roadmap.md`, `follow-ups.md`): dense, symbol-heavy, ID-heavy text is fine there.
-- **Skills Override:** While running a skill (`/design-plan`, `/execute-plan`, `/dev-loop`), its rules override **Audiences**, **Blockers**, **Quality**, **Branches**, and **Commits & PR Titles** here.
-- **Plan-first:** Non-trivial features (multi-component, arch-altering, risky) require a design plan created with `/design-plan` and tracked in `plans/roadmap.md`. Active plans live under `plans/` (or milestone subfolders like `plans/vX.Y.Z/`); on completion `/execute-plan` moves continuous plans to `plans/archive/`, while versioned plans stay in their milestone folder. Track execution by checking off tasks (`- [x]`) as they land.
+- **Skills Override:** While running a skill (`/bs-plan`, `/bs-exec`, `/bs-loop`, `/bs-task`, `/bs-review`, `/bs-probe`), its rules override **Audiences**, **Blockers**, **Quality**, **Branches**, and **Commits & PR Titles** here.
+- **Plan-first:** Non-trivial features (multi-component, arch-altering, risky) require a design plan created with `/bs-plan` and tracked in `plans/roadmap.md`. Active plans live under `plans/` (or milestone subfolders like `plans/vX.Y.Z/`); on completion `/bs-exec` moves continuous plans to `plans/archive/`, while versioned plans stay in their milestone folder. Track execution by checking off tasks (`- [x]`) as they land.
 - **TDD:** Write failing tests first for non-trivial logic (if applicable).
 - **Quality:** Run format/lint before every commit. Before opening a PR, update `CHANGELOG.md` & `README.md` when user-facing behavior changed.
 - **Changelog:** Write for someone upgrading, not for the reviewer: at most two plain sentences per entry saying what is different for them and why it matters. Name only the APIs or flags the reader needs to act on and link to docs for full lists. Never include task, phase, or follow-up IDs, file paths, test fixture names, or internal identifiers, and never paste the commit body. One entry per feature or plan: rewrite it as later work lands instead of appending. Breaking changes go under `### Changed`, start with **Breaking:**, and say what to do. Good: "Collision checks are about twice as fast on large maps." Bad: "Add 4-wide SIMD triangle-packet kernel in `collision/packet.go` behind `useSIMD` (Task 2.3)."
@@ -21,8 +21,8 @@
 - **Code Preservation:** Do not delete existing comments, docstrings, or unrelated code unless explicitly instructed.
 
 ## 2. Git Standards
-- **No Auto-Commit:** Never run `git commit`, `git push`, or history-rewriting commands unless the user explicitly asks in the current turn. Make changes, run quality gates, report, then wait for the user to commit or instruct. Exception: invoking `/dev-loop` or `/execute-plan` is explicit permission to branch, commit, push, and open/merge PRs exactly as that workflow defines, including for the subagents it spawns.
-- **Branches:** Default branch is releasable; the pre-commit hook is the gate. Commit directly to it. Use a `<type>/<task-slug>` (`feat/` or `fix/`) branch + PR only when the user asks, via `/dev-loop`, or when the change is risky enough to want CI green before merge. Multi-phase plans use epic branch `feat/<plan-slug>` and phase branches `feat/<plan-slug>-phase-<N>`.
+- **No Auto-Commit:** Never run `git commit`, `git push`, or history-rewriting commands unless the user explicitly asks in the current turn. Make changes, run quality gates, report, then wait for the user to commit or instruct. Exception: invoking `/bs-loop` or `/bs-exec` is explicit permission to branch, commit, push, and open/merge PRs exactly as that workflow defines, including for the subagents it spawns.
+- **Branches:** Default branch is releasable; the pre-commit hook is the gate. Commit directly to it. Use a `<type>/<task-slug>` (`feat/` or `fix/`) branch + PR only when the user asks, via `/bs-loop`, or when the change is risky enough to want CI green before merge. Multi-phase plans use epic branch `feat/<plan-slug>` and phase branches `feat/<plan-slug>-phase-<N>`.
 - **Commits & PR Titles:** Conventional Commits (`<type>[(<scope>)]: <summary>`). Use a scope when it names something real: the plan slug for plan work, else a module or area; omit it rather than invent one. Subject ≤72 chars, imperative mood. Body explains *why*. One logical change per commit.
 - **Artifacts:** Never commit temporary agent session files (e.g., scratchpads, tool-specific session state). Official feature plans (including task checklists) should be committed.
 - **Security:** Never commit secrets/API keys. Ensure `.env` is gitignored.
@@ -54,10 +54,10 @@ Canonical headquarters for agentic development standards, project scaffolding (`
 ## Architecture
 
 - `scaffold/` — Pristine starter templates copied into new repositories by `init.sh` (`AGENTS.md`, `CLAUDE.md`, `.github/`, `lefthook.yml` + shared `lefthook-bootstrap.yml`, `plans/`, plus `CHANGELOG.md` and `plans/roadmap.md` from `templates/<profile>/`). Cursor reads `AGENTS.md` natively, so it has no bridge file. `scaffold/AGENTS.md` Part 1 is the canonical source of truth.
-- `skills/` — Global autonomous workflows (`design-plan`, `execute-plan`, `dev-loop`) deployed machine-wide by `install.sh`.
+- `skills/` — Global autonomous workflows (`bs-plan`, `bs-exec`, `bs-loop`, `bs-task`, `bs-review`, `bs-probe`) deployed machine-wide by `install.sh`.
 - `init.sh` — Scaffolding initializer for new projects with profile selection (`--type continuous|versioned`).
 - `install.sh` — Conditional multi-vendor skill installer (Antigravity, Claude Code, Codex, OpenCode, Pi, Cursor, Copilot).
 - `docker/` — Agent container: T3 Code + code-server image with worker harnesses (`harness-install`), pairing helper (`t3-pair`), `entrypoint.sh`, `upgrade.sh` (in-place), `rebuild.sh` (cacheless). Build context is the repo root, filtered by `.dockerignore`.
 - `sync.sh` — Propagates `scaffold/AGENTS.md` Part 1, tool bridge files, `plans/template.md`, `lefthook-bootstrap.yml` (and checks `lefthook.yml` extends it), and the bootstrap-managed `.gitignore` block to sibling projects (and keeps root `AGENTS.md` Part 1 in sync).
-- `README.md` — Human-facing guide: quick start, how the three skills fit together, sync, supported tools, repository layout.
+- `README.md` — Human-facing guide: quick start, how the `bs-*` skills fit together, sync, supported tools, repository layout.
 
