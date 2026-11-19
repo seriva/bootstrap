@@ -3,8 +3,6 @@
 *
 !skills/
 !shared/
-!scripts/
-!models.env
 !install.sh
 !docker/
 docker/workspace/

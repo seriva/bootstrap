@@ -134,7 +134,7 @@ Pair different model families so the reviewer doesn't share the implementer's bl
 /bs-exec --auto --pairing plans/v1.8.0/portable-go-plan.md
 ```
 
-- The defaults are configured in `models.env`. To change one without modifying this repo, set it in `${XDG_CONFIG_HOME:-~/.config}/bootstrap/models.env` and re-run `./install.sh`; names you leave out keep the repo default:
+- The defaults are configured in `shared/models.env`. To change one without modifying this repo, set it in `${XDG_CONFIG_HOME:-~/.config}/bootstrap/models.env` and re-run `./install.sh`; names you leave out keep the repo default:
   ```sh
   BS_MODEL_AGY="<model-id>"   # also BS_MODEL_CLAUDE, BS_MODEL_CODEX
   ```
@@ -215,8 +215,11 @@ For homelabs, remote servers, or sandboxed execution, `docker/` provides an isol
 bootstrap/
 ├── docker/             Turnkey agent container (T3 Code, code-server, workers, upgrade scripts)
 ├── scaffold/           Template files copied into new projects by init.sh
-├── shared/             Shared worker conventions (conventions.md) and orchestrator dispatch rules (dispatch.md)
-├── scripts/            Helper scripts installed to ${XDG_DATA_HOME:-~/.local/share}/bootstrap/scripts/ (bs-dirty-tree, bs-review-snapshot)
+├── shared/             Installed next to the skills in ${XDG_DATA_HOME:-~/.local/share}/bootstrap/
+│   ├── conventions.md  Shared worker conventions
+│   ├── dispatch.md     Orchestrator dispatch rules
+│   ├── models.env      Default paired model names (overridable in ${XDG_CONFIG_HOME:-~/.config}/bootstrap/models.env)
+│   └── scripts/        Helper scripts (bs-dirty-tree, bs-review-snapshot)
 ├── skills/             Universal AI skills (installed globally, never copied)
 │   ├── bs-plan/SKILL.md
 │   ├── bs-exec/SKILL.md
@@ -224,7 +227,6 @@ bootstrap/
 │   ├── bs-task/SKILL.md
 │   ├── bs-review/SKILL.md
 │   └── bs-probe/SKILL.md
-├── models.env          Default paired model names (overridable in ${XDG_CONFIG_HOME:-~/.config}/bootstrap/models.env)
 ├── install.sh          Installs skills, shared docs, and helper scripts across detected AI tools
 ├── init.sh             Scaffolds a new project (--type continuous|versioned)
 ├── sync.sh             Synchronizes shared rules across projects (--check, --dry-run)

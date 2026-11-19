@@ -4,13 +4,13 @@ set -euo pipefail
 DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SKILLS_SRC="$DOTFILES_DIR/skills"
 SHARED_SRC="$DOTFILES_DIR/shared"
-SCRIPTS_SRC="$DOTFILES_DIR/scripts"
+SCRIPTS_SRC="$SHARED_SRC/scripts"
 BOOTSTRAP_SHARE_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/bootstrap"
 BOOTSTRAP_CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/bootstrap"
 
 # Load default paired models, with optional local user override
-# shellcheck source=models.env
-source "$DOTFILES_DIR/models.env"
+# shellcheck source=shared/models.env
+source "$SHARED_SRC/models.env"
 if [ -f "$BOOTSTRAP_CONFIG_DIR/models.env" ]; then
   # shellcheck disable=SC1091
   source "$BOOTSTRAP_CONFIG_DIR/models.env"
