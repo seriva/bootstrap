@@ -10,19 +10,13 @@ Shared conventions referenced by all `bs-*` skills. Orchestrator-only dispatch a
 Throwaway probes go in `$TARGET_REPO/.probes/` or the host's scratch directory, never in source/test dirs (see `/bs-probe` for the full root-cause and sibling-path probing workflow). Before writing the first probe, exclude `.probes/` locally: `grep -qx '.probes/' .git/info/exclude || echo '.probes/' >> .git/info/exclude`. Delete probes before returning. A probe worth keeping becomes a real test in the task's `Test:` file.
 
 ## Safe commit
+`PRE_DIRTY` is the list of paths that were already dirty when a standalone `/bs-task` started (empty for `/bs-loop` and `/bs-exec`, which start from a clean tree). Never stage, restore, or delete a `PRE_DIRTY` path.
 1. **Stage task files**:
-   - **Called by `/bs-loop` or `/bs-exec`** (they start from a clean tree and never record dirty paths): `"{{BS_DIRTY_TREE}}" has-dirty` must exit 1. If it exits 0, the state is left over from an earlier interrupted standalone `/bs-task`: do NOT commit and never take the dirty-tree path below; stop and report it (the user can run `"{{BS_DIRTY_TREE}}" restore`, which puts the recorded paths back to their pre-existing content after saving anything changed there since set-aside and printing where, then `"{{BS_DIRTY_TREE}}" cleanup`). Otherwise run `git add -A`.
-   - **Standalone `/bs-task`, clean tree at start** (`"{{BS_DIRTY_TREE}}" has-dirty` exits 1): run `git add -A`.
-   - **Standalone `/bs-task`, dirty tree at start** (its `record` saved pre-existing dirty paths, i.e., `"{{BS_DIRTY_TREE}}" has-dirty` exits 0):
-     - Run `"{{BS_DIRTY_TREE}}" check-mixed <task-files...>`. If any task file was already dirty, it now mixes the user's edits with the task's: do NOT commit—stop, leave everything uncommitted, and report the mixed file(s) with a suggested commit message.
-     - Otherwise stage ONLY the files the task created or modified (`git add -- <task-files>`). Never touch, restore, or delete any pre-existing dirty path.
-2. `git -c core.quotePath=false diff --cached --name-only` → every path must be in the current task's `Files:`, its test files, `$PLAN_FILE`, `plans/follow-ups.md`, or `CHANGELOG.md`/`README.md`/`docs/` (standalone: files the task needed). Unexpected path → `git restore --staged <path>`; if `"{{BS_DIRTY_TREE}}" is-dirty "<path>"` exits 1, delete/fix the stray change (if it exits 0, leave the working-tree file untouched).
+   - **`PRE_DIRTY` empty**: run `git add -A`.
+   - **`PRE_DIRTY` not empty**: if any task file is in `PRE_DIRTY`, it now mixes the user's edits with the task's: do NOT commit—stop, leave everything uncommitted, and report the mixed file(s) with a suggested commit message. Otherwise stage ONLY the files the task created or modified (`git add -- <task-files>`).
+2. `git -c core.quotePath=false diff --cached --name-only` → every path must be in the current task's `Files:`, its test files, `$PLAN_FILE`, `plans/follow-ups.md`, or `CHANGELOG.md`/`README.md`/`docs/` (standalone: files the task needed). Unexpected path → `git restore --staged <path>`; if it is not in `PRE_DIRTY`, delete/fix the stray change (if it is, leave the working-tree file untouched).
 3. On intermediate phase tasks (`Task N.1 .. N.(M-1)`), run `lefthook run pre-commit` (or `AGENTS.md` format/lint commands if no `lefthook.yml`) plus the task's `Test:` file(s) so `stage_fixed` and `gitleaks` apply without re-running the full repo suite on every commit. On the phase's final task (`Task N.M`), standalone tasks, and `Defect Fixer`, run the full pre-commit gate from `AGENTS.md` Commands on the staged diff. Then `git commit -m "<message>"`.
-   - **Protect pre-existing edits during the gate**: when `"{{BS_DIRTY_TREE}}" has-dirty` exits 0, wrap the gate + commit so tree-wide formatters cannot touch the user's edits (do not use `git stash`):
-     1. Run `"{{BS_DIRTY_TREE}}" set-aside` (if it fails, stop and report; if backups remain in `.git/bs-pre-dirty`, run `"{{BS_DIRTY_TREE}}" restore` before stopping).
-     2. Run the gate, then commit.
-     3. Run `"{{BS_DIRTY_TREE}}" restore` (even if the gate fails; if restore fails, stop and tell the user their edits are backed up in the path it prints—never delete it).
-     4. Only after the commit succeeds and `restore` completes, run `"{{BS_DIRTY_TREE}}" cleanup`.
+   - **`PRE_DIRTY` not empty**: the gate runs with the user's edits in place, so its result also reflects them. Hash the existing `PRE_DIRTY` files before and after the gate (`sha256sum -- <paths>`). In the report, say the gate ran with those edits present, and name any file the gate changed (never revert it).
    - Subject ≤72 chars including `<type>[(<scope>)]:` and any `(Task N.M)` suffix; truncate `<summary>`, never scope or task ID. Plan work always uses `(<plan-slug>)` as scope.
 
 ## People docs

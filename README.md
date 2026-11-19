@@ -124,7 +124,7 @@ Use these when you want fast, local iteration without design plans, Draft PRs, o
 /bs-review --pairing          # Review with a different tool
 ```
 
-You don't need a clean working tree for these. `/bs-task` works on your current branch next to your own uncommitted edits: it sets them aside while its checks run, commits only when you ask, and won't commit a file you were already editing. `/bs-review` covers your uncommitted changes too, and if anything in your working tree changes during the review, it lists the changes and asks before undoing any of them.
+You don't need a clean working tree for these. `/bs-task` works on your current branch next to your own uncommitted edits: it commits only when you ask, commits only its own files, won't commit a file you were already editing, and tells you when its checks ran with your edits present. `/bs-review` covers your uncommitted changes too, and if anything in your working tree changes during the review, it lists the changes and asks before undoing any of them.
 
 ### Multi-Model Pairing
 Pair different model families so the reviewer doesn't share the implementer's blind spots. `--pairing` keeps the tool you are in as implementer and picks the first other available tool (Claude Code, Antigravity, then Codex) as reviewer; `--implementer` and `--reviewer` name them explicitly. A paired tool runs on a default model (`claude-sonnet-5-5` for Claude, `gemini-4-hydrogen` for Antigravity, `gpt-6-luna` for Codex) unless you pass `--implementer-model` or `--reviewer-model`:
@@ -227,7 +227,7 @@ bootstrap/
 │       ├── conventions.md  Shared worker conventions
 │       ├── dispatch.md     Orchestrator dispatch rules
 │       ├── models.env      Default paired model names (overridable in ${XDG_CONFIG_HOME:-~/.config}/bootstrap/models.env)
-│       └── scripts/        Helper scripts (bs-dirty-tree, bs-review-snapshot)
+│       └── scripts/        Helper scripts (bs-review-snapshot)
 ├── install.sh          Installs skills, shared docs, and helper scripts across detected AI tools
 ├── init.sh             Scaffolds a new project (--type continuous|versioned)
 ├── sync.sh             Synchronizes shared rules across projects (--check, --dry-run)

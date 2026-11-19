@@ -82,7 +82,6 @@ sed_escape() {
 SHARED_SED_ARGS=(
   -e "s|{{BS_CONVENTIONS}}|$(sed_escape "$BOOTSTRAP_SHARE_DIR/conventions.md")|g"
   -e "s|{{BS_DISPATCH}}|$(sed_escape "$BOOTSTRAP_SHARE_DIR/dispatch.md")|g"
-  -e "s|{{BS_DIRTY_TREE}}|$(sed_escape "$BOOTSTRAP_SHARE_DIR/scripts/bs-dirty-tree")|g"
   -e "s|{{BS_REVIEW_SNAPSHOT}}|$(sed_escape "$BOOTSTRAP_SHARE_DIR/scripts/bs-review-snapshot")|g"
   -e "s|{{BS_MODEL_CLAUDE}}|$(sed_escape "$BS_MODEL_CLAUDE")|g"
   -e "s|{{BS_MODEL_AGY}}|$(sed_escape "$BS_MODEL_AGY")|g"

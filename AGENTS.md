@@ -58,7 +58,7 @@ Canonical headquarters for agentic development standards, project scaffolding (`
   - `workflows/skills/` — Global autonomous workflows (`bs-plan`, `bs-exec`, `bs-loop`, `bs-task`, `bs-review`, `bs-probe`).
   - `workflows/shared/` — Installed next to the skills, in `${XDG_DATA_HOME:-~/.local/share}/bootstrap/`:
     - `conventions.md` (worker conventions) and `dispatch.md` (orchestrator dispatch and CI rules), with placeholders rendered.
-    - `scripts/`: shell helpers (`bs-dirty-tree` for dirty-tree protection during safe commits, `bs-review-snapshot` for pre/post review snapshots).
+    - `scripts/`: shell helpers (`bs-review-snapshot` for pre/post review snapshots).
     - `models.env`: default paired model names substituted into the docs and skills; not installed itself (override in `${XDG_CONFIG_HOME:-~/.config}/bootstrap/models.env`).
 - `init.sh` — Scaffolding initializer for new projects with profile selection (`--type continuous|versioned`).
 - `install.sh` — Conditional multi-vendor skill installer (Antigravity, Claude Code, Codex, OpenCode, Pi, Cursor, Copilot).

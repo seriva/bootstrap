@@ -20,7 +20,7 @@ Invoking `/bs-loop` authorizes discovering target repos, creating branches, stag
 
 ### Step 2: Branch & TDD Implementation (via `/bs-task`)
 1. **Branch Resolution**:
-   - Require clean working tree (`git status --porcelain`) and no leftover dirty-tree state (`"{{BS_DIRTY_TREE}}" has-dirty` exits 1); if dirty, stop and report the paths—never auto-stash, discard, or commit them. Leftover state comes from an interrupted standalone `/bs-task` and may hold a backup of the user's edits: report it and stop (the user can run `"{{BS_DIRTY_TREE}}" restore`, which puts the recorded paths back to their pre-existing content after saving anything changed there since set-aside and printing where, then `"{{BS_DIRTY_TREE}}" cleanup`).
+   - Require clean working tree (`git status --porcelain`); if dirty, stop and report the paths—never auto-stash, discard, or commit them.
    - `BASE_BRANCH`: caller/user-specified base (e.g. `feat/<plan-slug>`), else current branch. Fetch upstream.
    - `WORKING_BRANCH`: `feat/<plan-slug>-phase-<N>` for plan phases (`git checkout -b ... $BASE_BRANCH`, or `git checkout` if resuming); for standalone tasks, stay on an existing `feat/` or `fix/` branch or `git checkout -b <type>/<task-slug> $BASE_BRANCH`.
 2. **Implementation**:
