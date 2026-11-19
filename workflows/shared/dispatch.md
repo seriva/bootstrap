@@ -3,7 +3,7 @@
 Orchestrator-only rules for `/bs-exec`, `/bs-loop`, and `/bs-review`. Worker conventions live in `{{BS_CONVENTIONS}}`.
 
 ## Dispatch
-"Spawn subagent `<Role>`" = fresh-context agent (zero chat history), routed below. The invoking agent orchestrates every role; subagents never spawn subagents. Always wait for the result. Prompts referencing installed skills, shared docs, or helpers use placeholders substituted by `install.sh`.
+"Spawn subagent `<Role>`" = fresh-context agent (zero chat history), routed below. The invoking agent orchestrates every role; subagents never spawn subagents. Always wait for the result. Prompts referencing installed skills or shared docs use placeholders substituted by `install.sh`.
 
 ### Providers & Models
 Providers are `claude`, `agy`, `codex`, or `host` (= `HOST_PROVIDER`).
@@ -22,7 +22,7 @@ Dispatch routes through the highest-capability mechanism available:
 
 1. **Orchestrator tool (e.g. T3 Code):** if an MCP orchestrator tool (`delegate_task`) is in your toolset, dispatch cross-provider roles through it. Also use it for a `HOST_PROVIDER` review or `Defect Fixer` when an explicit `--implementer-model` / `--reviewer-model` names a model the native subagent tool cannot select:
    - **Discover first:** call `orchestrator_capabilities` once per run, when resolving `REVIEWER` or before the first `delegate_task`, whichever comes first. Map the role's provider to a `providerInstanceId` from its list (instance ids are not `claude`/`agy`/`codex`; match by `driverKind` with `canRunCrossProviderChildTask: true`). Check the resolved model is advertised (use its `search` input for unlisted models) and inspect its `options` (`effort` or `thinking_level`).
-   - **Call:** `delegate_task(task="<filled prompt>", target={providerInstanceId: "<id>", model: "<resolved model>", options: {<optionId>: "medium"}}, role="implementation"|"review", isolation="shared", mode="wait", timeoutMs=1800000, clientRequestId="<role-slug>-<HEAD short SHA>-<unix time>")` (pass whichever of `effort` or `thinking_level` the model's `options` advertises; omit `options` if neither is advertised). Every dispatch, including each review round and re-dispatch, is a new `delegate_task` with a fresh `clientRequestId` (a repeated id replays the earlier task), never `t3_thread_send`; reuse an id only to retry that same call after a transport error.
+   - **Call:** `delegate_task(task="<filled prompt>", target={providerInstanceId: "<id>", model: "<resolved model>", options: {<optionId>: "medium"}}, role="implementation"|"review", isolation="shared", mode="wait", timeoutMs=1800000, clientRequestId="<role-slug>-<HEAD short SHA>-<unix time>")` (for an other-provider role, pass whichever of `effort` or `thinking_level` the model's `options` advertises; omit `options` if neither is advertised or the role is on `HOST_PROVIDER`). Every dispatch, including each review round and re-dispatch, is a new `delegate_task` with a fresh `clientRequestId` (a repeated id replays the earlier task), never `t3_thread_send`; reuse an id only to retry that same call after a transport error.
    - **Unavailable:** if the provider or model is not available, say so in chat and stop that role as in **Rejected Model**; never switch provider or model or fall back to native tools or CLIs.
    - **Checkout:** the child must work in `$TARGET_REPO` on `$WORKING_BRANCH` in the parent checkout: never `isolation="worktree"`.
    - It runs with the orchestrator's permission settings; **CLI Rules** 5 applies to it as well.
@@ -38,7 +38,7 @@ Dispatch routes through the highest-capability mechanism available:
 |---|---|---|
 | `agy` | `invoke_subagent` (`TypeName: "self"`, `Workspace: "inherit"`, `Model: "inherit"`) | `agy --model "<model>" --effort medium --dangerously-skip-permissions -p "$(cat "$PROMPT")"` |
 | `claude` | `Agent` (`subagent_type: "general-purpose"`, `description: "<Role>"`, omit `model` to inherit; never `fork`) | `claude --model "<model>" --effort medium --dangerously-skip-permissions -p "$(cat "$PROMPT")"` |
-| `codex` | Host subagent tool (`<Role>` description, fresh context) | `codex exec --model "<model>" --dangerously-bypass-approvals-and-sandbox "$(cat "$PROMPT")"` |
+| `codex` | Host subagent tool (`<Role>` description, fresh context) | `codex exec --model "<model>" -c model_reasoning_effort=medium --dangerously-bypass-approvals-and-sandbox "$(cat "$PROMPT")"` |
 | `host` (Copilot, Cursor) | Host fresh-context subagent tool, if any | none |
 
 ### CLI Rules

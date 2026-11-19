@@ -124,7 +124,7 @@ Use these when you want fast, local iteration without design plans, Draft PRs, o
 /bs-review --pairing          # Review with a different tool
 ```
 
-You don't need a clean working tree for these. `/bs-task` works on your current branch next to your own uncommitted edits: it commits only when you ask, commits only its own files, won't commit a file you were already editing, and tells you when its checks ran with your edits present. `/bs-review` covers your uncommitted changes too, and if anything in your working tree changes during the review, it lists the changed files and leaves them as they are.
+You don't need a clean working tree for these. `/bs-task` works on your current branch next to your own uncommitted edits: it commits only when you ask, commits only its own files, won't commit a file you were already editing, and tells you when its checks ran with your edits present or changed any of your files. `/bs-review` covers your uncommitted changes too, and if your working tree changes during the review, it warns you, shows `git status`, and leaves everything as it is.
 
 ### Multi-Model Pairing
 Pair different model families so the reviewer doesn't share the implementer's blind spots. `--pairing` keeps the tool you are in as implementer and picks the first other available tool (Claude Code, Antigravity, then Codex) as reviewer; `--implementer` and `--reviewer` name them explicitly. A paired tool runs on a default model (`claude-sonnet-5-5` for Claude, `gemini-4-hydrogen` for Antigravity, `gpt-6-luna` for Codex) unless you pass `--implementer-model` or `--reviewer-model`:
@@ -223,10 +223,10 @@ bootstrap/
 │   │   ├── bs-task/SKILL.md
 │   │   ├── bs-review/SKILL.md
 │   │   └── bs-probe/SKILL.md
-│   └── shared/         Installed next to the skills in ${XDG_DATA_HOME:-~/.local/share}/bootstrap/
+│   └── shared/         Shared docs, installed to ${XDG_DATA_HOME:-~/.local/share}/bootstrap/
 │       ├── conventions.md  Shared worker conventions
 │       ├── dispatch.md     Orchestrator dispatch rules
-│       └── models.env      Default paired model names (overridable in ${XDG_CONFIG_HOME:-~/.config}/bootstrap/models.env)
+│       └── models.env      Default paired model names, filled in at install (override in ${XDG_CONFIG_HOME:-~/.config}/bootstrap/models.env)
 ├── install.sh          Installs skills and shared docs across detected AI tools
 ├── init.sh             Scaffolds a new project (--type continuous|versioned)
 ├── sync.sh             Synchronizes shared rules across projects (--check, --dry-run)
