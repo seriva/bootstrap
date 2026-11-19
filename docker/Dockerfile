@@ -79,7 +79,7 @@ RUN mkdir -p /home/coder/.npm-global \
 
 # Build-time worker harnesses to pre-install (comma-separated: claude,codex,opencode,pi,agy).
 # harness-install links the bootstrap skills itself; with no workers, link them directly.
-ARG ENABLED_WORKERS="claude,codex,opencode"
+ARG ENABLED_WORKERS="claude,codex,agy"
 RUN if [ -n "${ENABLED_WORKERS}" ]; then \
       /usr/local/bin/harness-install "${ENABLED_WORKERS}"; \
     else \

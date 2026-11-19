@@ -230,5 +230,6 @@ bootstrap/
 ├── install.sh          Installs skills and shared docs across detected AI tools
 ├── init.sh             Scaffolds a new project (--type continuous|versioned)
 ├── sync.sh             Synchronizes shared rules across projects (--check, --dry-run)
+├── tests/smoke.sh      Smoke test for init.sh, sync.sh, and install.sh (runs in a temp dir)
 └── AGENTS.md           Agent guide for this repository
 ```

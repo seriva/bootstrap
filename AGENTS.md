@@ -41,15 +41,15 @@ Canonical headquarters for agentic development standards, project scaffolding (`
 ## Tech Stack
 
 - **Language / Runtime**: Bash (`set -euo pipefail`), Python 3 (embedded in `sync.sh`), Markdown (`SKILL.md`, templates)
-- **Verification / Quality Gates**: `bash -n install.sh sync.sh init.sh docker/*.sh docker/harness-install docker/t3-pair`, `./sync.sh --check .`, `./install.sh`
+- **Verification / Quality Gates**: `bash -n install.sh sync.sh init.sh tests/smoke.sh docker/*.sh docker/harness-install docker/t3-pair`, `./sync.sh --check .`, `./tests/smoke.sh`
 
 ## Commands
 
-- **Test**: `./sync.sh --check .`
-- **Lint**: `bash -n install.sh sync.sh init.sh docker/*.sh docker/harness-install docker/t3-pair`
+- **Test**: `./sync.sh --check . && ./tests/smoke.sh` (smoke test runs `init.sh`, `sync.sh`, and `install.sh` against throwaway targets in a temp dir)
+- **Lint**: `bash -n install.sh sync.sh init.sh tests/smoke.sh docker/*.sh docker/harness-install docker/t3-pair`
 - **Format**: none
 - **Build**: none (deploy skills with `./install.sh`, sync sibling repos with `./sync.sh`)
-- **Pre-commit gate**: `bash -n install.sh sync.sh init.sh docker/*.sh docker/harness-install docker/t3-pair && ./sync.sh --check .`
+- **Pre-commit gate**: `bash -n install.sh sync.sh init.sh tests/smoke.sh docker/*.sh docker/harness-install docker/t3-pair && ./sync.sh --check . && ./tests/smoke.sh`
 
 ## Architecture
 
@@ -63,5 +63,6 @@ Canonical headquarters for agentic development standards, project scaffolding (`
 - `install.sh` — Conditional multi-vendor skill installer (Antigravity, Claude Code, Codex, OpenCode, Pi, Cursor, Copilot).
 - `docker/` — Agent container: T3 Code + code-server image with worker harnesses (`harness-install`), pairing helper (`t3-pair`), `entrypoint.sh`, `upgrade.sh` (in-place), `rebuild.sh` (cacheless). Build context is the repo root, filtered by `.dockerignore`.
 - `sync.sh` — Propagates `scaffold/AGENTS.md` Part 1, tool bridge files, `plans/template.md`, `lefthook-bootstrap.yml` (and checks `lefthook.yml` extends it), and the bootstrap-managed `.gitignore` block to sibling projects (and keeps root `AGENTS.md` Part 1 in sync).
+- `tests/smoke.sh` — Smoke test: `init.sh` for both profiles, `sync.sh` drift/repair/idempotency and `--check` exit codes, and `install.sh` into a sandboxed `$HOME` (no unrendered `{{BS_*}}` placeholders, every rendered path resolves).
 - `README.md` — Human-facing guide: quick start, how the `bs-*` skills fit together, sync, supported tools, repository layout.
 
