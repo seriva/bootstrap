@@ -96,8 +96,8 @@ echo "[entrypoint] Starting T3 Code web orchestrator on $T3_HOST:$T3_PORT..."
       --lan \
       --no-browser \
       --base-dir "$T3_DIR" \
-      --auto-bootstrap-project-from-cwd "$WORKSPACE_DIR" \
-      >> "$T3_DIR/t3-server.log" 2>&1 || true
+      "$WORKSPACE_DIR" \
+      >> "$T3_DIR/t3-server.log" 2>&1 || echo "[entrypoint] Warning: t3 serve exited (see $T3_DIR/t3-server.log); restarting in 5s" >&2
     sleep 5
   done
 ) &
