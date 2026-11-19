@@ -17,7 +17,7 @@ Invoking `/bs-review` dispatches a fresh-context reviewer with zero implementati
 1. **Target & Diff Scope**:
    - Resolve `$TARGET_REPO` and read `AGENTS.md` per **Target** (`{{BS_CONVENTIONS}}`).
    - In `$TARGET_REPO`, record `WORKING_BRANCH="$(git rev-parse --abbrev-ref HEAD)"` and the pre-review state, keeping the printed hash for Step 3:
-     `{ git status --porcelain --untracked-files=all; git diff HEAD; git ls-files --others --exclude-standard -z | xargs -0 -r sh -c 'find "$@" -type f -not -path "*/.git/*" -exec sha256sum {} +; find "$@" -type f -perm -u+x -not -path "*/.git/*"' _; } | sha256sum` (untracked files are hashed by content and exec bit, including files inside untracked nested repos)
+     `{ git status --porcelain --untracked-files=all; git diff HEAD; git diff --cached; git ls-files --others --exclude-standard -z | sed -z 's|^|./|' | xargs -0 -r sh -c 'find "$@" -type f -not -path "*/.git/*" -exec sha256sum {} +; find "$@" -type f -perm -u+x -not -path "*/.git/*"' _; } | sha256sum` (untracked files are hashed by content and exec bit, including files inside untracked nested repos)
    - Default `REVIEW_WORKDIR="$TARGET_REPO"` and `UNTRACKED_FILES="none"`.
    - Resolve `DEFAULT_BRANCH`: `git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||'`, else whichever of `main` or `master` exists, else `$WORKING_BRANCH`.
    - Determine `<BASE>`, `<DIFF_TARGET>`, `<UNTRACKED_FILES>`, and `<REVIEW_WORKDIR>`:
