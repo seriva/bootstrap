@@ -21,7 +21,7 @@ Installs skills into your local AI tools:
 cd ~/dev/bootstrap
 ./install.sh
 ```
-*The installer automatically detects your installed tools and registers the skills.*
+*The installer automatically detects your installed tools and registers the skills. Installed skills are copies, so re-run `./install.sh` after pulling to update them.*
 
 #### Option B: Docker Agent Server (Isolated / Homelab)
 Spins up a headless server with T3 Code and web-based VS Code:
@@ -118,8 +118,13 @@ Use these when you want fast, local iteration without design plans, Draft PRs, o
 ```text
 /bs-probe Why does config merge drop nested overrides?
 /bs-task Fix nested config merge in loader.go
-/bs-review --pairing
+/bs-review                    # Branch commits + uncommitted changes
+/bs-review #42                # A pull request
+/bs-review main...feat/x      # A branch range
+/bs-review --pairing          # Review with a different tool
 ```
+
+You don't need a clean working tree for these. `/bs-task` works on your current branch next to your own uncommitted edits: it sets them aside while its checks run, commits only when you ask, and won't commit a file you were already editing. `/bs-review` covers your uncommitted changes too, and if anything in your working tree changes during the review, it lists the changes and asks before undoing any of them.
 
 ### Multi-Model Pairing
 Pair different model families so the reviewer doesn't share the implementer's blind spots. `--pairing` keeps the tool you are in as implementer and picks the first other available tool (Claude Code, Antigravity, then Codex) as reviewer; `--implementer` and `--reviewer` name them explicitly. A paired tool runs on a default model (`claude-sonnet-5-5` for Claude, `gemini-4-hydrogen` for Antigravity, `gpt-6-luna` for Codex) unless you pass `--implementer-model` or `--reviewer-model`:
@@ -173,7 +178,7 @@ plans/                                   plans/
 | Tool / CLI | Skill Location | Review Mode |
 | :--- | :--- | :--- |
 | **Google Antigravity (`agy`)** | `~/.gemini/config/skills/` | Native subagents + CLI pairing |
-| **Claude Code (`claude`)** | `~/.claude/skills/` & `/commands` | Native subagents + CLI pairing |
+| **Claude Code (`claude`)** | `~/.claude/skills/` & `~/.claude/commands/` | Native subagents + CLI pairing |
 | **OpenAI Codex (`codex`)** | `~/.codex/skills/` | Native subagents + CLI pairing |
 | **OpenCode (`opencode`)** | `~/.config/opencode/skills/` | Own subagents if available, else paired CLI review |
 | **Pi (`pi`)** | `~/.pi/agent/skills/` | Own subagents if available, else paired CLI review |
