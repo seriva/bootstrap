@@ -2,6 +2,9 @@
 # Keeps docker/workspace (cloned repos) and docker/.env (API keys) out of the context.
 *
 !skills/
+!shared/
+!scripts/
+!models.env
 !install.sh
 !docker/
 docker/workspace/

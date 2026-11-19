@@ -134,7 +134,11 @@ Pair different model families so the reviewer doesn't share the implementer's bl
 /bs-exec --auto --pairing plans/v1.8.0/portable-go-plan.md
 ```
 
-- The defaults are deliberately mid-tier models rather than each provider's most capable one: plans split the work into small phases, so each diff is small enough for them to handle well, which keeps paired runs fast and cheap. They apply only to the paired tool; the tool you are in keeps your session's model. Pass a model flag for a stronger model on large or risky changes.
+- The defaults are configured in `models.env`. To change one without modifying this repo, set it in `${XDG_CONFIG_HOME:-~/.config}/bootstrap/models.env` and re-run `./install.sh`; names you leave out keep the repo default:
+  ```sh
+  BS_MODEL_AGY="<model-id>"   # also BS_MODEL_CLAUDE, BS_MODEL_CODEX
+  ```
+  The defaults are deliberately mid-tier models rather than each provider's most capable one: plans split the work into small phases, so each diff is small enough for them to handle well, which keeps paired runs fast and cheap. They apply only to the paired tool; the tool you are in keeps your session's model. Pass a model flag for a stronger model on large or risky changes.
 - If no other tool is available, `--pairing` warns and reviews with the tool you are in.
 - A model you ask for is never swapped silently: if it is unavailable, that role stops and tells you. If a default model is rejected, the paired CLI falls back to its own configured default with a warning.
 - When the tool you are in implements, it writes the code on your session's model; `--implementer-model` then applies only to the fix turn after review.
@@ -211,6 +215,8 @@ For homelabs, remote servers, or sandboxed execution, `docker/` provides an isol
 bootstrap/
 ├── docker/             Turnkey agent container (T3 Code, code-server, workers, upgrade scripts)
 ├── scaffold/           Template files copied into new projects by init.sh
+├── shared/             Shared worker conventions (conventions.md) and orchestrator dispatch rules (dispatch.md)
+├── scripts/            Helper scripts installed to ${XDG_DATA_HOME:-~/.local/share}/bootstrap/scripts/ (bs-dirty-tree, bs-review-snapshot)
 ├── skills/             Universal AI skills (installed globally, never copied)
 │   ├── bs-plan/SKILL.md
 │   ├── bs-exec/SKILL.md
@@ -218,7 +224,8 @@ bootstrap/
 │   ├── bs-task/SKILL.md
 │   ├── bs-review/SKILL.md
 │   └── bs-probe/SKILL.md
-├── install.sh          Installs skills across detected AI tools on host
+├── models.env          Default paired model names (overridable in ${XDG_CONFIG_HOME:-~/.config}/bootstrap/models.env)
+├── install.sh          Installs skills, shared docs, and helper scripts across detected AI tools
 ├── init.sh             Scaffolds a new project (--type continuous|versioned)
 ├── sync.sh             Synchronizes shared rules across projects (--check, --dry-run)
 └── AGENTS.md           Agent guide for this repository

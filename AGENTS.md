@@ -41,20 +41,23 @@ Canonical headquarters for agentic development standards, project scaffolding (`
 ## Tech Stack
 
 - **Language / Runtime**: Bash (`set -euo pipefail`), Python 3 (embedded in `sync.sh`), Markdown (`SKILL.md`, templates)
-- **Verification / Quality Gates**: `bash -n install.sh sync.sh init.sh docker/*.sh docker/harness-install docker/t3-pair`, `./sync.sh --check .`, `./install.sh`
+- **Verification / Quality Gates**: `bash -n install.sh sync.sh init.sh scripts/* docker/*.sh docker/harness-install docker/t3-pair`, `./sync.sh --check .`, `./install.sh`
 
 ## Commands
 
 - **Test**: `./sync.sh --check .`
-- **Lint**: `bash -n install.sh sync.sh init.sh docker/*.sh docker/harness-install docker/t3-pair`
+- **Lint**: `bash -n install.sh sync.sh init.sh scripts/* docker/*.sh docker/harness-install docker/t3-pair`
 - **Format**: none
 - **Build**: none (deploy skills with `./install.sh`, sync sibling repos with `./sync.sh`)
-- **Pre-commit gate**: `bash -n install.sh sync.sh init.sh docker/*.sh docker/harness-install docker/t3-pair && ./sync.sh --check .`
+- **Pre-commit gate**: `bash -n install.sh sync.sh init.sh scripts/* docker/*.sh docker/harness-install docker/t3-pair && ./sync.sh --check .`
 
 ## Architecture
 
 - `scaffold/` — Pristine starter templates copied into new repositories by `init.sh` (`AGENTS.md`, `CLAUDE.md`, `.github/`, `lefthook.yml` + shared `lefthook-bootstrap.yml`, `plans/`, plus `CHANGELOG.md` and `plans/roadmap.md` from `templates/<profile>/`). Cursor reads `AGENTS.md` natively, so it has no bridge file. `scaffold/AGENTS.md` Part 1 is the canonical source of truth.
 - `skills/` — Global autonomous workflows (`bs-plan`, `bs-exec`, `bs-loop`, `bs-task`, `bs-review`, `bs-probe`) deployed machine-wide by `install.sh`.
+- `shared/` — Shared reference docs installed to `${XDG_DATA_HOME:-~/.local/share}/bootstrap/` (`conventions.md` for worker conventions, `dispatch.md` for orchestrator dispatch and CI rules).
+- `scripts/` — Shell helpers installed alongside `shared/` (`bs-dirty-tree` for dirty-tree protection during safe commits, `bs-review-snapshot` for pre/post review snapshots).
+- `models.env` — Default paired model names substituted by `install.sh` (overridable in `${XDG_CONFIG_HOME:-~/.config}/bootstrap/models.env`).
 - `init.sh` — Scaffolding initializer for new projects with profile selection (`--type continuous|versioned`).
 - `install.sh` — Conditional multi-vendor skill installer (Antigravity, Claude Code, Codex, OpenCode, Pi, Cursor, Copilot).
 - `docker/` — Agent container: T3 Code + code-server image with worker harnesses (`harness-install`), pairing helper (`t3-pair`), `entrypoint.sh`, `upgrade.sh` (in-place), `rebuild.sh` (cacheless). Build context is the repo root, filtered by `.dockerignore`.

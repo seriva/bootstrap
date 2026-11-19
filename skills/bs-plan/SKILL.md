@@ -5,18 +5,18 @@ description: Conducts an empirical codebase audit with probe verification, defin
 
 # Autonomous Design Plan Generator (bs-plan)
 
-Invoking `/bs-plan` authorizes inspecting code, running non-destructive probes/tests, writing a plan under `plans/`, and linking it in `plans/roadmap.md`. Shared conventions (**Target**, **Probes**, **People docs**, **Follow-ups**) are defined in `/bs-loop`.
+Invoking `/bs-plan` authorizes inspecting code, running non-destructive probes/tests, writing a plan under `plans/`, and linking it in `plans/roadmap.md`. Shared worker conventions (**Target**, **Probes**, **People docs**, **Follow-ups**) are defined in `{{BS_CONVENTIONS}}`.
 
 ## Operational Workflow
 
 ### Step 1: Target Discovery & Context
-1. Resolve `$TARGET_REPO` and read `AGENTS.md` per `/bs-loop` **Target**.
+1. Resolve `$TARGET_REPO` and read `AGENTS.md` per **Target** (`{{BS_CONVENTIONS}}`).
 2. Read `$TARGET_REPO/plans/roadmap.md` (target milestone) and `plans/template.md` (required section structure and order).
 
 ### Step 2: Empirical Audit & Probing (NO ASSUMPTIONS)
 1. **Codebase Inspection**: Locate exact files, modules, types, and test runners.
-2. **Empirical Probes (`/bs-probe`)**: Run non-destructive probes per `/bs-probe` (`{{BS_PROBE_SKILL}}`) and `/bs-loop` **Probes** or inspect compiler/runtime outputs to prove every claimed gap or bottleneck. Record each probe's command and observed result in `Verified Gaps & Baseline Audit` (`Area | Finding | Evidence & Probe Reference`) so evidence survives cleanup.
-3. **Root Causes & Sibling Paths**: Name the root cause of every gap (`/bs-loop` **Follow-ups**) by reading the code that produces it, not by restating the repro. For each root, list every other path through the same mechanism (callers, input forms, contexts, targets, data kinds) and probe each one per `/bs-probe`; failing paths become gaps, passing ones are controls. Group `Verified Gaps` rows by root. When several paths make the same decision separately, the plan fixes that decision once in a shared mechanism instead of patching each path, so siblings are fixed by construction rather than found in review.
+2. **Empirical Probes (`/bs-probe`)**: Run non-destructive probes per `/bs-probe` (`{{BS_PROBE_SKILL}}`) and **Probes** (`{{BS_CONVENTIONS}}`) or inspect compiler/runtime outputs to prove every claimed gap or bottleneck. Record each probe's command and observed result in `Verified Gaps & Baseline Audit` (`Area | Finding | Evidence & Probe Reference`) so evidence survives cleanup.
+3. **Root Causes & Sibling Paths**: Name the root cause of every gap (**Follow-ups** in `{{BS_CONVENTIONS}}`) by reading the code that produces it, not by restating the repro. For each root, list every other path through the same mechanism (callers, input forms, contexts, targets, data kinds) and probe each one per `/bs-probe`; failing paths become gaps, passing ones are controls. Group `Verified Gaps` rows by root. When several paths make the same decision separately, the plan fixes that decision once in a shared mechanism instead of patching each path, so siblings are fixed by construction rather than found in review.
 
 ### Step 3: Scope Boundaries & Done Contract
 1. **Scope Boundary Matrix**: Fill the table from `plans/template.md` (drop the two `*(optional)*` target/runtime rows for single-runtime projects). `In scope` rows name root causes (mechanisms), not individual repros, so a sibling found later is in scope by rule. Every `Excluded` row must state its architectural reason so the final audit can verify nothing excluded leaked in.
@@ -55,7 +55,7 @@ Audits and tightens an existing plan against `$TARGET_REPO`. **NO SELF-REVIEW:**
 
 ## Follow-up Mode (`/bs-plan follow-ups [<plan-path>]`)
 
-Schedules open entries from `plans/follow-ups.md` (see `/bs-loop` **Follow-ups**) by root cause. With `<plan-path>`: the entries routed to it (`→ <plan-slug>`) plus `unrouted` entries whose root falls under its Scope Rule. Without: sweeps the whole ledger (including `standalone` and other plans' entries; `/bs-exec` only gates on its own plan) and sends each root cluster to (a) the open plan whose Scope Rule covers that root and that still has unchecked tasks, else (b) a **new plan per root cluster** drafted with Steps 1–5 (slug named after the mechanism; `<plan-slug>-followups` when the covering plan's tasks are all checked, since a finishing plan is extended only through its own `/bs-exec` Step 4.2 triage), else, for one-off entries that share no root with anything, (c) a new `follow-ups-YYYY-MM-DD` plan. Confirm the cluster-to-plan assignment with the user before writing (**Blockers**).
+Schedules open entries from `plans/follow-ups.md` (see **Follow-ups** in `{{BS_CONVENTIONS}}`) by root cause. With `<plan-path>`: the entries routed to it (`→ <plan-slug>`) plus `unrouted` entries whose root falls under its Scope Rule. Without: sweeps the whole ledger (including `standalone` and other plans' entries; `/bs-exec` only gates on its own plan) and sends each root cluster to (a) the open plan whose Scope Rule covers that root and that still has unchecked tasks, else (b) a **new plan per root cluster** drafted with Steps 1–5 (slug named after the mechanism; `<plan-slug>-followups` when the covering plan's tasks are all checked, since a finishing plan is extended only through its own `/bs-exec` Step 4.2 triage), else, for one-off entries that share no root with anything, (c) a new `follow-ups-YYYY-MM-DD` plan. Confirm the cluster-to-plan assignment with the user before writing (**Blockers**).
 
 1. **Context**: Step 1 above, plus the Scope Rule & Boundary Matrix of every open plan (to route and to avoid duplicate scheduling).
 2. **Re-probe every entry** per **Probes**. Delete entries that no longer reproduce or are already scheduled in an open plan. Confirm or correct each `Root:` by reading the code, then cluster entries by root (entries whose stated roots turn out to be one mechanism merge).
