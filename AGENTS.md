@@ -36,29 +36,30 @@
 
 - **Release Model**: Continuous
 
-Canonical headquarters for agentic development standards, project scaffolding (`scaffold/`), and multi-vendor autonomous AI skills (`skills/`). Synchronizes workflow rules across sibling repositories via `sync.sh` and deploys global agent skills via `install.sh`.
+Canonical headquarters for agentic development standards, project scaffolding (`scaffold/`), and multi-vendor autonomous AI skills (`workflows/`). Synchronizes workflow rules across sibling repositories via `sync.sh` and deploys global agent skills via `install.sh`.
 
 ## Tech Stack
 
 - **Language / Runtime**: Bash (`set -euo pipefail`), Python 3 (embedded in `sync.sh`), Markdown (`SKILL.md`, templates)
-- **Verification / Quality Gates**: `bash -n install.sh sync.sh init.sh shared/scripts/* docker/*.sh docker/harness-install docker/t3-pair`, `./sync.sh --check .`, `./install.sh`
+- **Verification / Quality Gates**: `bash -n install.sh sync.sh init.sh workflows/shared/scripts/* docker/*.sh docker/harness-install docker/t3-pair`, `./sync.sh --check .`, `./install.sh`
 
 ## Commands
 
 - **Test**: `./sync.sh --check .`
-- **Lint**: `bash -n install.sh sync.sh init.sh shared/scripts/* docker/*.sh docker/harness-install docker/t3-pair`
+- **Lint**: `bash -n install.sh sync.sh init.sh workflows/shared/scripts/* docker/*.sh docker/harness-install docker/t3-pair`
 - **Format**: none
 - **Build**: none (deploy skills with `./install.sh`, sync sibling repos with `./sync.sh`)
-- **Pre-commit gate**: `bash -n install.sh sync.sh init.sh shared/scripts/* docker/*.sh docker/harness-install docker/t3-pair && ./sync.sh --check .`
+- **Pre-commit gate**: `bash -n install.sh sync.sh init.sh workflows/shared/scripts/* docker/*.sh docker/harness-install docker/t3-pair && ./sync.sh --check .`
 
 ## Architecture
 
 - `scaffold/` — Pristine starter templates copied into new repositories by `init.sh` (`AGENTS.md`, `CLAUDE.md`, `.github/`, `lefthook.yml` + shared `lefthook-bootstrap.yml`, `plans/`, plus `CHANGELOG.md` and `plans/roadmap.md` from `templates/<profile>/`). Cursor reads `AGENTS.md` natively, so it has no bridge file. `scaffold/AGENTS.md` Part 1 is the canonical source of truth.
-- `skills/` — Global autonomous workflows (`bs-plan`, `bs-exec`, `bs-loop`, `bs-task`, `bs-review`, `bs-probe`) deployed machine-wide by `install.sh`.
-- `shared/` — Everything `install.sh` installs next to the skills, in `${XDG_DATA_HOME:-~/.local/share}/bootstrap/`:
-  - `conventions.md` (worker conventions) and `dispatch.md` (orchestrator dispatch and CI rules), with placeholders rendered.
-  - `scripts/`: shell helpers (`bs-dirty-tree` for dirty-tree protection during safe commits, `bs-review-snapshot` for pre/post review snapshots).
-  - `models.env`: default paired model names substituted into the docs and skills; not installed itself (override in `${XDG_CONFIG_HOME:-~/.config}/bootstrap/models.env`).
+- `workflows/` — Everything `install.sh` deploys machine-wide. Skills contain `{{BS_*}}` placeholders that only `install.sh` renders, so they are not usable straight from the repo.
+  - `workflows/skills/` — Global autonomous workflows (`bs-plan`, `bs-exec`, `bs-loop`, `bs-task`, `bs-review`, `bs-probe`).
+  - `workflows/shared/` — Installed next to the skills, in `${XDG_DATA_HOME:-~/.local/share}/bootstrap/`:
+    - `conventions.md` (worker conventions) and `dispatch.md` (orchestrator dispatch and CI rules), with placeholders rendered.
+    - `scripts/`: shell helpers (`bs-dirty-tree` for dirty-tree protection during safe commits, `bs-review-snapshot` for pre/post review snapshots).
+    - `models.env`: default paired model names substituted into the docs and skills; not installed itself (override in `${XDG_CONFIG_HOME:-~/.config}/bootstrap/models.env`).
 - `init.sh` — Scaffolding initializer for new projects with profile selection (`--type continuous|versioned`).
 - `install.sh` — Conditional multi-vendor skill installer (Antigravity, Claude Code, Codex, OpenCode, Pi, Cursor, Copilot).
 - `docker/` — Agent container: T3 Code + code-server image with worker harnesses (`harness-install`), pairing helper (`t3-pair`), `entrypoint.sh`, `upgrade.sh` (in-place), `rebuild.sh` (cacheless). Build context is the repo root, filtered by `.dockerignore`.

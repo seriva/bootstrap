@@ -55,10 +55,9 @@ COPY --chmod=755 docker/t3-pair /usr/local/bin/t3-pair
 COPY --chmod=755 docker/upgrade.sh /usr/local/bin/agent-upgrade
 COPY --chmod=755 docker/entrypoint.sh /home/coder/entrypoint.sh
 
-# Copy bootstrap skills, shared files (docs, helper scripts, default models) & installer so they are pre-baked into the image
+# Copy bootstrap workflows (skills, shared docs, helper scripts, default models) & installer so they are pre-baked into the image
 RUN mkdir -p /opt/bootstrap
-COPY skills /opt/bootstrap/skills
-COPY shared /opt/bootstrap/shared
+COPY workflows /opt/bootstrap/workflows
 COPY --chmod=755 install.sh /opt/bootstrap/install.sh
 RUN chown -R coder:coder /opt/bootstrap
 

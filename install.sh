@@ -2,14 +2,14 @@
 set -euo pipefail
 
 DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SKILLS_SRC="$DOTFILES_DIR/skills"
-SHARED_SRC="$DOTFILES_DIR/shared"
+SKILLS_SRC="$DOTFILES_DIR/workflows/skills"
+SHARED_SRC="$DOTFILES_DIR/workflows/shared"
 SCRIPTS_SRC="$SHARED_SRC/scripts"
 BOOTSTRAP_SHARE_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/bootstrap"
 BOOTSTRAP_CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/bootstrap"
 
 # Load default paired models, with optional local user override
-# shellcheck source=shared/models.env
+# shellcheck source=workflows/shared/models.env
 source "$SHARED_SRC/models.env"
 if [ -f "$BOOTSTRAP_CONFIG_DIR/models.env" ]; then
   # shellcheck disable=SC1091
@@ -73,7 +73,7 @@ SKILL_DIR_HOSTS=(
 )
 
 # Skills reference sibling installed skills via {{<SKILL_UPPER>_SKILL}} placeholders
-# (e.g. {{BS_LOOP_SKILL}}, {{BS_PLAN_SKILL}}), built dynamically across skills/*/,
+# (e.g. {{BS_LOOP_SKILL}}, {{BS_PLAN_SKILL}}), built dynamically across workflows/skills/*/,
 # plus shared docs, helper scripts, and default paired models.
 sed_escape() {
   printf '%s' "$1" | sed 's/[&|\\]/\\&/g'
