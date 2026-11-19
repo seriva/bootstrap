@@ -86,13 +86,35 @@ check_not "--check fails when lefthook.yml drops the shared hooks" "$SYNC" --che
 "$SYNC" "$target" >/dev/null 2>&1 || true
 check "sync leaves lefthook.yml alone" grep -q 'other.yml' "$target/lefthook.yml"
 
+# .gitignore managed block: replaced in place even when the end marker has no trailing newline.
+target="$SANDBOX/init-versioned"
+"$SYNC" "$target" >/dev/null 2>&1 || true
+printf '%s' "$(cat "$target/.gitignore")" > "$target/.gitignore"
+check "sync accepts a managed block at EOF without a newline" "$SYNC" "$target"
+check "managed block is not duplicated" test "$(grep -c '^# >>> bootstrap-managed$' "$target/.gitignore")" = 1
+check "--check passes after the EOF fix" "$SYNC" --check "$target"
+
+# .gitignore without a managed block: block appended once, legacy broad ignores dropped, own lines kept.
+printf 'my-local-dir/\n.claude/\n.codex/\n' > "$target/.gitignore"
+check "sync adds the managed block" "$SYNC" "$target"
+check "managed block appended once" test "$(grep -c '^# >>> bootstrap-managed$' "$target/.gitignore")" = 1
+check_not "legacy broad ignores removed" grep -qxE '\.claude/|\.codex/' "$target/.gitignore"
+check "project ignores kept" grep -qx 'my-local-dir/' "$target/.gitignore"
+check "--check passes after adding the block" "$SYNC" --check "$target"
+
 echo "== install.sh"
 home="$SANDBOX/home"
 # Create every host's config dir so all install targets are exercised.
 mkdir -p "$home/.gemini" "$home/.claude" "$home/.codex" "$home/.config/opencode" "$home/.pi" \
   "$home/.cursor" "$home/.config/Code/User"
 install_env=(env HOME="$home" XDG_CONFIG_HOME="$home/.config" XDG_DATA_HOME="$home/.local/share")
+# Local model override replaces one default and leaves the others alone.
+mkdir -p "$home/.config/bootstrap"
+echo 'BS_MODEL_CODEX="smoke-override-model"' > "$home/.config/bootstrap/models.env"
 check "install succeeds" "${install_env[@]}" "$INSTALL"
+check "models.env override is rendered" grep -q 'smoke-override-model' "$home/.local/share/bootstrap/dispatch.md"
+default_claude="$(sed -n 's/^BS_MODEL_CLAUDE="\(.*\)"$/\1/p' "$REPO_DIR/workflows/shared/models.env")"
+check "non-overridden models keep their defaults" grep -qF "$default_claude" "$home/.local/share/bootstrap/dispatch.md"
 check "second install succeeds" "${install_env[@]}" "$INSTALL"
 
 skills=()

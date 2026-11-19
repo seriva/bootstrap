@@ -100,7 +100,7 @@ Probes the codebase empirically to prove every claimed problem exists before dra
 ```
 
 ### 2. `/bs-exec` — Phase-by-Phase Orchestration
-Operates on a dedicated `feat/<plan-slug>` branch and runs `/bs-loop` for each phase, checking off `- [x] Task N.M` boxes as commits land so interrupted runs resume seamlessly. Pauses after each phase PR for human merge, or merges passing phases automatically with `--auto`. If a phase PR is blocked by the review gate, it halts (even with `--auto`), leaves the PR in Draft, and alerts you to step in. Phase PRs rely on the local quality gate and skip cloud CI (the scaffolded workflow skips branches with `phase` in their name); full CI runs on the final PR. Finishes with follow-up triage, release-note polishing, and a full-branch audit against the plan.
+Operates on a dedicated `feat/<plan-slug>` branch and runs `/bs-loop` for each phase, checking off `- [x] Task N.M` boxes as commits land so interrupted runs resume seamlessly. Pauses after each phase PR for human merge, or merges passing phases automatically with `--auto`. If a phase PR is blocked by the review gate, it halts (even with `--auto`), leaves the PR in Draft, and alerts you to step in. Phase PRs rely on the local quality gate and skip cloud CI (the scaffolded workflow skips PRs from `feat/<plan-slug>-phase-<N>` into `feat/<plan-slug>`); full CI runs on the final PR. Finishes with follow-up triage, release-note polishing, and a full-branch audit against the plan.
 ```text
 /bs-exec plans/v1.8.0/portable-go-plan.md
 /bs-exec --auto plans/v1.8.0/portable-go-plan.md

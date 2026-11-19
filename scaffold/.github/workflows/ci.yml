@@ -19,9 +19,10 @@ concurrency:
 
 jobs:
   test:
-    # Skip intermediate phase PRs (they are verified locally before push).
-    # Full CI runs on the final PR to main/master when the plan completes.
-    if: "!contains(github.head_ref, 'phase')"
+    # Skip /bs-exec phase PRs (head `<plan-branch>-phase-<N>` into base `<plan-branch>`);
+    # they are verified locally before push. Full CI runs on the final PR to main/master.
+    # Other branches that merely contain "phase" in their name still get CI.
+    if: "!startsWith(github.head_ref, format('{0}-phase-', github.base_ref))"
     runs-on: ubuntu-latest
 
     steps:
@@ -58,7 +59,7 @@ jobs:
       - name: Quality gate
         env:
           LEFTHOOK_EXCLUDE: secrets
-        run: npx --yes lefthook run pre-commit --all-files
+        run: npx --yes lefthook@2 run pre-commit --all-files  # pinned major: bump deliberately
 
       - name: Fail on unformatted files
         run: git diff --exit-code HEAD  # HEAD: stage_fixed may have staged the fixes

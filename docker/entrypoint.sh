@@ -48,11 +48,23 @@ fi
 # Dynamic runtime worker installation (if specified via ENABLED_WORKERS)
 if [ -n "${ENABLED_WORKERS:-}" ]; then
   IFS=',' read -ra WORKERS <<< "$ENABLED_WORKERS"
+  # Expand aliases to binary names first: `command -v all` or `command -v antigravity`
+  # never succeeds, which would reinstall those harnesses on every boot.
+  # Keep the `all` list in sync with harness-install.
+  BINARIES=()
   for w in "${WORKERS[@]}"; do
     w=$(echo "$w" | tr '[:upper:]' '[:lower:]' | xargs)
-    if [ -n "$w" ] && ! command -v "$w" >/dev/null 2>&1; then
+    case "$w" in
+      "") ;;
+      all) BINARIES+=(claude agy codex opencode pi) ;;
+      antigravity) BINARIES+=(agy) ;;
+      *) BINARIES+=("$w") ;;
+    esac
+  done
+  for w in "${BINARIES[@]}"; do
+    if ! command -v "$w" >/dev/null 2>&1; then
       echo "[entrypoint] Installing requested worker: $w"
-      harness-install "$w" 2>/dev/null || true
+      harness-install "$w" || echo "[entrypoint] Warning: installing $w failed; continuing" >&2
     fi
   done
 fi

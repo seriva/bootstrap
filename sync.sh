@@ -94,7 +94,8 @@ has_drift = False
 targets = sys.argv[1:]
 
 PART1_RE = re.compile(r"(# Part 1: Agent Workflow\n[\s\S]*?\n---\n)")
-GITIGNORE_BLOCK_RE = re.compile(r"# >>> bootstrap-managed\n[\s\S]*?# <<< bootstrap-managed\n")
+# The end marker may be the last line of a file with no trailing newline.
+GITIGNORE_BLOCK_RE = re.compile(r"# >>> bootstrap-managed\n[\s\S]*?# <<< bootstrap-managed(?:\n|\Z)")
 # Broad tool-dir ignores from the pre-managed-block scaffold. The managed block
 # narrows them to session/state subpaths, so they must go or project config such
 # as .claude/skills/ stays uncommittable. Only exact-line matches are removed.
