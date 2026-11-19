@@ -4,7 +4,6 @@ set -euo pipefail
 DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SKILLS_SRC="$DOTFILES_DIR/workflows/skills"
 SHARED_SRC="$DOTFILES_DIR/workflows/shared"
-SCRIPTS_SRC="$SHARED_SRC/scripts"
 BOOTSTRAP_SHARE_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/bootstrap"
 BOOTSTRAP_CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/bootstrap"
 
@@ -74,7 +73,7 @@ SKILL_DIR_HOSTS=(
 
 # Skills reference sibling installed skills via {{<SKILL_UPPER>_SKILL}} placeholders
 # (e.g. {{BS_LOOP_SKILL}}, {{BS_PLAN_SKILL}}), built dynamically across workflows/skills/*/,
-# plus shared docs, helper scripts, and default paired models.
+# plus shared docs and default paired models.
 sed_escape() {
   printf '%s' "$1" | sed 's/[&|\\]/\\&/g'
 }
@@ -82,26 +81,19 @@ sed_escape() {
 SHARED_SED_ARGS=(
   -e "s|{{BS_CONVENTIONS}}|$(sed_escape "$BOOTSTRAP_SHARE_DIR/conventions.md")|g"
   -e "s|{{BS_DISPATCH}}|$(sed_escape "$BOOTSTRAP_SHARE_DIR/dispatch.md")|g"
-  -e "s|{{BS_REVIEW_SNAPSHOT}}|$(sed_escape "$BOOTSTRAP_SHARE_DIR/scripts/bs-review-snapshot")|g"
   -e "s|{{BS_MODEL_CLAUDE}}|$(sed_escape "$BS_MODEL_CLAUDE")|g"
   -e "s|{{BS_MODEL_AGY}}|$(sed_escape "$BS_MODEL_AGY")|g"
   -e "s|{{BS_MODEL_CODEX}}|$(sed_escape "$BS_MODEL_CODEX")|g"
 )
 
-# Install shared conventions, dispatch rules, and helper scripts once per user
-mkdir -p "$BOOTSTRAP_SHARE_DIR/scripts"
-for script_path in "$SCRIPTS_SRC"/*; do
-  [ -f "$script_path" ] || continue
-  script_name="$(basename "$script_path")"
-  cp "$script_path" "$BOOTSTRAP_SHARE_DIR/scripts/$script_name"
-  chmod +x "$BOOTSTRAP_SHARE_DIR/scripts/$script_name"
-done
+# Install shared conventions and dispatch rules once per user
+mkdir -p "$BOOTSTRAP_SHARE_DIR"
 for doc_path in "$SHARED_SRC"/*.md; do
   [ -f "$doc_path" ] || continue
   doc_name="$(basename "$doc_path")"
   sed "${SHARED_SED_ARGS[@]}" "$doc_path" > "$BOOTSTRAP_SHARE_DIR/$doc_name"
 done
-echo "Installed shared docs and helper scripts to $BOOTSTRAP_SHARE_DIR"
+echo "Installed shared docs to $BOOTSTRAP_SHARE_DIR"
 echo "  Models: claude=$BS_MODEL_CLAUDE, agy=$BS_MODEL_AGY, codex=$BS_MODEL_CODEX"
 
 # Skill names and their placeholder keys, computed once (only the path pattern varies per render).

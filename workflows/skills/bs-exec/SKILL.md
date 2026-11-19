@@ -10,7 +10,7 @@ Invoking `/bs-exec` authorizes managing plan branches, running `/bs-loop` per ph
 ## Operational Workflow
 
 ### Step 1: Target Discovery & Epic Branch Setup
-1. **Execution Mode & Role Flags**: `AUTO_MODE=true` if invoked with `--auto` / `--auto-merge`, else `false`. Resolve `IMPLEMENTER`, `REVIEWER`, and their models from role/model flags per **Dispatch** (`{{BS_DISPATCH}}`).
+1. **Execution Mode & Role Flags**: `AUTO_MODE=true` if invoked with `--auto`, else `false`. Resolve `IMPLEMENTER`, `REVIEWER`, and their models from role/model flags per **Dispatch** (`{{BS_DISPATCH}}`).
 2. **Target & Plan (`PLAN_FILE`)**: Resolve `$TARGET_REPO` and read `AGENTS.md` per **Target** (`{{BS_CONVENTIONS}}`). Use the explicit plan path or find the active plan (`Status: Draft` or `In Progress`) in `plans/v*/` or top-level `plans/` ignoring `plans/archive/` (ask if multiple match). Derive `<plan-slug>` by stripping `.md` and any trailing `-plan`.
 3. **Branch Hierarchy**:
    - Require clean working tree (`git status --porcelain`); if dirty (e.g. uncommitted `/bs-plan` output), stop and ask the user to commit or clean it first. Fetch `origin`.

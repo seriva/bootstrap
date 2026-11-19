@@ -41,15 +41,15 @@ Canonical headquarters for agentic development standards, project scaffolding (`
 ## Tech Stack
 
 - **Language / Runtime**: Bash (`set -euo pipefail`), Python 3 (embedded in `sync.sh`), Markdown (`SKILL.md`, templates)
-- **Verification / Quality Gates**: `bash -n install.sh sync.sh init.sh workflows/shared/scripts/* docker/*.sh docker/harness-install docker/t3-pair`, `./sync.sh --check .`, `./install.sh`
+- **Verification / Quality Gates**: `bash -n install.sh sync.sh init.sh docker/*.sh docker/harness-install docker/t3-pair`, `./sync.sh --check .`, `./install.sh`
 
 ## Commands
 
 - **Test**: `./sync.sh --check .`
-- **Lint**: `bash -n install.sh sync.sh init.sh workflows/shared/scripts/* docker/*.sh docker/harness-install docker/t3-pair`
+- **Lint**: `bash -n install.sh sync.sh init.sh docker/*.sh docker/harness-install docker/t3-pair`
 - **Format**: none
 - **Build**: none (deploy skills with `./install.sh`, sync sibling repos with `./sync.sh`)
-- **Pre-commit gate**: `bash -n install.sh sync.sh init.sh workflows/shared/scripts/* docker/*.sh docker/harness-install docker/t3-pair && ./sync.sh --check .`
+- **Pre-commit gate**: `bash -n install.sh sync.sh init.sh docker/*.sh docker/harness-install docker/t3-pair && ./sync.sh --check .`
 
 ## Architecture
 
@@ -58,7 +58,6 @@ Canonical headquarters for agentic development standards, project scaffolding (`
   - `workflows/skills/` — Global autonomous workflows (`bs-plan`, `bs-exec`, `bs-loop`, `bs-task`, `bs-review`, `bs-probe`).
   - `workflows/shared/` — Installed next to the skills, in `${XDG_DATA_HOME:-~/.local/share}/bootstrap/`:
     - `conventions.md` (worker conventions) and `dispatch.md` (orchestrator dispatch and CI rules), with placeholders rendered.
-    - `scripts/`: shell helpers (`bs-review-snapshot` for pre/post review snapshots).
     - `models.env`: default paired model names substituted into the docs and skills; not installed itself (override in `${XDG_CONFIG_HOME:-~/.config}/bootstrap/models.env`).
 - `init.sh` — Scaffolding initializer for new projects with profile selection (`--type continuous|versioned`).
 - `install.sh` — Conditional multi-vendor skill installer (Antigravity, Claude Code, Codex, OpenCode, Pi, Cursor, Copilot).

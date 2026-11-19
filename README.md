@@ -124,7 +124,7 @@ Use these when you want fast, local iteration without design plans, Draft PRs, o
 /bs-review --pairing          # Review with a different tool
 ```
 
-You don't need a clean working tree for these. `/bs-task` works on your current branch next to your own uncommitted edits: it commits only when you ask, commits only its own files, won't commit a file you were already editing, and tells you when its checks ran with your edits present. `/bs-review` covers your uncommitted changes too, and if anything in your working tree changes during the review, it lists the changes and asks before undoing any of them.
+You don't need a clean working tree for these. `/bs-task` works on your current branch next to your own uncommitted edits: it commits only when you ask, commits only its own files, won't commit a file you were already editing, and tells you when its checks ran with your edits present. `/bs-review` covers your uncommitted changes too, and if anything in your working tree changes during the review, it lists the changed files and leaves them as they are.
 
 ### Multi-Model Pairing
 Pair different model families so the reviewer doesn't share the implementer's blind spots. `--pairing` keeps the tool you are in as implementer and picks the first other available tool (Claude Code, Antigravity, then Codex) as reviewer; `--implementer` and `--reviewer` name them explicitly. A paired tool runs on a default model (`claude-sonnet-5-5` for Claude, `gemini-4-hydrogen` for Antigravity, `gpt-6-luna` for Codex) unless you pass `--implementer-model` or `--reviewer-model`:
@@ -140,7 +140,7 @@ Pair different model families so the reviewer doesn't share the implementer's bl
   ```
   The defaults are deliberately mid-tier models rather than each provider's most capable one: plans split the work into small phases, so each diff is small enough for them to handle well, which keeps paired runs fast and cheap. They apply only to the paired tool; the tool you are in keeps your session's model. Pass a model flag for a stronger model on large or risky changes.
 - If no other tool is available, `--pairing` warns and reviews with the tool you are in.
-- A model you ask for is never swapped silently: if it is unavailable, that role stops and tells you. If a default model is rejected, the paired CLI falls back to its own configured default with a warning.
+- A model is never swapped silently: if the one you asked for, or a default, is unavailable, that role stops and tells you.
 - When the tool you are in implements, it writes the code on your session's model; `--implementer-model` then applies only to the fix turn after review.
 - Inside T3 Code (see the Docker agent server below), paired roles run as live threads you can watch instead of background CLI runs.
 
@@ -226,9 +226,8 @@ bootstrap/
 │   └── shared/         Installed next to the skills in ${XDG_DATA_HOME:-~/.local/share}/bootstrap/
 │       ├── conventions.md  Shared worker conventions
 │       ├── dispatch.md     Orchestrator dispatch rules
-│       ├── models.env      Default paired model names (overridable in ${XDG_CONFIG_HOME:-~/.config}/bootstrap/models.env)
-│       └── scripts/        Helper scripts (bs-review-snapshot)
-├── install.sh          Installs skills, shared docs, and helper scripts across detected AI tools
+│       └── models.env      Default paired model names (overridable in ${XDG_CONFIG_HOME:-~/.config}/bootstrap/models.env)
+├── install.sh          Installs skills and shared docs across detected AI tools
 ├── init.sh             Scaffolds a new project (--type continuous|versioned)
 ├── sync.sh             Synchronizes shared rules across projects (--check, --dry-run)
 └── AGENTS.md           Agent guide for this repository
