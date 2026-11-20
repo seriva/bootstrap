@@ -10,7 +10,7 @@ Active design documents live in `plans/` (e.g. `plans/<feature>-plan.md`). Compl
 
 | Feature | Difficulty | Status | Notes |
 |---|---|---|---|
-| [Mechanical Helper Scripts](skill-decision-scripts-plan.md) | Medium | Planned | Tested helpers for headless CLI dispatch, temp base worktrees, and PR CI wait; state machines stay in prose |
+| [Workflow Simplification & Mechanical Helpers](skill-decision-scripts-plan.md) | Medium | Planned | Cut plan-branch CI, stash-based resume, and follow-up routing (idle in real use); tested helpers for headless CLI dispatch, temp base worktrees, and PR CI wait |
 
 ---
 
