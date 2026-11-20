@@ -81,7 +81,7 @@ flowchart TD
 | Skill | Role | Output |
 | :--- | :--- | :--- |
 | **`/bs-plan`** | Probe the codebase, define scope boundaries, and split work into small TDD phases (`review` audits a plan; `follow-ups` schedules logged bugs by root cause) | Verified design plan in `plans/` |
-| **`/bs-exec`** | Orchestrate an approved plan phase by phase on `feat/<plan-slug>`, then audit the full branch | One reviewed PR per phase + CI-verified final PR into `main` |
+| **`/bs-exec`** | Orchestrate an approved plan phase by phase on `feat/<plan-slug>`, then audit the full branch | One reviewed PR per phase, a CI run on the plan branch after each merged phase, and a CI-verified final PR into `main` |
 | **`/bs-loop`** | Implement a single phase or standalone task by orchestrating `/bs-task`, `/bs-review`, and `/bs-probe` through a PR and 2-pass review | Tested, AI-reviewed PR (CI-verified for standalone tasks) |
 | **`/bs-task`** | Single-task TDD implementation with root-cause checks and quality gates (used standalone on current branch or per task inside `/bs-loop`) | Verified local changes (optional safe commit) |
 | **`/bs-review`** | Fresh-context, probe-verified AI code review for local diffs, branches, or PRs (supports `--pairing`; also drives `/bs-loop` Pass 1) | Review findings (`High`/`Medium`/`Low`/`Out of Scope`) |
@@ -100,7 +100,7 @@ Probes the codebase empirically to prove every claimed problem exists before dra
 ```
 
 ### 2. `/bs-exec` — Phase-by-Phase Orchestration
-Operates on a dedicated `feat/<plan-slug>` branch and runs `/bs-loop` for each phase, checking off `- [x] Task N.M` boxes as commits land so interrupted runs resume seamlessly. Pauses after each phase PR for human merge, or merges passing phases automatically with `--auto`. If a phase PR is blocked by the review gate, it halts (even with `--auto`), leaves the PR in Draft, and alerts you to step in. Phase PRs rely on the local quality gate and skip cloud CI (the scaffolded workflow skips PRs from `feat/<plan-slug>-phase-<N>` into `feat/<plan-slug>`); full CI runs on the final PR. Finishes with follow-up triage, release-note polishing, and a full-branch audit against the plan.
+Operates on a dedicated `feat/<plan-slug>` branch and runs `/bs-loop` for each phase, checking off `- [x] Task N.M` boxes as commits land so interrupted runs resume seamlessly. Pauses after each phase PR for human merge, or merges passing phases automatically with `--auto`. If a phase PR is blocked by the review gate, it halts (even with `--auto`), leaves the PR in Draft, and alerts you to step in. Phase PRs rely on the local quality gate and skip cloud CI (the scaffolded workflow skips PRs from `feat/<plan-slug>-phase-<N>` into `feat/<plan-slug>`). Instead, after each merged phase `/bs-exec` starts one CI run on `feat/<plan-slug>` and checks it before the next phase, halting if it failed, so a CI-only failure shows up early; full CI also runs on the final PR. This needs `workflow_dispatch:` in the `on:` triggers of `.github/workflows/ci.yml`, which new projects get from `init.sh`. Finishes with follow-up triage, release-note polishing, and a full-branch audit against the plan.
 ```text
 /bs-exec plans/v1.8.0/portable-go-plan.md
 /bs-exec --auto plans/v1.8.0/portable-go-plan.md
@@ -110,8 +110,8 @@ Operates on a dedicated `feat/<plan-slug>` branch and runs `/bs-loop` for each p
 1. **TDD (`/bs-task` & `/bs-probe`):** Runs `/bs-task` for the standalone task or for each `Task N.M` in a plan phase (which uses `/bs-probe` when isolating root causes), writing a failing test first and the minimal implementation to pass.
 2. **Quality Gate & Docs:** Runs the project's pre-commit gate and updates `CHANGELOG.md` / user docs when behavior changed.
 3. **Draft PR:** Pushes the branch and opens a draft PR.
-4. **2-Pass Fresh AI Review (`/bs-review` & `/bs-probe`):** Pass 1 runs `/bs-review` in a fresh reviewer context with active `/bs-probe` verification in `.probes/`. High/Medium findings get at most one fix turn, after which a *new* fresh reviewer verifies the fixes. Pass 2 is terminal: `LGTM` passes the gate; anything unresolved leaves the PR in Draft as `BLOCKED_BY_DEFECTS` for you to investigate. Out-of-scope bugs are logged to `plans/follow-ups.md`.
-5. **CI Gate:** For a standalone task, waits for remote CI checks before marking the PR ready. A plan's phase PRs skip this step; CI runs on the plan's final PR instead.
+4. **2-Pass Fresh AI Review (`/bs-review` & `/bs-probe`):** Pass 1 runs `/bs-review` in a fresh reviewer context with active `/bs-probe` verification in `.probes/`. High/Medium findings get at most one fix turn, after which a *new* fresh reviewer verifies the fixes. Pass 2 is terminal: `LGTM` passes the gate; anything unresolved leaves the PR in Draft as `BLOCKED_BY_DEFECTS` for you to investigate. Out-of-scope bugs are logged to `plans/follow-ups.md` with a repro and their root cause; `/bs-plan follow-ups` later groups them by cause and schedules them into a plan.
+5. **CI Gate:** For a standalone task, waits for remote CI checks before marking the PR ready. A plan's phase PRs skip this step; `/bs-exec` runs CI on the plan branch after each merged phase instead.
 
 ### 4. Ad-Hoc Local Workflow (`/bs-probe`, `/bs-task`, `/bs-review`)
 Use these when you want fast, local iteration without design plans, Draft PRs, or automated fix loops:
@@ -226,12 +226,12 @@ bootstrap/
 │   └── shared/         Shared docs and scripts, installed to ${XDG_DATA_HOME:-~/.local/share}/bootstrap/
 │       ├── conventions.md  Shared worker conventions
 │       ├── dispatch.md     Orchestrator dispatch rules
-│       ├── scripts/        Git helpers the skills call to snapshot the working tree and commit safely
+│       ├── scripts/        Helpers the skills call to check the tree, commit safely, and read plan, PR, and CI state
 │       └── models.env      Default paired model names, filled in at install (override in ${XDG_CONFIG_HOME:-~/.config}/bootstrap/models.env)
 ├── install.sh          Installs skills, shared docs, and helper scripts across detected AI tools
 ├── init.sh             Scaffolds a new project (--type continuous|versioned)
 ├── sync.sh             Synchronizes shared rules across projects (--check, --dry-run)
 ├── tests/smoke.sh      Smoke test for init.sh, sync.sh, and install.sh (runs in a temp dir)
-├── tests/scripts.sh    Tests for the git helper scripts (runs against throwaway repos in a temp dir)
+├── tests/scripts.sh    Tests for the helper scripts (runs against throwaway repos and a fake gh in a temp dir)
 └── AGENTS.md           Agent guide for this repository
 ```

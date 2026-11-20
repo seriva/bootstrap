@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Review-run state of a branch's PR for the bs-* skills, from one `gh pr view` call. Read-only.
+# /bs-loop writes these two markers; tests/smoke.sh checks its text still matches them.
+PLACEHOLDER='*Automated AI review & fix cycle in progress...*'
+FIX_SUBJECT_SUFFIX=': address review feedback'
+
+usage() {
+  cat >&2 <<'EOF'
+Usage: bs-review-state <branch>
+Prints "<state> <base-branch>", or "none" when the branch has no PR. <state> is the first match:
+  merged | closed        the PR is merged or closed (gh may return one for a reused branch name)
+  ready                  open and not a draft
+  in-review | fix-used   draft whose Review Status is still the placeholder; fix-used once a
+                         commit subject ends in ": address review feedback" (the one Fix Turn)
+  gated:<GATE>           draft with a Gate line: BLOCKED_BY_CI (anywhere in the body), else
+                         BLOCKED_BY_DEFECTS, else PASSED (on a Gate line)
+  draft                  any other draft
+Exit: 0 ok, 2 usage, 3 gh failed
+EOF
+  exit 2
+}
+
+[ $# -eq 1 ] && [ -n "$1" ] || usage
+err="$(mktemp "${TMPDIR:-/tmp}/bs-review-state.XXXXXX")"
+trap 'rm -f "$err"' EXIT
+
+# First line: state, isDraft, baseRefName, number of fix commits (tab-separated); then the body.
+jq_record="\"\(.state)\t\(.isDraft)\t\(.baseRefName)\t\([.commits[].messageHeadline | select(endswith(\"$FIX_SUBJECT_SUFFIX\"))] | length)\n\(.body)\""
+if ! record="$(gh pr view "$1" --json state,isDraft,baseRefName,body,commits --jq "$jq_record" 2>"$err")"; then
+  if grep -q 'no pull requests found' "$err"; then echo none; exit 0; fi
+  cat "$err" >&2
+  exit 3
+fi
+
+IFS="$(printf '\t')" read -r state draft base fixes <<EOF
+$(printf '%s\n' "$record" | head -n 1)
+EOF
+body="$(printf '%s\n' "$record" | sed 1d)"
+gates="$(printf '%s\n' "$body" | grep -E '\*\*Gate(:\*\*|\*\*:)' || true)"
+
+if [ "$state" = MERGED ]; then s=merged
+elif [ "$state" = CLOSED ]; then s=closed
+elif [ "$draft" != true ]; then s=ready
+elif printf '%s\n' "$body" | grep -qF -- "$PLACEHOLDER"; then
+  if [ "${fixes:-0}" -gt 0 ]; then s=fix-used; else s=in-review; fi
+elif [ -n "$gates" ] && printf '%s' "$body" | grep -q BLOCKED_BY_CI; then s=gated:BLOCKED_BY_CI
+elif printf '%s' "$gates" | grep -q BLOCKED_BY_DEFECTS; then s=gated:BLOCKED_BY_DEFECTS
+elif printf '%s' "$gates" | grep -q PASSED; then s=gated:PASSED
+else s=draft
+fi
+echo "$s $base"

@@ -10,6 +10,9 @@ set -euo pipefail
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TREE_STATE="$REPO_DIR/workflows/shared/scripts/bs-tree-state"
 COMMIT="$REPO_DIR/workflows/shared/scripts/bs-commit"
+PLAN_STATE="$REPO_DIR/workflows/shared/scripts/bs-plan-state"
+REVIEW_STATE="$REPO_DIR/workflows/shared/scripts/bs-review-state"
+PLAN_CI="$REPO_DIR/workflows/shared/scripts/bs-plan-ci"
 SANDBOX="$(mktemp -d "${TMPDIR:-/tmp}/bootstrap-scripts.XXXXXX")"
 trap 'rm -rf "$SANDBOX"' EXIT
 
@@ -79,6 +82,34 @@ add_hook() { # add_hook <repo> <script body>: install a pre-commit hook
   printf '#!/bin/sh\n%s\n' "$2" > "$1/.git/hooks/pre-commit"
   chmod +x "$1/.git/hooks/pre-commit"
 }
+
+# Fake gh: logs each call to $FAKE_GH/calls and answers from files in $FAKE_GH:
+#   pr-view (stdout) or pr-view.err (stderr, exit 1); run-list.<call#> or run-list;
+#   run-watch.rc (exit code of gh run watch). gh workflow run only logs.
+FAKE_GH="$SANDBOX/fake-gh"
+mkdir -p "$SANDBOX/bin" "$FAKE_GH"
+cat > "$SANDBOX/bin/gh" <<'EOF'
+#!/bin/sh
+d="$FAKE_GH"
+printf '%s\n' "$*" >> "$d/calls"
+case "$1 $2" in
+  "pr view")
+    if [ -f "$d/pr-view.err" ]; then cat "$d/pr-view.err" >&2; exit 1; fi
+    cat "$d/pr-view" ;;
+  "run list")
+    n=$(($(cat "$d/run-list.count" 2>/dev/null || echo 0) + 1))
+    echo "$n" > "$d/run-list.count"
+    if [ -f "$d/run-list.$n" ]; then cat "$d/run-list.$n"; elif [ -f "$d/run-list" ]; then cat "$d/run-list"; fi ;;
+  "run watch") exit "$(cat "$d/run-watch.rc" 2>/dev/null || echo 0)" ;;
+  "workflow run") : ;;
+  *) echo "fake gh: unexpected call: $*" >&2; exit 64 ;;
+esac
+EOF
+chmod +x "$SANDBOX/bin/gh"
+export FAKE_GH
+GH_PATH="$SANDBOX/bin:$PATH"
+fake_gh_reset() { rm -rf "$FAKE_GH"; mkdir -p "$FAKE_GH"; }
+gh_calls() { if [ -f "$FAKE_GH/calls" ]; then grep -c "^$1" "$FAKE_GH/calls" || true; else echo 0; fi; }
 
 echo "== bs-tree-state"
 r="$(new_repo)"
@@ -360,6 +391,217 @@ run_in "$e" "$COMMIT" --only -m "feat: a" -- a.txt
 expect_code "--only on an unborn HEAD: exit 0" 0
 expect_eq "--only on an unborn HEAD: commits only the task file" "$(git -C "$e" show --name-only --format= HEAD)" "a.txt"
 expect_eq "--only on an unborn HEAD: other staged file stays staged" "$(git -C "$e" diff --cached --name-only)" "b.txt"
+
+echo "== bs-plan-state"
+# write_plan <file> <status line> <body>: write a plan file with a Status line and a body
+write_plan() {
+  mkdir -p "$(dirname "$1")"
+  printf '# Plan\n\n**Version:** continuous  \n%s\n\n---\n\n%s\n' "$2" "$3" > "$1"
+}
+TASKS_OPEN='## Implementation Tasks
+
+```markdown
+- [ ] Task 9.9: example inside a fence
+```
+
+### Phase 1: Core
+- [x] Task 1.1: done
+  - Files: `a`
+- [x] Task 1.2: done
+
+### Phase 2: More
+- [x] Task 2.1: done
+- [ ] Task 2.2: pending
+
+### Phase 3: Last
+- [ ] Task 3.1: pending
+
+## Notes
+- [ ] Task 8.1: not a task, after the section'
+TASKS_DONE='## Implementation Tasks
+
+### Phase 1: Core
+- [x] Task 1.1: done
+- [X] Task 1.2: done'
+r="$(new_repo)"
+run_in "$r" "$PLAN_STATE" active
+expect_code "active: no plans/ dir exits 0" 0
+expect_eq "active: no plans/ dir prints nothing" "$OUT" ""
+write_plan "$r/plans/a-plan.md" '**Status:** In Progress  ' "$TASKS_OPEN"
+write_plan "$r/plans/v1.0.0/b-plan.md" '**Status:** Draft' "$TASKS_DONE"
+write_plan "$r/plans/c-plan.md" '**Status:** Completed (2026-01-01)' "$TASKS_OPEN"
+write_plan "$r/plans/archive/d-plan.md" '**Status:** In Progress' "$TASKS_OPEN"
+write_plan "$r/plans/template.md" '**Status:** Draft' "$TASKS_OPEN"
+write_plan "$r/plans/follow-ups.md" '**Status:** Draft' ""
+write_plan "$r/plans/roadmap.md" '**Status:** Draft' ""
+write_plan "$r/plans/e-plan.md" '**Status:** Draft' 'No tasks yet.'
+run_in "$r" "$PLAN_STATE" active
+expect_eq "active: active plans only, sorted" "$OUT" "$(printf 'plans/a-plan.md\nplans/e-plan.md\nplans/v1.0.0/b-plan.md')"
+mkdir -p "$r/sub"
+run_in "$r/sub" "$PLAN_STATE" active
+expect_eq "active: same repo-root-relative paths from a subdirectory" "$OUT" "$(printf 'plans/a-plan.md\nplans/e-plan.md\nplans/v1.0.0/b-plan.md')"
+run_in "$r" "$PLAN_STATE" plans/a-plan.md
+expect_eq "open: first pending phase, counts skip fences and later sections" "$OUT" "open 2 3/5"
+run_in "$r/sub" "$PLAN_STATE" plans/a-plan.md
+expect_eq "open: plan path is repo-root-relative from a subdirectory" "$OUT" "open 2 3/5"
+run_in "$r" "$PLAN_STATE" plans/v1.0.0/b-plan.md
+expect_eq "finishing: every task checked" "$OUT" "finishing 2/2"
+run_in "$r" "$PLAN_STATE" plans/c-plan.md
+expect_eq "closed: Completed status wins over unchecked tasks" "$OUT" "closed"
+run_in "$r" "$PLAN_STATE" plans/archive/d-plan.md
+expect_eq "closed: under plans/archive/" "$OUT" "closed"
+run_in "$r" "$PLAN_STATE" plans/e-plan.md
+expect_code "no task boxes: exit 2" 2
+run_in "$r" "$PLAN_STATE" plans/missing-plan.md
+expect_code "missing plan file: exit 2" 2
+printf '# Plan\n\n- [ ] Task 1.1: x\n' > "$r/plans/f-plan.md"
+run_in "$r" "$PLAN_STATE" plans/f-plan.md
+expect_code "no Status line: exit 2" 2
+run_in "$r" "$PLAN_STATE"
+expect_code "no argument: usage error" 2
+
+echo "== bs-review-state"
+r="$(new_repo)"
+PH='*Automated AI review & fix cycle in progress...*'
+# pr_record <state> <isDraft> <fix commits> <body>: the record gh prints for the script's --jq
+pr_record() { fake_gh_reset; printf '%s\t%s\tfeat/base\t%s\n%s\n' "$1" "$2" "$3" "$4" > "$FAKE_GH/pr-view"; }
+review_state() { run_in "$r" env PATH="$GH_PATH" "$REVIEW_STATE" "$@"; }
+fake_gh_reset
+echo 'no pull requests found for branch "feat/x"' > "$FAKE_GH/pr-view.err"
+review_state feat/x
+expect_eq "no PR: none" "$OUT" "none"
+expect_code "no PR: exit 0" 0
+fake_gh_reset
+echo 'HTTP 502: bad gateway' > "$FAKE_GH/pr-view.err"
+review_state feat/x
+expect_code "gh failure: exit 3" 3
+check "gh failure: error passed through" grep -q 'bad gateway' "$SANDBOX/stderr"
+pr_record MERGED false 0 "**Gate:** PASSED"
+review_state feat/x
+expect_eq "merged" "$OUT" "merged feat/base"
+check "one gh pr view call for the branch with --json" grep -q '^pr view feat/x --json state,isDraft,baseRefName,body,commits --jq ' "$FAKE_GH/calls"
+pr_record CLOSED true 0 "$PH"
+review_state feat/x
+expect_eq "closed beats a placeholder" "$OUT" "closed feat/base"
+pr_record OPEN true 0 "## Review Status: $PH"
+review_state feat/x
+expect_eq "draft with placeholder: in-review" "$OUT" "in-review feat/base"
+pr_record OPEN true 1 "## Review Status: $PH"
+review_state feat/x
+expect_eq "placeholder and a fix commit: fix-used" "$OUT" "fix-used feat/base"
+pr_record OPEN true 1 "$(printf '## Review Status\n**Gate:** BLOCKED_BY_DEFECTS (2 passes)')"
+review_state feat/x
+expect_eq "draft gated: BLOCKED_BY_DEFECTS" "$OUT" "gated:BLOCKED_BY_DEFECTS feat/base"
+pr_record OPEN true 0 "**Gate**: BLOCKED_BY_CI"
+review_state feat/x
+expect_eq "draft gated: BLOCKED_BY_CI (**Gate**: form)" "$OUT" "gated:BLOCKED_BY_CI feat/base"
+pr_record OPEN true 0 "**Gate:** PASSED"
+review_state feat/x
+expect_eq "draft gated: PASSED" "$OUT" "gated:PASSED feat/base"
+pr_record OPEN true 0 "$(printf '**Gate:** PASSED\n**Gate:** BLOCKED_BY_CI: test')"
+review_state feat/x
+expect_eq "PASSED and BLOCKED_BY_CI: BLOCKED_BY_CI wins" "$OUT" "gated:BLOCKED_BY_CI feat/base"
+pr_record OPEN true 0 "$(printf '**Gate:** PASSED\n\nCI: BLOCKED_BY_CI (test, lint failing)')"
+review_state feat/x
+expect_eq "BLOCKED_BY_CI on a line after the Gate line wins" "$OUT" "gated:BLOCKED_BY_CI feat/base"
+pr_record OPEN true 0 "$(printf 'Notes mention BLOCKED_BY_CI without any Gate line.')"
+review_state feat/x
+expect_eq "BLOCKED_BY_CI without a Gate line: draft" "$OUT" "draft feat/base"
+pr_record OPEN false 0 "**Gate:** PASSED"
+review_state feat/x
+expect_eq "not a draft: ready" "$OUT" "ready feat/base"
+pr_record OPEN true 0 "Opened by hand. PASSED in prose is not a Gate."
+review_state feat/x
+expect_eq "draft without placeholder or Gate: draft" "$OUT" "draft feat/base"
+review_state
+expect_code "no branch: usage error" 2
+
+echo "== bs-plan-ci"
+export BS_PLAN_CI_POLL_INTERVAL=0 BS_PLAN_CI_POLL_LIMIT=3
+# ci_repo [<ci.yml on line>]: repo whose origin/feat/p commit holds a ci.yml with that "on:" line
+ci_repo() {
+  local repo
+  repo="$(new_repo)"
+  if [ -n "${1:-}" ]; then
+    mkdir -p "$repo/.github/workflows"
+    printf 'name: CI\non:\n  pull_request:\n%s\njobs: {}\n' "$1" > "$repo/.github/workflows/ci.yml"
+    git -C "$repo" add .github
+    git -C "$repo" commit -q -m ci
+  fi
+  git -C "$repo" update-ref refs/remotes/origin/feat/p HEAD
+  echo "$repo"
+}
+# run_line <id> <sha> <status> <conclusion>: one record as the script's --jq prints it
+run_line() { printf '%s|%s|%s|%s|https://ci.example/runs/%s\n' "$1" "$2" "$3" "$4" "$1"; }
+plan_ci() { run_in "$r" env PATH="$GH_PATH" "$PLAN_CI" "$@"; }
+r="$(ci_repo '  workflow_dispatch:')"
+head="$(git -C "$r" rev-parse HEAD)"
+fake_gh_reset; run_line 9 "$head" completed success > "$FAKE_GH/run-list"
+plan_ci feat/p
+expect_eq "run for HEAD succeeded: pass" "$OUT" "pass"
+check "gh run list asks for workflow_dispatch runs of the plan branch" grep -q '^run list --workflow ci.yml --branch feat/p --event workflow_dispatch ' "$FAKE_GH/calls"
+fake_gh_reset; run_line 9 "$head" in_progress "" > "$FAKE_GH/run-list"
+plan_ci feat/p
+expect_eq "run for HEAD in progress: pending" "$OUT" "pending"
+fake_gh_reset; run_line 9 "$head" completed failure > "$FAKE_GH/run-list"
+plan_ci feat/p
+expect_eq "run for HEAD failed: fail <url>" "$OUT" "fail https://ci.example/runs/9"
+fake_gh_reset; run_line 9 "$head" completed timed_out > "$FAKE_GH/run-list"
+plan_ci feat/p
+expect_eq "run for HEAD timed out: fail <url>" "$OUT" "fail https://ci.example/runs/9"
+fake_gh_reset
+plan_ci feat/p
+expect_eq "no run: dispatched" "$OUT" "dispatched"
+expect_eq "no run: exactly one dispatch" "$(gh_calls 'workflow run ci.yml --ref feat/p')" "1"
+fake_gh_reset; run_line 9 "$head" completed cancelled > "$FAKE_GH/run-list"
+plan_ci feat/p
+expect_eq "cancelled run for HEAD is ignored: dispatched" "$OUT" "dispatched"
+fake_gh_reset; run_line 8 0000000000000000000000000000000000000000 completed failure > "$FAKE_GH/run-list"
+plan_ci feat/p
+expect_eq "no run for HEAD, earlier run failed: recheck" "$OUT" "recheck"
+expect_eq "recheck: no dispatch" "$(gh_calls 'workflow run')" "0"
+fake_gh_reset; run_line 8 0000000000000000000000000000000000000000 completed success > "$FAKE_GH/run-list"
+plan_ci feat/p
+expect_eq "no run for HEAD, earlier run passed: dispatched" "$OUT" "dispatched"
+
+fake_gh_reset
+run_line 8 0000000000000000000000000000000000000000 completed failure > "$FAKE_GH/run-list.1"
+run_line 8 0000000000000000000000000000000000000000 completed failure > "$FAKE_GH/run-list.2"
+{ run_line 9 "$head" completed success; run_line 8 0000000000000000000000000000000000000000 completed failure; } > "$FAKE_GH/run-list.3"
+plan_ci --wait feat/p
+expect_eq "--wait: run registers on the 2nd poll: pass" "$OUT" "pass"
+expect_eq "--wait: one dispatch while polling" "$(gh_calls 'workflow run')" "1"
+fake_gh_reset
+plan_ci --wait feat/p
+expect_eq "--wait: run never registers: fail registration-timeout" "$OUT" "fail registration-timeout"
+expect_eq "--wait: still one dispatch on timeout" "$(gh_calls 'workflow run')" "1"
+fake_gh_reset
+run_line 9 "$head" in_progress "" > "$FAKE_GH/run-list.1"
+run_line 9 "$head" completed failure > "$FAKE_GH/run-list.2"
+echo 1 > "$FAKE_GH/run-watch.rc"
+plan_ci --wait feat/p
+expect_eq "--wait: watches a pending run, then reports its result" "$OUT" "fail https://ci.example/runs/9"
+expect_eq "--wait: watches run 9" "$(gh_calls 'run watch 9')" "1"
+expect_eq "--wait on a pending run: no dispatch" "$(gh_calls 'workflow run')" "0"
+fake_gh_reset
+run_line 9 "$head" in_progress "" > "$FAKE_GH/run-list.1"
+run_line 9 "$head" completed cancelled > "$FAKE_GH/run-list.2"
+plan_ci --wait feat/p
+expect_eq "--wait: watched run gets cancelled: fail cancelled" "$OUT" "fail cancelled"
+
+fake_gh_reset
+r="$(ci_repo '  # workflow_dispatch:')"
+plan_ci feat/p
+expect_eq "commented workflow_dispatch: unavailable" "$OUT" "unavailable"
+r="$(ci_repo)"
+plan_ci feat/p
+expect_eq "no ci.yml: unavailable" "$OUT" "unavailable"
+r="$(ci_repo '  workflow_dispatch:')"
+plan_ci feat/other
+expect_eq "plan branch not pushed: unavailable" "$OUT" "unavailable"
+expect_eq "unavailable: no gh calls" "$(gh_calls '')" "0"
+plan_ci
+expect_code "no branch: usage error" 2
 
 echo
 if [[ "$FAILURES" -gt 0 ]]; then

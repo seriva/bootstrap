@@ -45,6 +45,7 @@ for profile in continuous versioned; do
     check "$profile: creates $f" test -f "$target/$f"
   done
   check "$profile: creates a git repo" test -d "$target/.git"
+  check "$profile: CI accepts workflow_dispatch (plan-branch runs)" grep -qE '^  workflow_dispatch:' "$target/.github/workflows/ci.yml"
   check_not "$profile: fills in Release Model" grep -q '^- \*\*Release Model\*\*: \[' "$target/AGENTS.md"
   check_not "$profile: refuses to overwrite without --force" "$INIT" "$target" --type "$profile"
   check "$profile: overwrites with --force" "$INIT" "$target" --type "$profile" --force
@@ -151,10 +152,57 @@ missing+="$(grep -rhoE "$home/[^\`\"' )]+/scripts/[A-Za-z0-9_-]+" "$home" | sort
 done)"
 check "conventions.md references helper scripts" grep -qF "$home/.local/share/bootstrap/scripts/" "$home/.local/share/bootstrap/conventions.md"
 check "skills reference helper scripts" grep -rqF "$home/.local/share/bootstrap/scripts/" "$home/.claude/skills"
+# bs-review-state reads the markers /bs-loop writes: both must match its constants.
+review_state_src="$REPO_DIR/workflows/shared/scripts/bs-review-state"
+for name in PLACEHOLDER FIX_SUBJECT_SUFFIX; do
+  marker="$(sed -n "s/^$name='\(.*\)'\$/\1/p" "$review_state_src" 2>/dev/null || true)"
+  check "bs-loop writes the bs-review-state $name" test -n "$marker" -a -n "$(grep -F -- "$marker" "$REPO_DIR/workflows/skills/bs-loop/SKILL.md")"
+done
+for pair in conventions.md:bs-plan-state skills/bs-exec/SKILL.md:bs-plan-state skills/bs-exec/SKILL.md:bs-plan-ci \
+  conventions.md:bs-review-state skills/bs-loop/SKILL.md:bs-review-state skills/bs-exec/SKILL.md:bs-review-state; do
+  doc="${pair%%:*}" script="${pair##*:}"
+  case "$doc" in skills/*) path="$home/.claude/$doc" ;; *) path="$home/.local/share/bootstrap/$doc" ;; esac
+  check "$doc calls $script" grep -qF "$home/.local/share/bootstrap/scripts/$script" "$path"
+done
 if [[ -z "$missing" ]]; then
   pass "rendered skill and doc paths all resolve"
 else
   fail "rendered paths that do not exist: ${missing//$'\n'/, }"
+fi
+
+echo "== size budgets"
+# Byte budgets for the skill and shared-doc text every bs-* run loads. Raising one is a
+# deliberate, visible change here; a new file needs its own entry.
+budget_of() {
+  case "$1" in
+    skills/bs-exec/SKILL.md) echo 10750 ;;
+    skills/bs-loop/SKILL.md) echo 9000 ;;
+    skills/bs-plan/SKILL.md) echo 9250 ;;
+    skills/bs-probe/SKILL.md) echo 2250 ;;
+    skills/bs-review/SKILL.md) echo 8250 ;;
+    skills/bs-task/SKILL.md) echo 4250 ;;
+    shared/conventions.md) echo 7500 ;;
+    shared/dispatch.md) echo 9500 ;;
+    *) echo 0 ;;
+  esac
+}
+TOTAL_BUDGET=60000
+total=0
+for f in "$REPO_DIR"/workflows/skills/*/SKILL.md "$REPO_DIR"/workflows/shared/*.md; do
+  rel="${f#"$REPO_DIR"/workflows/}"
+  size="$(wc -c < "$f" | tr -d ' ')"
+  budget="$(budget_of "$rel")"
+  total=$((total + size))
+  if [[ "$size" -le "$budget" ]]; then
+    pass "$rel within budget ($size/$budget bytes)"
+  else
+    fail "$rel is $size bytes, over its budget of $budget (tests/smoke.sh budget_of)"
+  fi
+done
+if [[ "$total" -le "$TOTAL_BUDGET" ]]; then
+  pass "skills and shared docs total $total/$TOTAL_BUDGET bytes"
+else
+  fail "skills and shared docs total $total bytes, over $TOTAL_BUDGET"
 fi
 
 echo
