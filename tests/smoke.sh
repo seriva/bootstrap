@@ -158,8 +158,10 @@ for name in PLACEHOLDER FIX_SUBJECT_SUFFIX; do
   marker="$(sed -n "s/^$name='\(.*\)'\$/\1/p" "$review_state_src" 2>/dev/null || true)"
   check "bs-loop writes the bs-review-state $name" test -n "$marker" -a -n "$(grep -F -- "$marker" "$REPO_DIR/workflows/skills/bs-loop/SKILL.md")"
 done
+check "bs-loop writes the **Gate:** line bs-review-state reads" grep -qF '`**Gate:** <PASSED' "$REPO_DIR/workflows/skills/bs-loop/SKILL.md"
 for pair in conventions.md:bs-plan-state skills/bs-exec/SKILL.md:bs-plan-state skills/bs-exec/SKILL.md:bs-plan-ci \
-  conventions.md:bs-review-state skills/bs-loop/SKILL.md:bs-review-state skills/bs-exec/SKILL.md:bs-review-state; do
+  conventions.md:bs-review-state skills/bs-loop/SKILL.md:bs-review-state skills/bs-exec/SKILL.md:bs-review-state \
+  skills/bs-review/SKILL.md:bs-diff-target; do
   doc="${pair%%:*}" script="${pair##*:}"
   case "$doc" in skills/*) path="$home/.claude/$doc" ;; *) path="$home/.local/share/bootstrap/$doc" ;; esac
   check "$doc calls $script" grep -qF "$home/.local/share/bootstrap/scripts/$script" "$path"
@@ -179,14 +181,14 @@ budget_of() {
     skills/bs-loop/SKILL.md) echo 9000 ;;
     skills/bs-plan/SKILL.md) echo 9250 ;;
     skills/bs-probe/SKILL.md) echo 2250 ;;
-    skills/bs-review/SKILL.md) echo 8250 ;;
+    skills/bs-review/SKILL.md) echo 6500 ;;
     skills/bs-task/SKILL.md) echo 4250 ;;
     shared/conventions.md) echo 7500 ;;
     shared/dispatch.md) echo 9500 ;;
     *) echo 0 ;;
   esac
 }
-TOTAL_BUDGET=60000
+TOTAL_BUDGET=58250
 total=0
 for f in "$REPO_DIR"/workflows/skills/*/SKILL.md "$REPO_DIR"/workflows/shared/*.md; do
   rel="${f#"$REPO_DIR"/workflows/}"

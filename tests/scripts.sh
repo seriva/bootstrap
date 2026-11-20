@@ -13,6 +13,7 @@ COMMIT="$REPO_DIR/workflows/shared/scripts/bs-commit"
 PLAN_STATE="$REPO_DIR/workflows/shared/scripts/bs-plan-state"
 REVIEW_STATE="$REPO_DIR/workflows/shared/scripts/bs-review-state"
 PLAN_CI="$REPO_DIR/workflows/shared/scripts/bs-plan-ci"
+DIFF_TARGET="$REPO_DIR/workflows/shared/scripts/bs-diff-target"
 SANDBOX="$(mktemp -d "${TMPDIR:-/tmp}/bootstrap-scripts.XXXXXX")"
 trap 'rm -rf "$SANDBOX"' EXIT
 
@@ -602,6 +603,118 @@ expect_eq "plan branch not pushed: unavailable" "$OUT" "unavailable"
 expect_eq "unavailable: no gh calls" "$(gh_calls '')" "0"
 plan_ci
 expect_code "no branch: usage error" 2
+
+echo "== bs-diff-target"
+EMPTY_TREE="$(git hash-object -t tree /dev/null)"
+diff_target() { run_in "$1" env PATH="$GH_PATH" "$DIFF_TARGET" "${@:2}"; }
+field() { printf '%s\n' "$OUT" | sed -n "s/^$1 //p"; } # field <KEY>: value(s) of KEY lines in $OUT
+r="$(new_repo)"
+git -C "$r" branch -q -M main
+diff_target "$r"
+expect_code "root commit, clean: exit 0" 0
+expect_eq "root commit, clean: base is the empty tree" "$(field BASE)" "$EMPTY_TREE"
+expect_eq "root commit, clean: diff of the whole commit" "$(field DIFF)" "git diff $EMPTY_TREE HEAD"
+expect_eq "root commit, clean: says it reviews the last commit" "$(field NOTE)" "last-commit"
+expect_eq "workdir is the repo root" "$(field WORKDIR)" "$(cd "$r" && pwd -P)"
+expect_eq "no untracked files: none" "$(field UNTRACKED)" "none"
+echo two > "$r/two.txt"; git -C "$r" add two.txt; git -C "$r" commit -q -m two
+diff_target "$r"
+expect_eq "clean main: base is HEAD~1" "$(field BASE)" "$(git -C "$r" rev-parse HEAD~1)"
+expect_eq "clean main: diff of the last commit" "$(field DIFF)" "git diff $(git -C "$r" rev-parse HEAD~1) HEAD"
+echo edit >> "$r/two.txt"
+diff_target "$r"
+head_sha="$(git -C "$r" rev-parse HEAD)"
+expect_eq "dirty main without upstream: base is HEAD" "$(field BASE)" "$head_sha"
+expect_eq "dirty main: one diff of base against the tree" "$(field DIFF)" "git diff $head_sha"
+expect_eq "dirty main: no note" "$(field NOTE)" ""
+git -C "$r" checkout -q -- two.txt
+echo u > "$r/sp ace.txt"; echo u > "$r/café.txt"
+mkdir -p "$r/sub"; echo u > "$r/sub/n.txt"
+diff_target "$r"
+expect_eq "untracked only: not the last-commit fallback" "$(field NOTE)" ""
+expect_eq "untracked files listed literally" "$(field UNTRACKED)" "$(printf 'café.txt\nsp ace.txt\nsub/n.txt')"
+root_out="$OUT"
+diff_target "$r/sub"
+expect_eq "same output from a subdirectory" "$OUT" "$root_out"
+rm -rf "$r/sp ace.txt" "$r/café.txt" "$r/sub"
+
+git -C "$r" checkout -q -b feat/x
+echo f > "$r/f.txt"; git -C "$r" add f.txt; git -C "$r" commit -q -m f
+main_sha="$(git -C "$r" rev-parse main)"
+diff_target "$r"
+expect_eq "feature branch: base is the merge-base with main" "$(field BASE)" "$main_sha"
+expect_eq "feature branch: diff from the merge-base" "$(field DIFF)" "git diff $main_sha"
+git -C "$r" update-ref refs/remotes/origin/main "$(git -C "$r" rev-parse main~1)"
+diff_target "$r"
+expect_eq "feature branch: origin/main preferred over main" "$(field BASE)" "$(git -C "$r" rev-parse main~1)"
+git -C "$r" branch -q trunk main~1
+git -C "$r" update-ref refs/remotes/origin/trunk "$(git -C "$r" rev-parse main~1)"
+git -C "$r" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/trunk
+git -C "$r" checkout -q main
+diff_target "$r"
+expect_eq "origin/HEAD names the default branch: main is a feature branch" "$(field BASE)" "$(git -C "$r" rev-parse main~1)"
+git -C "$r" symbolic-ref --delete refs/remotes/origin/HEAD
+git -C "$r" remote add origin "$SANDBOX/unused-origin.git"
+git -C "$r" config branch.main.remote origin
+git -C "$r" config branch.main.merge refs/heads/main
+echo up >> "$r/two.txt"
+diff_target "$r"
+expect_eq "default branch with upstream: base is the merge-base with it" "$(field BASE)" "$(git -C "$r" rev-parse main~1)"
+git -C "$r" checkout -q -- two.txt
+
+diff_target "$r" feat/x
+expect_eq "branch target: base is the branch" "$(field BASE)" "feat/x"
+expect_eq "branch target: three-dot diff to HEAD" "$(field DIFF)" "git diff feat/x...HEAD"
+expect_eq "branch target: no untracked list" "$(field UNTRACKED)" "none"
+diff_target "$r" main~1...feat/x
+expect_eq "range target: base is its left side" "$(field BASE)" "main~1"
+expect_eq "range target: diff as given" "$(field DIFF)" "git diff main~1...feat/x"
+diff_target "$r" no-such-branch
+expect_code "unknown branch target: exit 2" 2
+
+e="$(new_repo --empty)"
+diff_target "$e"
+expect_code "unborn HEAD: exit 2" 2
+OUT="$(cd "$SANDBOX/plain" && "$DIFF_TARGET" 2>/dev/null)" && CODE=0 || CODE=$?
+expect_code "not a repo: exit 2" 2
+
+echo "== bs-diff-target PR"
+origin="$SANDBOX/origin.git"
+git init -q --bare "$origin"
+r="$(new_repo)"
+git -C "$r" branch -q -M main
+git -C "$r" remote add origin "$origin"
+git -C "$r" push -q origin main
+git -C "$r" checkout -q -b pr-head
+echo pr > "$r/pr.txt"; git -C "$r" add pr.txt; git -C "$r" commit -q -m pr
+pr_sha="$(git -C "$r" rev-parse HEAD)"
+git -C "$r" push -q origin "HEAD:refs/pull/7/head"
+git -C "$r" checkout -q main
+git -C "$r" branch -q -D pr-head
+fake_gh_reset; printf 'main %s\n' "$pr_sha" > "$FAKE_GH/pr-view"
+diff_target "$r" '#7'
+expect_code "PR #7: exit 0" 0
+wt="$(field WORKDIR)"
+expect_eq "PR: base is origin/<baseRefName>" "$(field BASE)" "origin/main"
+expect_eq "PR: three-dot diff in the worktree" "$(field DIFF)" "git diff origin/main...HEAD"
+expect_eq "PR: number reported for cleanup" "$(field PR)" "7"
+expect_eq "PR: worktree HEAD is the PR head" "$(git -C "$wt" rev-parse HEAD)" "$pr_sha"
+check "PR: worktree is outside the repo" test "${wt#"$r"/}" = "$wt"
+check "PR: PR ref fetched" git -C "$r" rev-parse -q --verify refs/bs-review/pr-7
+check "PR: gh asked for base and head" grep -q '^pr view 7 --json baseRefName,headRefOid' "$FAKE_GH/calls"
+run_in "$r" "$DIFF_TARGET" cleanup "$r" 7
+expect_code "cleanup refuses the main checkout: exit 2" 2
+check "cleanup refusal leaves the worktree" test -d "$wt"
+run_in "$r" "$DIFF_TARGET" cleanup "$wt" 7
+expect_code "cleanup: exit 0" 0
+check_not_dir() { [ ! -e "$1" ]; }
+check "cleanup: worktree removed" check_not_dir "$wt"
+check "cleanup: worktree unregistered" test -z "$(git -C "$r" worktree list --porcelain | grep -F "$wt" || true)"
+check "cleanup: PR ref deleted" test -z "$(git -C "$r" rev-parse -q --verify refs/bs-review/pr-7 || true)"
+fake_gh_reset; printf 'main %s\n' "$pr_sha" > "$FAKE_GH/pr-view"
+diff_target "$r" https://github.com/o/r/pull/7/files
+expect_eq "PR URL: number parsed" "$(field PR)" "7"
+run_in "$r" "$DIFF_TARGET" cleanup "$(field WORKDIR)" 7
 
 echo
 if [[ "$FAILURES" -gt 0 ]]; then

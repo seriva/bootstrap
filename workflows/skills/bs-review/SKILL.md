@@ -16,17 +16,8 @@ Invoking `/bs-review` dispatches a fresh-context reviewer with zero implementati
 
 1. **Target & Diff Scope**:
    - Resolve `$TARGET_REPO` and read `AGENTS.md` per **Target** (`{{BS_CONVENTIONS}}`).
-   - In `$TARGET_REPO`, record `WORKING_BRANCH="$(git rev-parse --abbrev-ref HEAD)"` and the pre-review state hash, `"{{BS_TREE_STATE}}" hash` (covers status, diffs, and untracked files by content and exec bit), keeping it for Step 3.
-   - Default `REVIEW_WORKDIR="$TARGET_REPO"` and `UNTRACKED_FILES="none"`.
-   - Resolve `DEFAULT_BRANCH`: `git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||'`, else whichever of `main` or `master` exists, else `$WORKING_BRANCH`.
-   - Determine `<BASE>`, `<DIFF_TARGET>`, `<UNTRACKED_FILES>`, and `<REVIEW_WORKDIR>`:
-     - **Called by `/bs-loop` Step 3 (or explicit `<base>...<head>` / branch)**: fetch if remote and set `<BASE>` and `<DIFF_TARGET>="git diff <BASE>...HEAD"` (or `<BASE>...<HEAD>`). Keep the defaults for `<REVIEW_WORKDIR>` and `<UNTRACKED_FILES>`.
-     - **Explicit PR (`#N` or PR URL)**: resolve `N`, `BASE` (`baseRefName`) and `HEAD_SHA` (`headRefOid`) via `gh pr view <PR> --json number,baseRefName,headRefOid`. Fetch both through the PR ref so fork PRs work: `git fetch origin "$BASE" "+refs/pull/$N/head:refs/bs-review/pr-$N"`. Check out the PR head in a temporary detached worktree **outside** the repo, so probe cleanup of `.probes/` cannot delete it: `git worktree prune; PR_WORKTREE="$(mktemp -d "${TMPDIR:-/tmp}/bs-review-pr-$N.XXXXXX")"; git worktree add --detach "$PR_WORKTREE" "$HEAD_SHA"`. Set `<REVIEW_WORKDIR>="$PR_WORKTREE"`, `<BASE>="origin/$BASE"`, and `<DIFF_TARGET>="git diff origin/$BASE...HEAD"`.
-     - **Default (current workspace)**: set `<UNTRACKED_FILES>` to the output of `git -c core.quotePath=false ls-files --others --exclude-standard`, or `"none"` if empty. Pick the comparison ref:
-       - On a non-default branch: `origin/$DEFAULT_BRANCH` if it exists, else `$DEFAULT_BRANCH`.
-       - On `$DEFAULT_BRANCH`: `@{upstream}` if it exists, else `HEAD`.
-       - Set `<BASE>="$(git merge-base <ref> HEAD)"` and `<DIFF_TARGET>="git diff $BASE"`. This one diff covers unpushed or branch commits **and** uncommitted edits, whether or not the tree is dirty.
-       - If that diff is empty and `<UNTRACKED_FILES>` is `"none"`, review the last commit instead and say so in the output. If HEAD has a parent (`git rev-parse --verify --quiet HEAD~1`), set `<BASE>="$(git rev-parse HEAD~1)"`. Otherwise HEAD is the root commit: set `<BASE>="$(git hash-object -t tree /dev/null)"` (the empty tree, so the whole commit is reviewed). In both cases set `<DIFF_TARGET>="git diff <BASE> HEAD"`.
+   - In `$TARGET_REPO`, record `WORKING_BRANCH="$(git rev-parse --abbrev-ref HEAD)"` and the pre-review state hash, `"{{BS_TREE_STATE}}" hash` (status, diffs, and untracked files by content and exec bit), for Step 3.
+   - Run `"{{BS_DIFF_TARGET}}" [<target>]` in `$TARGET_REPO`. Target: none for the current workspace (standalone default; covers branch commits and uncommitted edits); a branch or `<base>...<head>` (fetch first if remote; `/bs-loop` Step 3 passes `$BASE_BRANCH`); or `#N` / a PR URL (checked out in a temporary worktree outside the repo). Its lines set `<BASE>` (`BASE`), `<DIFF_TARGET>` (`DIFF`), `<REVIEW_WORKDIR>` (`WORKDIR`), and `<UNTRACKED_FILES>` (the `UNTRACKED` paths, or `none`). On `NOTE last-commit` (nothing changed, so the last commit is reviewed), say so in the output. Keep `PR <N>` for Step 3.
 2. **Dispatch `Code Reviewer`**:
    - Route per **Dispatch** (`{{BS_DISPATCH}}`; `Role: "Code Reviewer"` when standalone, or `Role: "Code Reviewer (Pass 1)"` when called by `/bs-loop`) with this prompt (fill placeholders):
      > You are a dispatched fresh-context subagent (`Code Reviewer`); do not spawn or dispatch any subagents. First read **Review Rubric** in `{{BS_REVIEW_SKILL}}`, `{{BS_PROBE_SKILL}}` in full, and **Probes**, **People docs**, and **Follow-ups** in `{{BS_CONVENTIONS}}`, then `AGENTS.md` in `<REVIEW_WORKDIR>` (and `$PLAN_FILE` if given: `<path or none>`). In working directory `<REVIEW_WORKDIR>`, execute the **Review Rubric** in `{{BS_REVIEW_SKILL}}` on `<DIFF_TARGET>` against `<BASE>`. New untracked files to review in full (one path per line, or `none`):
@@ -34,7 +25,7 @@ Invoking `/bs-review` dispatches a fresh-context reviewer with zero implementati
      > <UNTRACKED_FILES>
      > ```
 3. **Cleanup, Echo & Return**:
-   - If a PR worktree was created, remove it: `git worktree remove --force "$PR_WORKTREE"; git worktree prune; git update-ref -d "refs/bs-review/pr-$N"`.
+   - If Step 1 printed `PR <N>`, remove its worktree: `"{{BS_DIFF_TARGET}}" cleanup <REVIEW_WORKDIR> <N>`.
    - Verify per **CLI Rules** 4 (`{{BS_DISPATCH}}`), except: instead of requiring a clean `git status --porcelain`, rerun `"{{BS_TREE_STATE}}" hash` and compare it with the Step 1 hash.
    - **On mismatch**, undo nothing: the user may have edited files during the review, and the hash cannot tell those edits from the reviewer's or say which file changed. Under `### Working Tree Changed`, say the tree changed during the review and show `git status --porcelain` (which also lists the user's own pre-existing edits). Standalone: still echo the findings below; called by `/bs-loop`: report `PENDING_REVIEW`.
    - Re-dispatch once on missing reply sections. If the second run also fails, report `PENDING_REVIEW`.
