@@ -20,7 +20,8 @@ Invoking `/bs-loop` authorizes discovering target repos, creating branches, stag
 
 ### Step 2: Branch & TDD Implementation (via `/bs-task`)
 1. **Branch Resolution**:
-   - Require clean working tree (`git status --porcelain`); if dirty, stop and report the paths—never auto-stash, discard, or commit them.
+   - **Interrupted run**: if the current branch (`git rev-parse --abbrev-ref HEAD`) has an open draft PR (`gh pr view --json isDraft,baseRefName,body`) whose `## Review Status` still says `in progress`, its implementation is already pushed and a run stopped mid-review, or may still be running. Report any dirty paths and ask the user to confirm no other run is still working on that branch (if the host cannot ask and wait, stop and print the stash command). On no, stop. On yes, stash any dirty paths (`git stash push -u -m "bs-loop: interrupted $(git rev-parse --abbrev-ref HEAD) $(date +%F)"`), set `WORKING_BRANCH` to the current branch and `BASE_BRANCH` to the PR's `baseRefName`, and go to **Step 3** (implement-only mode: return the PR URL + `WORKING_BRANCH` instead), skipping the rest of Step 2.
+   - Otherwise require a clean working tree (`git status --porcelain`); if dirty, stop and report the paths—never auto-stash, discard, or commit them.
    - `BASE_BRANCH`: caller/user-specified base (e.g. `feat/<plan-slug>`), else current branch. Fetch upstream.
    - `WORKING_BRANCH`: `feat/<plan-slug>-phase-<N>` for plan phases (`git checkout -b ... $BASE_BRANCH`, or `git checkout` if resuming); for standalone tasks, stay on an existing `feat/` or `fix/` branch or `git checkout -b <type>/<task-slug> $BASE_BRANCH`.
 2. **Implementation**:
@@ -35,6 +36,8 @@ Invoking `/bs-loop` authorizes discovering target repos, creating branches, stag
 
 ### Step 3: Deterministic 2-Pass AI Code Review (via `/bs-review` & `/bs-probe`)
 Review `$WORKING_BRANCH` against `$BASE_BRANCH`.
+
+**Resumed run**: if `git log --format=%s "$BASE_BRANCH"..HEAD` already has a `Defect Fixer` commit (subject ending in `: address review feedback`), the Fix Turn was used before the interruption: run Pass 1 as the terminal pass (`LGTM` → `REVIEW_STATUS=PASSED`; High/Medium → `REVIEW_STATUS=BLOCKED_BY_DEFECTS`) with no further Fix Turn.
 
 > [!IMPORTANT]
 > **NO SELF-REVIEW:** Never review your own diff in the current context. If `REVIEWER` is unreachable (per **Providers & Models** in `{{BS_DISPATCH}}`), leave the PR in **Draft**, inform the user, and return PR URL with `REVIEW_STATUS=PENDING_REVIEW`. Notify the user upon dispatching and echo each pass's full findings in chat upon return.
