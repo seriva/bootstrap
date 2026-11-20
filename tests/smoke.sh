@@ -152,11 +152,15 @@ missing+="$(grep -rhoE "$home/[^\`\"' )]+/scripts/[A-Za-z0-9_-]+" "$home" | sort
 done)"
 check "conventions.md references helper scripts" grep -qF "$home/.local/share/bootstrap/scripts/" "$home/.local/share/bootstrap/conventions.md"
 check "skills reference helper scripts" grep -rqF "$home/.local/share/bootstrap/scripts/" "$home/.claude/skills"
-# bs-review-state reads the markers /bs-loop writes: both must match its constants.
+# bs-review-state reads the markers and gate tokens /bs-loop writes: both must stay in sync.
 review_state_src="$REPO_DIR/workflows/shared/scripts/bs-review-state"
-for name in PLACEHOLDER FIX_SUBJECT_SUFFIX; do
+for name in PLACEHOLDER FIX_SUBJECT_SUFFIX GATE_MARKER; do
   marker="$(sed -n "s/^$name='\(.*\)'\$/\1/p" "$review_state_src" 2>/dev/null || true)"
   check "bs-loop writes the bs-review-state $name" test -n "$marker" -a -n "$(grep -F -- "$marker" "$REPO_DIR/workflows/skills/bs-loop/SKILL.md")"
+done
+for gate in PASSED BLOCKED_BY_DEFECTS BLOCKED_BY_CI; do
+  check "bs-loop and bs-review-state agree on gate $gate" \
+    sh -c 'grep -qF "$1" "$2" && grep -qF "$1" "$3"' _ "$gate" "$REPO_DIR/workflows/skills/bs-loop/SKILL.md" "$review_state_src"
 done
 check "bs-loop writes the **Gate:** line bs-review-state reads" grep -qF '`**Gate:** <PASSED' "$REPO_DIR/workflows/skills/bs-loop/SKILL.md"
 for pair in conventions.md:bs-plan-state skills/bs-exec/SKILL.md:bs-plan-state skills/bs-exec/SKILL.md:bs-plan-ci \

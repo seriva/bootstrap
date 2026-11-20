@@ -2,9 +2,10 @@
 set -euo pipefail
 
 # Review-run state of a branch's PR for the bs-* skills, from one `gh pr view` call. Read-only.
-# /bs-loop writes these two markers; tests/smoke.sh checks its text still matches them.
+# /bs-loop writes these markers; tests/smoke.sh checks its text still matches them.
 PLACEHOLDER='*Automated AI review & fix cycle in progress...*'
 FIX_SUBJECT_SUFFIX=': address review feedback'
+GATE_MARKER='**Gate:**'
 
 usage() {
   cat >&2 <<'EOF'

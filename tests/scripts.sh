@@ -84,26 +84,94 @@ add_hook() { # add_hook <repo> <script body>: install a pre-commit hook
   chmod +x "$1/.git/hooks/pre-commit"
 }
 
-# Fake gh: logs each call to $FAKE_GH/calls and answers from files in $FAKE_GH:
-#   pr-view (stdout) or pr-view.err (stderr, exit 1); run-list.<call#> or run-list;
+# Fake gh: logs each call to $FAKE_GH/calls and serves real JSON fixtures through the
+# script's actual --json field filter and --jq expression (via jq if installed, else Python 3):
+#   pr-view.json (or pr-view.err, exit 1); run-list.<call#>.json or run-list.json;
 #   run-watch.rc (exit code of gh run watch). gh workflow run only logs.
 FAKE_GH="$SANDBOX/fake-gh"
 mkdir -p "$SANDBOX/bin" "$FAKE_GH"
 cat > "$SANDBOX/bin/gh" <<'EOF'
 #!/bin/sh
+set -eu
 d="$FAKE_GH"
 printf '%s\n' "$*" >> "$d/calls"
-case "$1 $2" in
+cmd="$1 $2"
+shift 2
+fields="" jq_expr=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --json) fields="$2"; shift 2 ;;
+    --jq|-q) jq_expr="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+render_json() {
+  python3 - "$1" "$fields" "$jq_expr" <<'PY'
+import json, re, shutil, subprocess, sys
+path, fields_csv, expr = sys.argv[1], sys.argv[2], sys.argv[3]
+data = json.load(open(path))
+if fields_csv:
+    want = set(fields_csv.split(","))
+    filt = lambda o: {k: v for k, v in o.items() if k in want}
+    data = [filt(x) for x in data] if isinstance(data, list) else filt(data)
+if shutil.which("jq"):
+    r = subprocess.run(["jq", "-r", expr], input=json.dumps(data), text=True, capture_output=True)
+    if r.returncode != 0:
+        sys.stderr.write(r.stderr); sys.exit(r.returncode)
+    sys.stdout.write(r.stdout); sys.exit(0)
+# Minimal jq evaluator for the script expressions when jq is absent; fails loudly on unknown syntax.
+def fmt(v):
+    if v is None: return "null"
+    if isinstance(v, bool): return "true" if v else "false"
+    return str(v)
+def eval_interp(sub, obj):
+    m = re.fullmatch(r'\.([A-Za-z_][A-Za-z0-9_]*)', sub)
+    if m:
+        return fmt(obj[m.group(1)])
+    m = re.fullmatch(r'\[\.([A-Za-z_][A-Za-z0-9_]*)\[\]\.([A-Za-z_][A-Za-z0-9_]*)\s*\|\s*select\(endswith\("([^"]*)"\)\)\]\s*\|\s*length', sub)
+    if m:
+        arr, key, suf = m.groups()
+        return str(sum(1 for it in obj[arr] if str(it[key]).endswith(suf)))
+    sys.exit(f"fake gh: unsupported --jq interpolation: {sub}")
+def eval_tpl(tpl, obj):
+    out, i, n = [], 0, len(tpl)
+    while i < n:
+        if tpl[i] == '\\' and i + 1 < n:
+            c = tpl[i + 1]
+            if c == '(':
+                depth, j = 1, i + 2
+                while j < n and depth:
+                    if tpl[j] == '(': depth += 1
+                    elif tpl[j] == ')': depth -= 1
+                    j += 1
+                out.append(eval_interp(tpl[i + 2:j - 1], obj))
+                i = j; continue
+            out.append({'t': '\t', 'n': '\n', '"': '"', '\\': '\\'}.get(c, c))
+            i += 2; continue
+        out.append(tpl[i]); i += 1
+    return "".join(out)
+items = data if expr.startswith(".[] | ") else [data]
+body = expr[len(".[] | "):] if expr.startswith(".[] | ") else expr
+if not (len(body) >= 2 and body[0] == '"' and body[-1] == '"'):
+    sys.exit(f"fake gh: unsupported --jq expression: {expr}")
+for it in items:
+    print(eval_tpl(body[1:-1], it))
+PY
+}
+case "$cmd" in
   "pr view")
     if [ -f "$d/pr-view.err" ]; then cat "$d/pr-view.err" >&2; exit 1; fi
-    cat "$d/pr-view" ;;
+    render_json "$d/pr-view.json" ;;
   "run list")
     n=$(($(cat "$d/run-list.count" 2>/dev/null || echo 0) + 1))
     echo "$n" > "$d/run-list.count"
-    if [ -f "$d/run-list.$n" ]; then cat "$d/run-list.$n"; elif [ -f "$d/run-list" ]; then cat "$d/run-list"; fi ;;
+    if [ -f "$d/run-list.$n.json" ]; then render_json "$d/run-list.$n.json"
+    elif [ -f "$d/run-list.json" ]; then render_json "$d/run-list.json"
+    else printf '[]\n' > "$d/empty.json"; render_json "$d/empty.json"
+    fi ;;
   "run watch") exit "$(cat "$d/run-watch.rc" 2>/dev/null || echo 0)" ;;
   "workflow run") : ;;
-  *) echo "fake gh: unexpected call: $*" >&2; exit 64 ;;
+  *) echo "fake gh: unexpected call: $cmd $*" >&2; exit 64 ;;
 esac
 EOF
 chmod +x "$SANDBOX/bin/gh"
@@ -464,8 +532,17 @@ expect_code "no argument: usage error" 2
 echo "== bs-review-state"
 r="$(new_repo)"
 PH='*Automated AI review & fix cycle in progress...*'
-# pr_record <state> <isDraft> <fix commits> <body>: the record gh prints for the script's --jq
-pr_record() { fake_gh_reset; printf '%s\t%s\tfeat/base\t%s\n%s\n' "$1" "$2" "$3" "$4" > "$FAKE_GH/pr-view"; }
+# pr_record <state> <isDraft> <fix commits> <body>: writes real gh pr view JSON
+pr_record() {
+  fake_gh_reset
+  python3 - "$1" "$2" "$3" "$4" "$FAKE_GH/pr-view.json" <<'PY'
+import json, sys
+state, draft, fixes, body, out = sys.argv[1], sys.argv[2] == "true", int(sys.argv[3]), sys.argv[4], sys.argv[5]
+commits = [{"messageHeadline": "feat(plan): implement phase (Task 1.1)"}]
+commits += [{"messageHeadline": "fix(plan): address review feedback"}] * fixes
+json.dump({"state": state, "isDraft": draft, "baseRefName": "feat/base", "body": body, "commits": commits, "extra": 1}, open(out, "w"))
+PY
+}
 review_state() { run_in "$r" env PATH="$GH_PATH" "$REVIEW_STATE" "$@"; }
 fake_gh_reset
 echo 'no pull requests found for branch "feat/x"' > "$FAKE_GH/pr-view.err"
@@ -502,6 +579,9 @@ expect_eq "draft gated: PASSED" "$OUT" "gated:PASSED feat/base"
 pr_record OPEN true 0 "$(printf '**Gate:** PASSED\n**Gate:** BLOCKED_BY_CI: test')"
 review_state feat/x
 expect_eq "PASSED and BLOCKED_BY_CI: BLOCKED_BY_CI wins" "$OUT" "gated:BLOCKED_BY_CI feat/base"
+pr_record OPEN true 0 "$(printf '**Gate:** PASSED\nCI: BLOCKED_BY_CI (test)')"
+review_state feat/x
+expect_eq "PASSED with non-Gate BLOCKED_BY_CI line: BLOCKED_BY_CI wins" "$OUT" "gated:BLOCKED_BY_CI feat/base"
 pr_record OPEN true 0 "$(printf '**Gate:** PASSED\n\nCI: BLOCKED_BY_CI (test, lint failing)')"
 review_state feat/x
 expect_eq "BLOCKED_BY_CI on a line after the Gate line wins" "$OUT" "gated:BLOCKED_BY_CI feat/base"
@@ -532,43 +612,54 @@ ci_repo() {
   git -C "$repo" update-ref refs/remotes/origin/feat/p HEAD
   echo "$repo"
 }
-# run_line <id> <sha> <status> <conclusion>: one record as the script's --jq prints it
-run_line() { printf '%s|%s|%s|%s|https://ci.example/runs/%s\n' "$1" "$2" "$3" "$4" "$1"; }
+# runs_json <out-file> [<id> <sha> <status> <conclusion>]...: writes real gh run list JSON
+runs_json() {
+  python3 - "$@" <<'PY'
+import json, sys
+out, args = sys.argv[1], sys.argv[2:]
+runs = []
+for i in range(0, len(args), 4):
+    rid, sha, status, concl = args[i:i+4]
+    runs.append({"databaseId": int(rid), "headSha": sha, "status": status, "conclusion": concl,
+                 "url": f"https://ci.example/runs/{rid}", "extra": True})
+json.dump(runs, open(out, "w"))
+PY
+}
 plan_ci() { run_in "$r" env PATH="$GH_PATH" "$PLAN_CI" "$@"; }
 r="$(ci_repo '  workflow_dispatch:')"
 head="$(git -C "$r" rev-parse HEAD)"
-fake_gh_reset; run_line 9 "$head" completed success > "$FAKE_GH/run-list"
+fake_gh_reset; runs_json "$FAKE_GH/run-list.json" 9 "$head" completed success
 plan_ci feat/p
 expect_eq "run for HEAD succeeded: pass" "$OUT" "pass"
 check "gh run list asks for workflow_dispatch runs of the plan branch" grep -q '^run list --workflow ci.yml --branch feat/p --event workflow_dispatch ' "$FAKE_GH/calls"
-fake_gh_reset; run_line 9 "$head" in_progress "" > "$FAKE_GH/run-list"
+fake_gh_reset; runs_json "$FAKE_GH/run-list.json" 9 "$head" in_progress ""
 plan_ci feat/p
 expect_eq "run for HEAD in progress: pending" "$OUT" "pending"
-fake_gh_reset; run_line 9 "$head" completed failure > "$FAKE_GH/run-list"
+fake_gh_reset; runs_json "$FAKE_GH/run-list.json" 9 "$head" completed failure
 plan_ci feat/p
 expect_eq "run for HEAD failed: fail <url>" "$OUT" "fail https://ci.example/runs/9"
-fake_gh_reset; run_line 9 "$head" completed timed_out > "$FAKE_GH/run-list"
+fake_gh_reset; runs_json "$FAKE_GH/run-list.json" 9 "$head" completed timed_out
 plan_ci feat/p
 expect_eq "run for HEAD timed out: fail <url>" "$OUT" "fail https://ci.example/runs/9"
 fake_gh_reset
 plan_ci feat/p
 expect_eq "no run: dispatched" "$OUT" "dispatched"
 expect_eq "no run: exactly one dispatch" "$(gh_calls 'workflow run ci.yml --ref feat/p')" "1"
-fake_gh_reset; run_line 9 "$head" completed cancelled > "$FAKE_GH/run-list"
+fake_gh_reset; runs_json "$FAKE_GH/run-list.json" 9 "$head" completed cancelled
 plan_ci feat/p
 expect_eq "cancelled run for HEAD is ignored: dispatched" "$OUT" "dispatched"
-fake_gh_reset; run_line 8 0000000000000000000000000000000000000000 completed failure > "$FAKE_GH/run-list"
+fake_gh_reset; runs_json "$FAKE_GH/run-list.json" 8 0000000000000000000000000000000000000000 completed failure
 plan_ci feat/p
 expect_eq "no run for HEAD, earlier run failed: recheck" "$OUT" "recheck"
 expect_eq "recheck: no dispatch" "$(gh_calls 'workflow run')" "0"
-fake_gh_reset; run_line 8 0000000000000000000000000000000000000000 completed success > "$FAKE_GH/run-list"
+fake_gh_reset; runs_json "$FAKE_GH/run-list.json" 8 0000000000000000000000000000000000000000 completed success
 plan_ci feat/p
 expect_eq "no run for HEAD, earlier run passed: dispatched" "$OUT" "dispatched"
 
 fake_gh_reset
-run_line 8 0000000000000000000000000000000000000000 completed failure > "$FAKE_GH/run-list.1"
-run_line 8 0000000000000000000000000000000000000000 completed failure > "$FAKE_GH/run-list.2"
-{ run_line 9 "$head" completed success; run_line 8 0000000000000000000000000000000000000000 completed failure; } > "$FAKE_GH/run-list.3"
+runs_json "$FAKE_GH/run-list.1.json" 8 0000000000000000000000000000000000000000 completed failure
+runs_json "$FAKE_GH/run-list.2.json" 8 0000000000000000000000000000000000000000 completed failure
+runs_json "$FAKE_GH/run-list.3.json" 9 "$head" completed success 8 0000000000000000000000000000000000000000 completed failure
 plan_ci --wait feat/p
 expect_eq "--wait: run registers on the 2nd poll: pass" "$OUT" "pass"
 expect_eq "--wait: one dispatch while polling" "$(gh_calls 'workflow run')" "1"
@@ -577,16 +668,16 @@ plan_ci --wait feat/p
 expect_eq "--wait: run never registers: fail registration-timeout" "$OUT" "fail registration-timeout"
 expect_eq "--wait: still one dispatch on timeout" "$(gh_calls 'workflow run')" "1"
 fake_gh_reset
-run_line 9 "$head" in_progress "" > "$FAKE_GH/run-list.1"
-run_line 9 "$head" completed failure > "$FAKE_GH/run-list.2"
+runs_json "$FAKE_GH/run-list.1.json" 9 "$head" in_progress ""
+runs_json "$FAKE_GH/run-list.2.json" 9 "$head" completed failure
 echo 1 > "$FAKE_GH/run-watch.rc"
 plan_ci --wait feat/p
 expect_eq "--wait: watches a pending run, then reports its result" "$OUT" "fail https://ci.example/runs/9"
 expect_eq "--wait: watches run 9" "$(gh_calls 'run watch 9')" "1"
 expect_eq "--wait on a pending run: no dispatch" "$(gh_calls 'workflow run')" "0"
 fake_gh_reset
-run_line 9 "$head" in_progress "" > "$FAKE_GH/run-list.1"
-run_line 9 "$head" completed cancelled > "$FAKE_GH/run-list.2"
+runs_json "$FAKE_GH/run-list.1.json" 9 "$head" in_progress ""
+runs_json "$FAKE_GH/run-list.2.json" 9 "$head" completed cancelled
 plan_ci --wait feat/p
 expect_eq "--wait: watched run gets cancelled: fail cancelled" "$OUT" "fail cancelled"
 
@@ -691,7 +782,7 @@ pr_sha="$(git -C "$r" rev-parse HEAD)"
 git -C "$r" push -q origin "HEAD:refs/pull/7/head"
 git -C "$r" checkout -q main
 git -C "$r" branch -q -D pr-head
-fake_gh_reset; printf 'main %s\n' "$pr_sha" > "$FAKE_GH/pr-view"
+fake_gh_reset; printf '{"baseRefName":"main","headRefOid":"%s"}\n' "$pr_sha" > "$FAKE_GH/pr-view.json"
 diff_target "$r" '#7'
 expect_code "PR #7: exit 0" 0
 wt="$(field WORKDIR)"
@@ -711,7 +802,7 @@ check_not_dir() { [ ! -e "$1" ]; }
 check "cleanup: worktree removed" check_not_dir "$wt"
 check "cleanup: worktree unregistered" test -z "$(git -C "$r" worktree list --porcelain | grep -F "$wt" || true)"
 check "cleanup: PR ref deleted" test -z "$(git -C "$r" rev-parse -q --verify refs/bs-review/pr-7 || true)"
-fake_gh_reset; printf 'main %s\n' "$pr_sha" > "$FAKE_GH/pr-view"
+fake_gh_reset; printf '{"baseRefName":"main","headRefOid":"%s"}\n' "$pr_sha" > "$FAKE_GH/pr-view.json"
 diff_target "$r" https://github.com/o/r/pull/7/files
 expect_eq "PR URL: number parsed" "$(field PR)" "7"
 run_in "$r" "$DIFF_TARGET" cleanup "$(field WORKDIR)" 7
