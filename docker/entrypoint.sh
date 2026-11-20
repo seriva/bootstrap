@@ -18,15 +18,13 @@ mkdir -p "$WORKSPACE_DIR" "$T3_DIR" \
   /home/coder/.claude \
   /home/coder/.gemini \
   /home/coder/.codex \
-  /home/coder/.config/opencode \
-  /home/coder/.pi \
   /home/coder/.ssh \
   /home/coder/.npm-global \
   2>/dev/null || true
 
 # Fix permissions if running with sudo/root access
 if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
-  sudo chown -R coder:coder /home/coder/.t3 /home/coder/.claude /home/coder/.gemini /home/coder/.codex /home/coder/.config /home/coder/.pi /home/coder/.ssh 2>/dev/null || true
+  sudo chown -R coder:coder /home/coder/.t3 /home/coder/.claude /home/coder/.gemini /home/coder/.codex /home/coder/.config /home/coder/.ssh 2>/dev/null || true
   chmod 700 /home/coder/.ssh 2>/dev/null || true
 fi
 
@@ -56,7 +54,7 @@ if [ -n "${ENABLED_WORKERS:-}" ]; then
     w=$(echo "$w" | tr '[:upper:]' '[:lower:]' | xargs)
     case "$w" in
       "") ;;
-      all) BINARIES+=(claude agy codex opencode pi) ;;
+      all) BINARIES+=(claude agy codex) ;;
       antigravity) BINARIES+=(agy) ;;
       *) BINARIES+=("$w") ;;
     esac

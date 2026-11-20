@@ -1,6 +1,6 @@
 ---
 name: bs-plan
-description: Conducts an empirical codebase audit with probe verification, defines scope boundaries, and drafts an exhaustive engineering design plan matching the bootstrap standard. `review` mode audits and tightens an existing plan against the codebase; `follow-ups` mode groups the review follow-up ledger by root cause and schedules each cluster as fix phases in the plan that owns it.
+description: Conducts an empirical codebase audit with probe verification, defines scope boundaries, and drafts an exhaustive engineering design plan matching the bootstrap standard. `review` mode audits and tightens an existing plan against the codebase; `follow-ups` mode groups the open review follow-ups by root cause and schedules each cluster as fix phases in a plan.
 ---
 
 # Autonomous Design Plan Generator (bs-plan)
@@ -55,15 +55,15 @@ Audits and tightens an existing plan against `$TARGET_REPO`. **NO SELF-REVIEW:**
 
 ## Follow-up Mode (`/bs-plan follow-ups [<plan-path>]`)
 
-Schedules entries from `plans/follow-ups.md` by root cause (**Follow-ups** and **States** in `{{BS_CONVENTIONS}}`).
-- **With `<plan-path>`** (must not be `closed`): the entries that belong to it, plus unrouted entries its Scope Rule covers.
-- **Without** (sweep): the whole ledger. Send each root cluster to (a) the plan the **Route rule** picks, else (b) the newest active `follow-ups-*` plan (appended), else (c) a new `follow-ups-YYYY-MM-DD` plan drafted with Steps 1–5. Give a root its own plan only if the user asks.
+Schedules open entries from `plans/follow-ups.md` by root cause (**Follow-ups** and **States** in `{{BS_CONVENTIONS}}`); deferred entries only if the user asks.
+- **With `<plan-path>`** (must not be `closed`): the plan's entries, plus open entries its Scope Rule covers.
+- **Without** (sweep): every open entry. Send each root cluster to the newest active `follow-ups-*` plan (appended), else a new `follow-ups-YYYY-MM-DD` plan drafted with Steps 1–5. Give a root its own plan only if the user asks.
 - Confirm the cluster-to-plan assignment with the user before writing (**Blockers**).
 
 1. **Context**: Step 1 above, plus the Scope Rule & Boundary Matrix of every active plan (`"{{BS_PLAN_STATE}}" active`).
 2. **Re-probe every entry** per **Probes**. Delete entries that no longer reproduce or are already scheduled in an active plan. Confirm or correct each `Root:` by reading the code, then cluster entries by root (merge roots that prove to be one mechanism).
 3. **Widen each root** per Step 2.3: probe the root's other paths, not only the logged repros.
 4. **Record evidence**: add `### Review follow-ups (YYYY-MM-DD)` to Verified Gaps, grouped by root: `Area | Finding | Evidence & probe` (repro, observed vs expected, originating PR; sibling paths from step 3 and passing controls).
-5. **Append phases**: one phase per root cluster (split by Step 4.2 sizing, never merge unrelated roots) that fixes the shared mechanism, each repro and sibling becoming a `Test:` assertion, after the last existing phase. Note under the first new phase that it was scheduled from review follow-ups. Mark entries not worth fixing **deferred by** the plan (**States**); they stay, `→ unrouted`.
-6. **Clear the ledger**: delete every entry now scheduled as a task; set `→ <plan-slug>` on entries assigned to another active plan.
+5. **Append phases**: one phase per root cluster (split by Step 4.2 sizing, never merge unrelated roots) that fixes the shared mechanism, each repro and sibling becoming a `Test:` assertion, after the last existing phase. Note under the first new phase that it was scheduled from review follow-ups. Entries not worth fixing get the deferred suffix with this plan's slug and the reason (**States**); they stay in the ledger.
+6. **Clear the ledger**: delete every entry now scheduled as a task.
 7. **Summary**: report re-probes, where each root went, new phases or plans, and deferrals; remind the user to optionally run `/bs-plan review` in a fresh session, then commit the updated files (`docs(<plan-slug>): schedule review follow-ups`, with `plans/roadmap.md` if a plan was created) before `/bs-exec` (on `feat/<plan-slug>` when extending a plan; on the current branch for a new plan).

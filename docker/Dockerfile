@@ -72,12 +72,10 @@ RUN mkdir -p /home/coder/.npm-global \
     /home/coder/.claude \
     /home/coder/.gemini \
     /home/coder/.codex \
-    /home/coder/.config/opencode \
-    /home/coder/.pi/agent \
     /home/coder/.ssh \
     /home/coder/workspace
 
-# Build-time worker harnesses to pre-install (comma-separated: claude,codex,opencode,pi,agy).
+# Build-time worker harnesses to pre-install (comma-separated: claude,codex,agy).
 # harness-install links the bootstrap skills itself; with no workers, link them directly.
 ARG ENABLED_WORKERS="claude,codex,agy"
 RUN if [ -n "${ENABLED_WORKERS}" ]; then \

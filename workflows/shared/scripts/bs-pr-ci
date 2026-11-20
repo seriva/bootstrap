@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# PR CI wait for /bs-loop and /bs-exec: watches the checks of a branch's PR, riding out the window
+# after a push in which GitHub has not registered any check runs yet. Never writes the working tree.
+
+usage() {
+  cat >&2 <<'EOF'
+Usage: bs-pr-ci <branch>
+Watches the checks of <branch>'s PR (gh pr checks --watch --fail-fast) and prints one line:
+  pass                  every check passed
+  fail <check>,...      the failing (or cancelled) checks
+  none-configured       GitHub reports no checks; when .github/workflows/ exists, only after
+                        BS_PR_CI_POLL_LIMIT (3) retries BS_PR_CI_POLL_INTERVAL (10) seconds apart
+Exit: 0 ok, 2 usage or not a repo, 3 gh failed (e.g. no PR for <branch>)
+EOF
+  exit 2
+}
+
+[ $# -eq 1 ] && [ -n "$1" ] || usage
+git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "bs-pr-ci: not inside a git work tree" >&2; exit 2; }
+branch="$1" interval="${BS_PR_CI_POLL_INTERVAL:-10}" limit="${BS_PR_CI_POLL_LIMIT:-3}"
+has_workflows=false
+[ -d "$(git rev-parse --show-toplevel)/.github/workflows" ] && has_workflows=true
+
+retries=0
+while :; do
+  rc=0
+  out="$(gh pr checks "$branch" --watch --fail-fast 2>&1)" || rc=$?
+  [ "$rc" -ne 0 ] || { echo pass; exit 0; }
+  case "$out" in
+    *"no checks reported"*)
+      if $has_workflows && [ "$retries" -lt "$limit" ]; then
+        retries=$((retries + 1))
+        sleep "$interval"
+        continue
+      fi
+      echo none-configured
+      exit 0 ;;
+  esac
+  break
+done
+
+list="$(gh pr checks "$branch" --json name,bucket --jq '.[] | "\(.bucket)\t\(.name)"' 2>/dev/null)" || true
+failed="$(printf '%s\n' "$list" | awk -F '\t' '$1 == "fail" || $1 == "cancel" { print $2 }' | paste -sd, -)"
+[ -n "$failed" ] || { printf '%s\n' "$out" >&2; exit 3; }
+echo "fail $failed"

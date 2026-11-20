@@ -7,9 +7,6 @@ on:
   # target version branches), so every PR gets a check run without running CI
   # twice on branch pushes or triggering deploy jobs on feature branches.
   pull_request:
-  # /bs-exec dispatches one run on feat/<plan-slug> after each merged phase (phase PRs
-  # skip CI below), so CI-only failures show up before the plan's final PR.
-  workflow_dispatch:
   # Uncomment as needed:
   # release:
   #   types: [published]
@@ -21,11 +18,6 @@ concurrency:
 
 jobs:
   test:
-    # Skip /bs-exec phase PRs (head `<plan-branch>-phase-<N>` into base `<plan-branch>`);
-    # they are verified locally before push. The plan branch gets a dispatched run after each
-    # merged phase, and full CI runs on the final PR to main/master.
-    # Other branches that merely contain "phase" in their name still get CI.
-    if: "!startsWith(github.head_ref, format('{0}-phase-', github.base_ref))"
     runs-on: ubuntu-latest
 
     steps:

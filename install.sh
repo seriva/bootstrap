@@ -36,13 +36,10 @@ detect() {
   return 1
 }
 
-HAS_ANTIGRAVITY=false HAS_CLAUDE=false HAS_CODEX=false HAS_OPENCODE=false HAS_PI=false HAS_CURSOR=false HAS_COPILOT=false
+HAS_ANTIGRAVITY=false HAS_CLAUDE=false HAS_CODEX=false HAS_COPILOT=false
 detect "Antigravity" agy "$HOME/.gemini" && HAS_ANTIGRAVITY=true
 detect "Claude Code" claude "$HOME/.claude" && HAS_CLAUDE=true
 detect "OpenAI Codex" codex "$HOME/.codex" && HAS_CODEX=true
-detect "OpenCode" opencode "$HOME/.config/opencode" "$HOME/.opencode" && HAS_OPENCODE=true
-detect "Pi" pi "$HOME/.pi" && HAS_PI=true
-detect "Cursor" cursor "$HOME/.cursor" "$HOME/.config/Cursor" && HAS_CURSOR=true
 detect "VS Code / GitHub Copilot" code "$HOME/.config/Code" "$HOME/.vscode-server" "$HOME/.vscode-server-insiders" "$HOME/.config/github-copilot" && HAS_COPILOT=true
 
 echo "---------------------------------------------"
@@ -52,9 +49,6 @@ AGY_SKILLS_DIR="$HOME/.gemini/config/skills"
 CLAUDE_SKILLS_DIR="$HOME/.claude/skills"
 CLAUDE_COMMANDS_DIR="$HOME/.claude/commands"
 CODEX_SKILLS_DIR="$HOME/.codex/skills"
-OPENCODE_SKILLS_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/opencode/skills"
-PI_SKILLS_DIR="$HOME/.pi/agent/skills"
-CURSOR_RULES_DIR="$HOME/.cursor/rules"
 COPILOT_PROMPT_DIRS=(
   "$HOME/.config/Code/User/prompts"
   "$HOME/.config/github-copilot/prompts"
@@ -67,8 +61,6 @@ SKILL_DIR_HOSTS=(
   "$HAS_ANTIGRAVITY|Antigravity|$AGY_SKILLS_DIR"
   "$HAS_CLAUDE|Claude Code|$CLAUDE_SKILLS_DIR"
   "$HAS_CODEX|Codex|$CODEX_SKILLS_DIR"
-  "$HAS_OPENCODE|OpenCode|$OPENCODE_SKILLS_DIR"
-  "$HAS_PI|Pi|$PI_SKILLS_DIR"
 )
 
 # Skills reference sibling installed skills via {{<SKILL_UPPER>_SKILL}} placeholders
@@ -165,7 +157,7 @@ for skill_path in "$SKILLS_SRC"/*/; do
 
   echo "Deploying skill: $skill_name"
 
-  # 1–5. Directory-based Agent Skills hosts (Antigravity, Claude Code, Codex, OpenCode, Pi)
+  # 1–3. Directory-based Agent Skills hosts (Antigravity, Claude Code, Codex)
   for entry in "${SKILL_DIR_HOSTS[@]}"; do
     IFS='|' read -r enabled label host_dir <<< "$entry"
     [ "$enabled" = true ] || continue
@@ -182,17 +174,7 @@ EOF
     fi
   done
 
-  # 6. Cursor (MDC Rule) — description-triggered; no `globs` so it is not auto-attached to every file
-  if [ "$HAS_CURSOR" = true ]; then
-    mkdir -p "$CURSOR_RULES_DIR"
-    {
-      printf -- '---\ndescription: "%s"\nalwaysApply: false\n---\n' "$skill_desc_yaml"
-      render_skill "$skill_file" "$CURSOR_RULES_DIR/{SKILL}.mdc" | strip_frontmatter
-    } > "$CURSOR_RULES_DIR/$skill_name.mdc"
-    echo "  -> [Cursor] Installed rule to $CURSOR_RULES_DIR/$skill_name.mdc"
-  fi
-
-  # 7. VS Code / GitHub Copilot (Prompt File)
+  # 4. VS Code / GitHub Copilot (Prompt File)
   if [ "$HAS_COPILOT" = true ]; then
     for pdir in "${COPILOT_PROMPT_DIRS[@]}"; do
       parent_dir="$(dirname "$pdir")"

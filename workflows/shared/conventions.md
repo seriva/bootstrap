@@ -15,19 +15,13 @@ Shared conventions referenced by all `bs-*` skills. Orchestrator-only dispatch a
 - **In review**: `in-review` or `fix-used`, a draft still showing the `/bs-loop` Step 2.3 placeholder (live, stopped, or `PENDING_REVIEW` run). `fix-used`: the one Fix Turn is spent.
 - **Gated**: `gated:<GATE>` (draft) or `ready`. Any other state: nothing to resume.
 
-**Resume** (in review; never re-implement):
-1. Report dirty paths and ask the user, even in `--auto` mode, to confirm no other run is on the branch (cannot ask → stop and print the step 2 command; no → stop).
-2. Yes: `git stash push -u -m "<skill>: interrupted <branch> $(date +%F)"` (`<skill>`: `bs-loop` or `bs-exec`).
-3. Continue at `/bs-loop` Step 3; on `fix-used`, Pass 1 is terminal (`LGTM` → `PASSED`; High/Medium → `BLOCKED_BY_DEFECTS`).
+**Resume** (in review; never re-implement): the tree must be clean (`git status --porcelain`); dirty → stop and list the paths, never stash, discard, or commit them. Clean → continue at `/bs-loop` Step 3.
 
 ### Follow-up entry (`plans/follow-ups.md`)
-- **Unrouted**: `→ unrouted`, as every entry is written; waits for a `/bs-plan follow-ups` sweep.
-- **Routed**: `→ <plan-slug>`, set only by a sweep; that plan schedules it.
-- **Deferred by `<plan>`**: its `Root:` is in that plan's `Excluded: deferred` row (with the reason, no repros); it stays `→ unrouted`, and that plan never triages or schedules it again.
-- **Belongs to `<plan>`**: routed to it or named in its provenance tuple, and not deferred by it.
+- **Open**: no suffix, as every entry is written. A legacy ` → <route>` suffix is ignored (the entry is open).
+- **Deferred**: ends ` — deferred (<plan-slug>): <reason>`, written by `/bs-exec` Step 4.2 or `/bs-plan follow-ups`; triage and sweeps skip it unless the user asks.
+- **A plan's entries**: open entries whose provenance tuple names its `<plan-slug>`.
 - Delete entries only when they no longer reproduce, are scheduled as tasks, or the user drops them.
-
-**Route rule** (sweeps only): the active plan whose Scope Rule or Verified Gaps covers the root and that has not deferred it; else `unrouted`.
 
 ## Probes
 Throwaway probes go in `$TARGET_REPO/.probes/` or the host's scratch directory, never in source/test dirs (see `/bs-probe` for the full root-cause and sibling-path probing workflow). Before writing the first probe, exclude `.probes/` locally: `grep -qx '.probes/' .git/info/exclude || echo '.probes/' >> .git/info/exclude`. Delete probes before returning. A probe worth keeping becomes a real test in the task's `Test:` file.
@@ -53,7 +47,6 @@ Follow `AGENTS.md` **Audiences**, **Changelog**, and **Docs**. In addition:
 
 Real bugs not caused by this diff (`### Out of Scope`) and unfixed behavioural `### Low` items (wrong output, crash, broken build, valid input rejected, invalid input accepted) must not be fixed here (**Scope**) and must not be lost in a PR body. Record them in `$TARGET_REPO/plans/follow-ups.md` (create with `# Follow-ups` if missing; pure style/wording nits stay in the PR body only):
 ```markdown
-- **<Area>:** <defect in one sentence>. Root: `<root-slug>` (<mechanism, with `file:symbol`>). Repro: `<snippet or command>` → got `<actual>`, want `<expected>`. (<PR #N or branch>, <plan-slug Phase N | standalone>, <Low | Out of Scope>) → unrouted
+- **<Area>:** <defect in one sentence>. Root: `<root-slug>` (<mechanism, with `file:symbol`>). Repro: `<snippet or command>` → got `<actual>`, want `<expected>`. (<PR #N or branch>, <plan-slug Phase N | standalone>, <Low | Out of Scope>)
 ```
-**Route**: always write `→ unrouted`; the provenance tuple already ties the entry to its plan, and only `/bs-plan follow-ups` sets routes (**Route rule**, **States**).
-**Dedupe**: if an entry already covers the same defect, insert `(<PR #N or branch>, <plan-slug Phase N | standalone>, <Low | Out of Scope>)` into it just before ` → <route>` (keeping its route) instead of adding a line so `/bs-exec` still matches the plan slug during triage. If entries with the same `Root:` exist, add the new one directly below them with the same route.
+**Dedupe**: if an entry already covers the same defect, insert `(<PR #N or branch>, <plan-slug Phase N | standalone>, <Low | Out of Scope>)` after its last provenance tuple instead of adding a line, so `/bs-exec` still matches the plan slug during triage. If entries with the same `Root:` exist, add the new one directly below them.

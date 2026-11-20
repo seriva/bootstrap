@@ -3,7 +3,7 @@ set -euo pipefail
 
 # What /bs-review reviews: the base, diff command, work dir, and new files for the workspace, a
 # branch or range, or a PR. Never writes the working tree; a PR target fetches its refs and checks
-# the PR out in a temporary worktree outside the repo (removed again with `cleanup`).
+# the PR out in a temporary worktree outside the repo via bs-worktree (removed again with `cleanup`).
 
 usage() {
   cat >&2 <<'EOF'
@@ -24,23 +24,15 @@ EOF
 }
 
 [ $# -le 3 ] || usage
+worktree="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/bs-worktree"
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "bs-diff-target: not inside a git work tree" >&2; exit 2; }
 top="$(git rev-parse --show-toplevel)"
 cd "$top"
 has() { git rev-parse -q --verify "$1^{commit}" >/dev/null 2>&1; }
-# real_dir <dir> <git rev-parse option>: physical path of that git dir, as seen from <dir>
-real_dir() { (cd "$1" && cd "$(git rev-parse "$2")" && pwd -P); }
 
 if [ "${1:-}" = cleanup ]; then
   [ $# -eq 3 ] || usage
-  common="$(real_dir . --git-common-dir)"
-  if ! wt_git="$(real_dir "$2" --git-dir 2>/dev/null)" || [ "$wt_git" = "$common" ] \
-    || [ "$(real_dir "$2" --git-common-dir)" != "$common" ]; then
-    echo "bs-diff-target: not a linked worktree of this repo: $2" >&2
-    exit 2
-  fi
-  git worktree remove --force "$2"
-  git worktree prune
+  "$worktree" remove "$2"
   git update-ref -d "refs/bs-review/pr-$3" 2>/dev/null || true
   exit 0
 fi
@@ -56,9 +48,7 @@ case "$target" in
     info="$(gh pr view "$pr" --json baseRefName,headRefOid --jq '"\(.baseRefName) \(.headRefOid)"')" || exit 3
     base="${info%% *}" head="${info##* }"
     git fetch -q origin "$base" "+refs/pull/$n/head:refs/bs-review/pr-$n" || exit 3
-    git worktree prune
-    wt="$(mktemp -d "${TMPDIR:-/tmp}/bs-review-pr-$n.XXXXXX")"
-    git worktree add -q --detach "$wt" "$head" >/dev/null 2>&1 || { rmdir "$wt"; exit 3; }
+    wt="$("$worktree" add "$head" "review-pr-$n")" || exit 3
     printf 'BASE origin/%s\nDIFF git diff origin/%s...HEAD\nWORKDIR %s\nPR %s\nUNTRACKED none\n' \
       "$base" "$base" "$wt" "$n"
     exit 0 ;;

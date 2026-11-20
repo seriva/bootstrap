@@ -38,8 +38,6 @@ run_in_container() {
   command -v claude >/dev/null 2>&1 && DETECTED_WORKERS+=("claude")
   command -v agy >/dev/null 2>&1 && DETECTED_WORKERS+=("agy")
   command -v codex >/dev/null 2>&1 && DETECTED_WORKERS+=("codex")
-  command -v opencode >/dev/null 2>&1 && DETECTED_WORKERS+=("opencode")
-  command -v pi >/dev/null 2>&1 && DETECTED_WORKERS+=("pi")
 
   if [ ${#DETECTED_WORKERS[@]} -gt 0 ]; then
     harness-install "${DETECTED_WORKERS[@]}"

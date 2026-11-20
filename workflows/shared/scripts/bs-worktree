@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Temporary detached worktrees outside the repo, so a checkout of another ref (a base branch, a
+# PR head) never nests inside the working tree where tree-walking tools would pick it up.
+
+usage() {
+  cat >&2 <<'EOF'
+Usage: bs-worktree add <ref> [<label>]
+       bs-worktree remove <dir>
+  add      check <ref> out detached in a new directory under ${TMPDIR:-/tmp} (named
+           bs-<label>.XXXXXX, default label "worktree") and print its path
+  remove   remove that worktree and prune it; refuses anything but a linked worktree of this
+           repo (the main checkout, a plain directory, another repo's worktree)
+Exit: 0 ok, 2 usage, not a repo, unknown ref, not a linked worktree, 3 git worktree failed
+EOF
+  exit 2
+}
+
+[ $# -ge 2 ] || usage
+git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "bs-worktree: not inside a git work tree" >&2; exit 2; }
+# real_dir <dir> <git rev-parse option>: physical path of that git dir, as seen from <dir>
+real_dir() { (cd "$1" && cd "$(git rev-parse "$2")" && pwd -P); }
+
+case "$1" in
+  add)
+    [ $# -le 3 ] || usage
+    ref="$2" label="${3:-worktree}"
+    case "$label" in '' | *[!A-Za-z0-9._-]*) usage ;; esac
+    sha="$(git rev-parse -q --verify "$ref^{commit}")" || { echo "bs-worktree: unknown ref: $ref" >&2; exit 2; }
+    git worktree prune
+    wt="$(mktemp -d "${TMPDIR:-/tmp}/bs-$label.XXXXXX")"
+    git worktree add -q --detach "$wt" "$sha" >/dev/null || { rm -rf "$wt"; exit 3; }
+    echo "$wt" ;;
+  remove)
+    [ $# -eq 2 ] || usage
+    common="$(real_dir . --git-common-dir)"
+    if ! wt_git="$(real_dir "$2" --git-dir 2>/dev/null)" || [ "$wt_git" = "$common" ] \
+      || [ "$(real_dir "$2" --git-common-dir)" != "$common" ]; then
+      echo "bs-worktree: not a linked worktree of this repo: $2" >&2
+      exit 2
+    fi
+    git worktree remove --force "$2" || exit 3
+    git worktree prune ;;
+  *) usage ;;
+esac

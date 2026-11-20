@@ -11,12 +11,10 @@ set -euo pipefail
 #   claude     - Anthropic Claude Code CLI
 #   agy        - Google Antigravity CLI
 #   codex      - OpenAI Codex CLI
-#   opencode   - OpenCode CLI
-#   pi         - Pi coding agent CLI
 # ==============================================================================
 
 if [ "$#" -eq 0 ]; then
-  echo "Usage: harness-install <claude|agy|codex|opencode|pi|all> ..." >&2
+  echo "Usage: harness-install <claude|agy|codex|all> ..." >&2
   exit 1
 fi
 
@@ -43,25 +41,10 @@ install_codex() {
   echo "  [✓] OpenAI Codex installed"
 }
 
-install_opencode() {
-  echo "==> Installing OpenCode CLI..."
-  npm install -g opencode-ai
-  mkdir -p "${XDG_CONFIG_HOME:-$HOME/.config}/opencode"
-  echo "  [✓] OpenCode installed"
-}
-
-install_pi() {
-  echo "==> Installing Pi coding agent CLI..."
-  # @mariozechner/pi is an unrelated GPU-pod tool; the coding agent ships as pi-coding-agent
-  npm install -g @mariozechner/pi-coding-agent
-  mkdir -p "$HOME/.pi/agent"
-  echo "  [✓] Pi installed"
-}
-
 # Normalize and parse requested harnesses
 TARGETS=()
 for arg in "$@"; do
-  # Split comma-separated values if provided e.g. "claude,codex,opencode"
+  # Split comma-separated values if provided e.g. "claude,codex,agy"
   IFS=',' read -ra ADDR <<< "$arg"
   for t in "${ADDR[@]}"; do
     t=$(echo "$t" | tr '[:upper:]' '[:lower:]' | xargs)
@@ -75,8 +58,6 @@ for target in "${TARGETS[@]}"; do
       install_claude
       install_agy
       install_codex
-      install_opencode
-      install_pi
       ;;
     claude)
       install_claude
@@ -86,12 +67,6 @@ for target in "${TARGETS[@]}"; do
       ;;
     codex)
       install_codex
-      ;;
-    opencode)
-      install_opencode
-      ;;
-    pi)
-      install_pi
       ;;
     *)
       echo "Warning: Unknown harness '$target', skipping." >&2

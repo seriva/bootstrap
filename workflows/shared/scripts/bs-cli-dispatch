@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Headless provider CLI dispatch for the bs-* orchestrators: runs one role's prompt through the
+# claude, agy, or codex CLI from the repo root and logs the reply. Writes only under
+# <git-dir>/bs-loop (untracked), never the working tree.
+
+usage() {
+  cat >&2 <<'EOF'
+Usage: bs-cli-dispatch run [--detach] <provider> <model> <role-slug>
+       bs-cli-dispatch status <role-slug>
+       bs-cli-dispatch cleanup
+Files live in <git-dir>/bs-loop: the prompt <role-slug>.md (written by the caller) and the log
+<role-slug>.log.
+  run       pass the prompt as one literal argument to the provider CLI (claude, agy, codex) at
+            medium effort, skipping permission prompts; tee its output to the log, append
+            "DISPATCH_EXIT=<rc>", exit <rc>. --detach: check arguments, start the run in the
+            background, exit 0 (poll with status)
+  status    running | done <rc> | missing (no log)
+  cleanup   delete <git-dir>/bs-loop
+Exit: 0 ok, 2 usage, not a repo, missing prompt, unknown provider, 4 provider CLI not on PATH;
+run otherwise exits with the CLI's code
+EOF
+  exit 2
+}
+
+[ $# -ge 1 ] || usage
+git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "bs-cli-dispatch: not inside a git work tree" >&2; exit 2; }
+dir="$(git rev-parse --absolute-git-dir)/bs-loop"
+slug_ok() { case "$1" in '' | *[!A-Za-z0-9._-]* | .*) return 1 ;; esac; }
+
+case "$1" in
+  status)
+    [ $# -eq 2 ] && slug_ok "$2" || usage
+    log="$dir/$2.log"
+    [ -f "$log" ] || { echo missing; exit 0; }
+    last="$(tail -n 1 "$log")"
+    case "$last" in
+      DISPATCH_EXIT=*) echo "done ${last#DISPATCH_EXIT=}" ;;
+      *) echo running ;;
+    esac
+    exit 0 ;;
+  cleanup)
+    [ $# -eq 1 ] || usage
+    rm -rf "$dir"
+    exit 0 ;;
+  run) shift ;;
+  *) usage ;;
+esac
+
+detach=false
+[ "${1:-}" = --detach ] && { detach=true; shift; }
+[ $# -eq 3 ] && [ -n "$2" ] && slug_ok "$3" || usage
+provider="$1" model="$2" slug="$3"
+prompt_file="$dir/$slug.md" log="$dir/$slug.log"
+[ -f "$prompt_file" ] || { echo "bs-cli-dispatch: no prompt at $prompt_file" >&2; exit 2; }
+case "$provider" in
+  claude | agy | codex) bin="$provider" ;;
+  *) echo "bs-cli-dispatch: unknown provider: $provider (want claude, agy, or codex)" >&2; exit 2 ;;
+esac
+command -v "$bin" >/dev/null 2>&1 || { echo "Error: Provider CLI '$bin' not found on PATH" >&2; exit 4; }
+
+if $detach; then
+  : > "$log"
+  nohup "$0" run "$provider" "$model" "$slug" </dev/null >/dev/null 2>&1 &
+  exit 0
+fi
+
+prompt="$(cat "$prompt_file")"
+case "$provider" in
+  claude | agy) cmd=("$bin" --model "$model" --effort medium --dangerously-skip-permissions -p "$prompt") ;;
+  codex) cmd=(codex exec --model "$model" -c model_reasoning_effort=medium --dangerously-bypass-approvals-and-sandbox "$prompt") ;;
+esac
+cd "$(git rev-parse --show-toplevel)"
+: > "$log"
+set +e
+"${cmd[@]}" </dev/null 2>&1 | tee -a "$log"
+rc="${PIPESTATUS[0]}"
+set -e
+# The sentinel must start its own line, or status never sees it.
+[ -z "$(tail -c 1 "$log")" ] || echo | tee -a "$log"
+echo "DISPATCH_EXIT=$rc" | tee -a "$log"
+exit "$rc"

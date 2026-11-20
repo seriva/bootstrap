@@ -12,8 +12,10 @@ TREE_STATE="$REPO_DIR/workflows/shared/scripts/bs-tree-state"
 COMMIT="$REPO_DIR/workflows/shared/scripts/bs-commit"
 PLAN_STATE="$REPO_DIR/workflows/shared/scripts/bs-plan-state"
 REVIEW_STATE="$REPO_DIR/workflows/shared/scripts/bs-review-state"
-PLAN_CI="$REPO_DIR/workflows/shared/scripts/bs-plan-ci"
 DIFF_TARGET="$REPO_DIR/workflows/shared/scripts/bs-diff-target"
+CLI_DISPATCH="$REPO_DIR/workflows/shared/scripts/bs-cli-dispatch"
+WORKTREE="$REPO_DIR/workflows/shared/scripts/bs-worktree"
+PR_CI="$REPO_DIR/workflows/shared/scripts/bs-pr-ci"
 SANDBOX="$(mktemp -d "${TMPDIR:-/tmp}/bootstrap-scripts.XXXXXX")"
 trap 'rm -rf "$SANDBOX"' EXIT
 
@@ -86,8 +88,9 @@ add_hook() { # add_hook <repo> <script body>: install a pre-commit hook
 
 # Fake gh: logs each call to $FAKE_GH/calls and serves real JSON fixtures through the
 # script's actual --json field filter and --jq expression (via jq if installed, else Python 3):
-#   pr-view.json (or pr-view.err, exit 1); run-list.<call#>.json or run-list.json;
-#   run-watch.rc (exit code of gh run watch). gh workflow run only logs.
+#   pr view: pr-view.json (or pr-view.err, exit 1);
+#   pr checks --watch: prints pr-checks.<call#>.out (else pr-checks.out) to stderr and exits with
+#   pr-checks.<call#>.rc (else pr-checks.rc, else 0); pr checks --json: pr-checks.json, else exit 1.
 FAKE_GH="$SANDBOX/fake-gh"
 mkdir -p "$SANDBOX/bin" "$FAKE_GH"
 cat > "$SANDBOX/bin/gh" <<'EOF'
@@ -162,15 +165,16 @@ case "$cmd" in
   "pr view")
     if [ -f "$d/pr-view.err" ]; then cat "$d/pr-view.err" >&2; exit 1; fi
     render_json "$d/pr-view.json" ;;
-  "run list")
-    n=$(($(cat "$d/run-list.count" 2>/dev/null || echo 0) + 1))
-    echo "$n" > "$d/run-list.count"
-    if [ -f "$d/run-list.$n.json" ]; then render_json "$d/run-list.$n.json"
-    elif [ -f "$d/run-list.json" ]; then render_json "$d/run-list.json"
-    else printf '[]\n' > "$d/empty.json"; render_json "$d/empty.json"
-    fi ;;
-  "run watch") exit "$(cat "$d/run-watch.rc" 2>/dev/null || echo 0)" ;;
-  "workflow run") : ;;
+  "pr checks")
+    if [ -n "$fields" ]; then
+      [ -f "$d/pr-checks.json" ] || { echo "no pull requests found" >&2; exit 1; }
+      render_json "$d/pr-checks.json"; exit 0
+    fi
+    n=$(($(cat "$d/pr-checks.count" 2>/dev/null || echo 0) + 1))
+    echo "$n" > "$d/pr-checks.count"
+    for f in "pr-checks.$n" pr-checks; do [ -f "$d/$f.out" ] && { cat "$d/$f.out" >&2; break; }; done
+    for f in "pr-checks.$n" pr-checks; do [ -f "$d/$f.rc" ] && exit "$(cat "$d/$f.rc")"; done
+    exit 0 ;;
   *) echo "fake gh: unexpected call: $cmd $*" >&2; exit 64 ;;
 esac
 EOF
@@ -594,102 +598,164 @@ expect_eq "draft without placeholder or Gate: draft" "$OUT" "draft feat/base"
 review_state
 expect_code "no branch: usage error" 2
 
-echo "== bs-plan-ci"
-export BS_PLAN_CI_POLL_INTERVAL=0 BS_PLAN_CI_POLL_LIMIT=3
-# ci_repo [<ci.yml on line>]: repo whose origin/feat/p commit holds a ci.yml with that "on:" line
-ci_repo() {
-  local repo
-  repo="$(new_repo)"
-  if [ -n "${1:-}" ]; then
-    mkdir -p "$repo/.github/workflows"
-    printf 'name: CI\non:\n  pull_request:\n%s\njobs: {}\n' "$1" > "$repo/.github/workflows/ci.yml"
-    git -C "$repo" add .github
-    git -C "$repo" commit -q -m ci
-  fi
-  git -C "$repo" update-ref refs/remotes/origin/feat/p HEAD
-  echo "$repo"
-}
-# runs_json <out-file> [<id> <sha> <status> <conclusion>]...: writes real gh run list JSON
-runs_json() {
-  python3 - "$@" <<'PY'
-import json, sys
-out, args = sys.argv[1], sys.argv[2:]
-runs = []
-for i in range(0, len(args), 4):
-    rid, sha, status, concl = args[i:i+4]
-    runs.append({"databaseId": int(rid), "headSha": sha, "status": status, "conclusion": concl,
-                 "url": f"https://ci.example/runs/{rid}", "extra": True})
-json.dump(runs, open(out, "w"))
-PY
-}
-plan_ci() { run_in "$r" env PATH="$GH_PATH" "$PLAN_CI" "$@"; }
-r="$(ci_repo '  workflow_dispatch:')"
-head="$(git -C "$r" rev-parse HEAD)"
-fake_gh_reset; runs_json "$FAKE_GH/run-list.json" 9 "$head" completed success
-plan_ci feat/p
-expect_eq "run for HEAD succeeded: pass" "$OUT" "pass"
-check "gh run list asks for workflow_dispatch runs of the plan branch" grep -q '^run list --workflow ci.yml --branch feat/p --event workflow_dispatch ' "$FAKE_GH/calls"
-fake_gh_reset; runs_json "$FAKE_GH/run-list.json" 9 "$head" in_progress ""
-plan_ci feat/p
-expect_eq "run for HEAD in progress: pending" "$OUT" "pending"
-fake_gh_reset; runs_json "$FAKE_GH/run-list.json" 9 "$head" completed failure
-plan_ci feat/p
-expect_eq "run for HEAD failed: fail <url>" "$OUT" "fail https://ci.example/runs/9"
-fake_gh_reset; runs_json "$FAKE_GH/run-list.json" 9 "$head" completed timed_out
-plan_ci feat/p
-expect_eq "run for HEAD timed out: fail <url>" "$OUT" "fail https://ci.example/runs/9"
-fake_gh_reset
-plan_ci feat/p
-expect_eq "no run: dispatched" "$OUT" "dispatched"
-expect_eq "no run: exactly one dispatch" "$(gh_calls 'workflow run ci.yml --ref feat/p')" "1"
-fake_gh_reset; runs_json "$FAKE_GH/run-list.json" 9 "$head" completed cancelled
-plan_ci feat/p
-expect_eq "cancelled run for HEAD is ignored: dispatched" "$OUT" "dispatched"
-fake_gh_reset; runs_json "$FAKE_GH/run-list.json" 8 0000000000000000000000000000000000000000 completed failure
-plan_ci feat/p
-expect_eq "no run for HEAD, earlier run failed: recheck" "$OUT" "recheck"
-expect_eq "recheck: no dispatch" "$(gh_calls 'workflow run')" "0"
-fake_gh_reset; runs_json "$FAKE_GH/run-list.json" 8 0000000000000000000000000000000000000000 completed success
-plan_ci feat/p
-expect_eq "no run for HEAD, earlier run passed: dispatched" "$OUT" "dispatched"
+echo "== bs-cli-dispatch"
+# Fake provider CLIs: record cwd and argv (one arg per line), print a reply, exit $FAKE_PROV_RC.
+FAKE_PROV="$SANDBOX/fake-prov"
+mkdir -p "$SANDBOX/provbin" "$FAKE_PROV"
+for p in claude agy codex; do
+  cat > "$SANDBOX/provbin/$p" <<'EOF'
+#!/bin/sh
+name="$(basename "$0")"
+pwd -P > "$FAKE_PROV/$name.cwd"
+: > "$FAKE_PROV/$name.argv"
+for a in "$@"; do printf '%s\n' "$a" >> "$FAKE_PROV/$name.argv"; done
+if [ -n "${FAKE_PROV_REPLY:-}" ]; then printf '%s' "$FAKE_PROV_REPLY"; else echo "reply from $name"; fi
+exit "${FAKE_PROV_RC:-0}"
+EOF
+  chmod +x "$SANDBOX/provbin/$p"
+done
+export FAKE_PROV
+PROV_PATH="$SANDBOX/provbin:$PATH"
+# Minimal PATH without any provider CLI (real ones may be installed on the host).
+mkdir -p "$SANDBOX/toolbin"
+for t in bash git cat tee tail rm; do ln -s "$(command -v "$t")" "$SANDBOX/toolbin/$t"; done
+dispatch() { run_in "$r" env PATH="$PROV_PATH" "$CLI_DISPATCH" "$@"; }
+r="$(new_repo)"
+mkdir -p "$r/sub"; echo keep > "$r/sub/keep.txt"; git -C "$r" add sub; git -C "$r" commit -q -m sub
+dd="$r/.git/bs-loop"
+PROMPT_TEXT='Check `git log` for "quoted" and '\''single'\'' text; $HOME and $(echo nope) stay literal'
+dispatch run claude m1 rev
+expect_code "missing prompt: exit 2" 2
+mkdir -p "$dd"; printf '%s\n' "$PROMPT_TEXT" > "$dd/rev.md"
+dispatch run gemini m1 rev
+expect_code "unknown provider: exit 2" 2
+dispatch run claude m1 ../rev
+expect_code "role slug with a path: exit 2" 2
+run_in "$r" env PATH="$SANDBOX/toolbin" "$CLI_DISPATCH" run agy m1 rev
+expect_code "provider CLI not on PATH: exit 4" 4
+check "missing CLI: names the binary" grep -qF "Provider CLI 'agy' not found on PATH" "$SANDBOX/stderr"
+check "missing CLI: no log written" test ! -e "$dd/rev.log"
+for p in claude agy codex; do
+  case "$p" in
+    codex) want=(exec --model m1 -c model_reasoning_effort=medium --dangerously-bypass-approvals-and-sandbox "$PROMPT_TEXT") ;;
+    *) want=(--model m1 --effort medium --dangerously-skip-permissions -p "$PROMPT_TEXT") ;;
+  esac
+  printf '%s\n' "${want[@]}" > "$SANDBOX/want.argv"
+  run_in "$r/sub" env PATH="$PROV_PATH" "$CLI_DISPATCH" run "$p" m1 rev
+  expect_code "$p: exit 0" 0
+  check "$p: documented flags, medium effort, prompt as one literal argument" cmp -s "$SANDBOX/want.argv" "$FAKE_PROV/$p.argv"
+  expect_eq "$p: runs from the repo root" "$(cat "$FAKE_PROV/$p.cwd")" "$(cd "$r" && pwd -P)"
+  expect_eq "$p: reply then sentinel on stdout" "$OUT" "$(printf 'reply from %s\nDISPATCH_EXIT=0' "$p")"
+  expect_eq "$p: log holds the same" "$(cat "$dd/rev.log")" "$OUT"
+done
+FAKE_PROV_RC=7 dispatch run codex m1 rev
+expect_code "failing CLI: its exit code is returned" 7
+expect_eq "failing CLI: exit code recorded" "$(tail -n 1 "$dd/rev.log")" "DISPATCH_EXIT=7"
+cp "$dd/rev.md" "$dd/nonl.md"
+FAKE_PROV_REPLY=partial dispatch run claude m1 nonl
+expect_eq "reply without a trailing newline: sentinel on its own line" "$OUT" "$(printf 'partial\nDISPATCH_EXIT=0')"
+dispatch status nonl
+expect_eq "reply without a trailing newline: status sees done" "$OUT" "done 0"
 
-fake_gh_reset
-runs_json "$FAKE_GH/run-list.1.json" 8 0000000000000000000000000000000000000000 completed failure
-runs_json "$FAKE_GH/run-list.2.json" 8 0000000000000000000000000000000000000000 completed failure
-runs_json "$FAKE_GH/run-list.3.json" 9 "$head" completed success 8 0000000000000000000000000000000000000000 completed failure
-plan_ci --wait feat/p
-expect_eq "--wait: run registers on the 2nd poll: pass" "$OUT" "pass"
-expect_eq "--wait: one dispatch while polling" "$(gh_calls 'workflow run')" "1"
-fake_gh_reset
-plan_ci --wait feat/p
-expect_eq "--wait: run never registers: fail registration-timeout" "$OUT" "fail registration-timeout"
-expect_eq "--wait: still one dispatch on timeout" "$(gh_calls 'workflow run')" "1"
-fake_gh_reset
-runs_json "$FAKE_GH/run-list.1.json" 9 "$head" in_progress ""
-runs_json "$FAKE_GH/run-list.2.json" 9 "$head" completed failure
-echo 1 > "$FAKE_GH/run-watch.rc"
-plan_ci --wait feat/p
-expect_eq "--wait: watches a pending run, then reports its result" "$OUT" "fail https://ci.example/runs/9"
-expect_eq "--wait: watches run 9" "$(gh_calls 'run watch 9')" "1"
-expect_eq "--wait on a pending run: no dispatch" "$(gh_calls 'workflow run')" "0"
-fake_gh_reset
-runs_json "$FAKE_GH/run-list.1.json" 9 "$head" in_progress ""
-runs_json "$FAKE_GH/run-list.2.json" 9 "$head" completed cancelled
-plan_ci --wait feat/p
-expect_eq "--wait: watched run gets cancelled: fail cancelled" "$OUT" "fail cancelled"
+echo "== bs-cli-dispatch status"
+dispatch status rev
+expect_eq "after a run: done <rc>" "$OUT" "done 7"
+dispatch status other
+expect_eq "no log: missing" "$OUT" "missing"
+echo "partial output" > "$dd/other.log"
+dispatch status other
+expect_eq "log without sentinel: running" "$OUT" "running"
+dispatch status
+expect_code "status without a slug: exit 2" 2
+printf '%s\n' "$PROMPT_TEXT" > "$dd/bg.md"
+dispatch run --detach agy m1 bg
+expect_code "--detach: exit 0" 0
+for _ in $(seq 50); do
+  [ "$(cd "$r" && "$CLI_DISPATCH" status bg)" = running ] || break
+  sleep 0.1
+done
+dispatch status bg
+expect_eq "--detach: background run finishes" "$OUT" "done 0"
+run_in "$r" env PATH="$SANDBOX/toolbin" "$CLI_DISPATCH" run --detach agy m1 bg
+expect_code "--detach: missing CLI still exits 4 up front" 4
+echo keep > "$r/.git/bs-keep"
+dispatch cleanup
+expect_code "cleanup: exit 0" 0
+check "cleanup: bs-loop removed" test ! -e "$dd"
+check "cleanup: rest of the git dir kept" test -f "$r/.git/bs-keep" -a -f "$r/.git/HEAD"
 
+echo "== bs-worktree"
+r="$(new_repo)"
+first="$(git -C "$r" rev-parse HEAD)"
+echo two > "$r/two.txt"; git -C "$r" add two.txt; git -C "$r" commit -q -m two
+run_in "$r" "$WORKTREE" add HEAD~1 base
+expect_code "add: exit 0" 0
+wt="$OUT"
+expect_eq "add: worktree is at <ref>" "$(git -C "$wt" rev-parse HEAD)" "$first"
+check "add: worktree is outside the repo" test "${wt#"$r"/}" = "$wt"
+check "add: label in the directory name" test "$(basename "$wt" | cut -d. -f1)" = bs-base
+check "add: detached HEAD" test -z "$(git -C "$wt" symbolic-ref -q HEAD || true)"
+run_in "$r" "$WORKTREE" add no-such-ref
+expect_code "add: unknown ref: exit 2" 2
+run_in "$r" "$WORKTREE" add HEAD ../x
+expect_code "add: label with a path: exit 2" 2
+run_in "$r" "$WORKTREE" remove "$r"
+expect_code "remove refuses the main checkout: exit 2" 2
+plain="$(mktemp -d "$SANDBOX/plain-dir.XXXXXX")"
+run_in "$r" "$WORKTREE" remove "$plain"
+expect_code "remove refuses a plain directory: exit 2" 2
+check "remove refusal leaves the plain directory" test -d "$plain"
+other="$(new_repo)"
+other_wt="$(cd "$other" && "$WORKTREE" add HEAD)"
+run_in "$r" "$WORKTREE" remove "$other_wt"
+expect_code "remove refuses another repo's worktree: exit 2" 2
+check "remove refusal leaves the other worktree" test -d "$other_wt"
+(cd "$other" && "$WORKTREE" remove "$other_wt")
+run_in "$r" "$WORKTREE" remove "$wt"
+expect_code "remove: exit 0" 0
+check "remove: worktree deleted" test ! -e "$wt"
+check "remove: worktree unregistered" test -z "$(git -C "$r" worktree list --porcelain | grep -F "$wt" || true)"
+mkdir -p "$SANDBOX/wt-tmp"
+rm -rf "$r/.git/worktrees"; touch "$r/.git/worktrees"  # git cannot register the new worktree
+run_in "$r" env TMPDIR="$SANDBOX/wt-tmp" "$WORKTREE" add HEAD
+expect_code "add: git worktree add fails: exit 3" 3
+check "add failure: git's error is passed through" test -s "$SANDBOX/stderr"
+check "add failure: temp directory removed" test -z "$(ls -A "$SANDBOX/wt-tmp")"
+rm "$r/.git/worktrees"
+
+echo "== bs-pr-ci"
+export BS_PR_CI_POLL_INTERVAL=0 BS_PR_CI_POLL_LIMIT=3
+pr_ci() { run_in "$r" env PATH="$GH_PATH" "$PR_CI" "$@"; }
+no_checks() { echo "no checks reported on the 'feat/x' branch" > "$FAKE_GH/$1.out"; echo 1 > "$FAKE_GH/$1.rc"; }
+r="$(new_repo)"
+mkdir -p "$r/.github/workflows"; echo 'name: CI' > "$r/.github/workflows/ci.yml"
+git -C "$r" add .github; git -C "$r" commit -q -m ci
 fake_gh_reset
-r="$(ci_repo '  # workflow_dispatch:')"
-plan_ci feat/p
-expect_eq "commented workflow_dispatch: unavailable" "$OUT" "unavailable"
-r="$(ci_repo)"
-plan_ci feat/p
-expect_eq "no ci.yml: unavailable" "$OUT" "unavailable"
-r="$(ci_repo '  workflow_dispatch:')"
-plan_ci feat/other
-expect_eq "plan branch not pushed: unavailable" "$OUT" "unavailable"
-expect_eq "unavailable: no gh calls" "$(gh_calls '')" "0"
-plan_ci
+pr_ci feat/x
+expect_eq "all checks pass: pass" "$OUT" "pass"
+check "watches the branch's checks, failing fast" grep -qx 'pr checks feat/x --watch --fail-fast' "$FAKE_GH/calls"
+fake_gh_reset; echo 1 > "$FAKE_GH/pr-checks.rc"
+printf '[{"name":"test","bucket":"fail","state":"FAILURE"},{"name":"lint","bucket":"pass"},{"name":"e2e","bucket":"cancel"}]\n' > "$FAKE_GH/pr-checks.json"
+pr_ci feat/x
+expect_eq "failing checks: fail <names>" "$OUT" "fail test,e2e"
+fake_gh_reset; no_checks pr-checks
+pr_ci feat/x
+expect_eq "no checks reported with workflows: none-configured after retries" "$OUT" "none-configured"
+expect_eq "no checks reported: 1 call + BS_PR_CI_POLL_LIMIT retries" "$(gh_calls 'pr checks feat/x --watch')" "4"
+fake_gh_reset; no_checks pr-checks.1; no_checks pr-checks.2; echo 1 > "$FAKE_GH/pr-checks.3.rc"
+printf '[{"name":"test","bucket":"fail"}]\n' > "$FAKE_GH/pr-checks.json"
+pr_ci feat/x
+expect_eq "checks register on retry 2: that run's result" "$OUT" "fail test"
+expect_eq "checks register on retry 2: no further retries" "$(gh_calls 'pr checks feat/x --watch')" "3"
+fake_gh_reset; echo "no pull requests found for branch \"feat/x\"" > "$FAKE_GH/pr-checks.out"; echo 1 > "$FAKE_GH/pr-checks.rc"
+pr_ci feat/x
+expect_code "other gh failure: exit 3" 3
+r="$(new_repo)"
+fake_gh_reset; no_checks pr-checks
+pr_ci feat/x
+expect_eq "no workflows dir: none-configured" "$OUT" "none-configured"
+expect_eq "no workflows dir: one call, no retries" "$(gh_calls 'pr checks')" "1"
+pr_ci
 expect_code "no branch: usage error" 2
 
 echo "== bs-diff-target"

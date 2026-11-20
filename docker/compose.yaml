@@ -7,7 +7,7 @@ services:
       dockerfile: docker/Dockerfile
       args:
         # Pre-installed worker harnesses at build time (comma-separated):
-        # Options: claude, codex, opencode, pi, agy, all
+        # Options: claude, codex, agy, all
         ENABLED_WORKERS: ${ENABLED_WORKERS:-claude,codex,agy}
         # Node.js major version installed in the image
         NODE_MAJOR: ${NODE_MAJOR:-24}
@@ -34,8 +34,6 @@ services:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - OPENCODE_API_BASE=${OPENCODE_API_BASE:-}
-      - OPENCODE_API_KEY=${OPENCODE_API_KEY:-}
       # Git author for commits made by agents inside the container
       - GIT_USER_NAME=${GIT_USER_NAME:-Agent}
       - GIT_USER_EMAIL=${GIT_USER_EMAIL:-agent@bootstrap.local}
@@ -50,8 +48,6 @@ services:
       - claude-auth:/home/coder/.claude
       - gemini-auth:/home/coder/.gemini
       - codex-auth:/home/coder/.codex
-      - opencode-auth:/home/coder/.config/opencode
-      - pi-auth:/home/coder/.pi
       # Persist GitHub CLI credentials
       - gh-config:/home/coder/.config/gh
       # Persist SSH keys & known_hosts
@@ -67,8 +63,6 @@ volumes:
   claude-auth:
   gemini-auth:
   codex-auth:
-  opencode-auth:
-  pi-auth:
   gh-config:
   ssh-keys:
 

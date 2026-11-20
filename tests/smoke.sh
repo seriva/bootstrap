@@ -45,7 +45,9 @@ for profile in continuous versioned; do
     check "$profile: creates $f" test -f "$target/$f"
   done
   check "$profile: creates a git repo" test -d "$target/.git"
-  check "$profile: CI accepts workflow_dispatch (plan-branch runs)" grep -qE '^  workflow_dispatch:' "$target/.github/workflows/ci.yml"
+  check_not "$profile: follow-ups format has no route suffix" grep -qF ') →' "$target/plans/follow-ups.md"
+  check_not "$profile: CI does not skip phase PRs" grep -qF -- '-phase-' "$target/.github/workflows/ci.yml"
+  check_not "$profile: CI has no workflow_dispatch trigger" grep -qE '^  workflow_dispatch:' "$target/.github/workflows/ci.yml"
   check_not "$profile: fills in Release Model" grep -q '^- \*\*Release Model\*\*: \[' "$target/AGENTS.md"
   check_not "$profile: refuses to overwrite without --force" "$INIT" "$target" --type "$profile"
   check "$profile: overwrites with --force" "$INIT" "$target" --type "$profile" --force
@@ -106,8 +108,7 @@ check "--check passes after adding the block" "$SYNC" --check "$target"
 echo "== install.sh"
 home="$SANDBOX/home"
 # Create every host's config dir so all install targets are exercised.
-mkdir -p "$home/.gemini" "$home/.claude" "$home/.codex" "$home/.config/opencode" "$home/.pi" \
-  "$home/.cursor" "$home/.config/Code/User"
+mkdir -p "$home/.gemini" "$home/.claude" "$home/.codex" "$home/.config/Code/User"
 install_env=(env HOME="$home" XDG_CONFIG_HOME="$home/.config" XDG_DATA_HOME="$home/.local/share")
 # Local model override replaces one default and leaves the others alone.
 mkdir -p "$home/.config/bootstrap"
@@ -123,8 +124,7 @@ for d in "$REPO_DIR"/workflows/skills/*/; do skills+=("$(basename "$d")"); done
 for s in "${skills[@]}"; do
   for f in "$home/.gemini/config/skills/$s/SKILL.md" "$home/.claude/skills/$s/SKILL.md" \
     "$home/.claude/commands/$s.md" "$home/.codex/skills/$s/SKILL.md" \
-    "$home/.config/opencode/skills/$s/SKILL.md" "$home/.pi/agent/skills/$s/SKILL.md" \
-    "$home/.cursor/rules/$s.mdc" "$home/.config/Code/User/prompts/$s.prompt.md"; do
+    "$home/.config/Code/User/prompts/$s.prompt.md"; do
     check "installs ${f#"$home"/}" test -f "$f"
   done
 done
@@ -144,7 +144,7 @@ fi
 
 # Every rendered path into the sandbox must point at a file install.sh created
 # (docs and skills), or at an executable helper script.
-missing="$(grep -rhoE "$home/[^\`\"' )]+\.(md|mdc)" "$home" | sort -u | while IFS= read -r p; do
+missing="$(grep -rhoE "$home/[^\`\"' )]+\.md" "$home" | sort -u | while IFS= read -r p; do
   [[ -f "$p" ]] || echo "$p"
 done)"
 missing+="$(grep -rhoE "$home/[^\`\"' )]+/scripts/[A-Za-z0-9_-]+" "$home" | sort -u | while IFS= read -r p; do
@@ -152,6 +152,11 @@ missing+="$(grep -rhoE "$home/[^\`\"' )]+/scripts/[A-Za-z0-9_-]+" "$home" | sort
 done)"
 check "conventions.md references helper scripts" grep -qF "$home/.local/share/bootstrap/scripts/" "$home/.local/share/bootstrap/conventions.md"
 check "skills reference helper scripts" grep -rqF "$home/.local/share/bootstrap/scripts/" "$home/.claude/skills"
+# Retired workflow rules: resume never stashes; follow-ups are open or deferred, never routed.
+for retired in 'git stash' 'unrouted' 'Route rule' 'Routed Follow-ups' 'belong'; do
+  check_not "installed docs and skills never mention '$retired'" \
+    grep -rqF -- "$retired" "$home/.local/share/bootstrap" "$home/.claude/skills"
+done
 # bs-review-state reads the markers and gate tokens /bs-loop writes: both must stay in sync.
 review_state_src="$REPO_DIR/workflows/shared/scripts/bs-review-state"
 for name in PLACEHOLDER FIX_SUBJECT_SUFFIX GATE_MARKER; do
@@ -163,9 +168,10 @@ for gate in PASSED BLOCKED_BY_DEFECTS BLOCKED_BY_CI; do
     sh -c 'grep -qF "$1" "$2" && grep -qF "$1" "$3"' _ "$gate" "$REPO_DIR/workflows/skills/bs-loop/SKILL.md" "$review_state_src"
 done
 check "bs-loop writes the **Gate:** line bs-review-state reads" grep -qF '`**Gate:** <PASSED' "$REPO_DIR/workflows/skills/bs-loop/SKILL.md"
-for pair in conventions.md:bs-plan-state skills/bs-exec/SKILL.md:bs-plan-state skills/bs-exec/SKILL.md:bs-plan-ci \
+for pair in conventions.md:bs-plan-state skills/bs-exec/SKILL.md:bs-plan-state \
   conventions.md:bs-review-state skills/bs-loop/SKILL.md:bs-review-state skills/bs-exec/SKILL.md:bs-review-state \
-  skills/bs-review/SKILL.md:bs-diff-target; do
+  skills/bs-review/SKILL.md:bs-diff-target dispatch.md:bs-cli-dispatch dispatch.md:bs-pr-ci \
+  skills/bs-probe/SKILL.md:bs-worktree skills/bs-review/SKILL.md:bs-worktree; do
   doc="${pair%%:*}" script="${pair##*:}"
   case "$doc" in skills/*) path="$home/.claude/$doc" ;; *) path="$home/.local/share/bootstrap/$doc" ;; esac
   check "$doc calls $script" grep -qF "$home/.local/share/bootstrap/scripts/$script" "$path"
@@ -181,18 +187,18 @@ echo "== size budgets"
 # deliberate, visible change here; a new file needs its own entry.
 budget_of() {
   case "$1" in
-    skills/bs-exec/SKILL.md) echo 10750 ;;
-    skills/bs-loop/SKILL.md) echo 9000 ;;
-    skills/bs-plan/SKILL.md) echo 9250 ;;
-    skills/bs-probe/SKILL.md) echo 2250 ;;
-    skills/bs-review/SKILL.md) echo 6500 ;;
+    skills/bs-exec/SKILL.md) echo 9650 ;;
+    skills/bs-loop/SKILL.md) echo 8850 ;;
+    skills/bs-plan/SKILL.md) echo 9200 ;;
+    skills/bs-probe/SKILL.md) echo 2050 ;;
+    skills/bs-review/SKILL.md) echo 6300 ;;
     skills/bs-task/SKILL.md) echo 4250 ;;
-    shared/conventions.md) echo 7500 ;;
-    shared/dispatch.md) echo 9500 ;;
+    shared/conventions.md) echo 6700 ;;
+    shared/dispatch.md) echo 8050 ;;
     *) echo 0 ;;
   esac
 }
-TOTAL_BUDGET=58250
+TOTAL_BUDGET=54800
 total=0
 for f in "$REPO_DIR"/workflows/skills/*/SKILL.md "$REPO_DIR"/workflows/shared/*.md; do
   rel="${f#"$REPO_DIR"/workflows/}"

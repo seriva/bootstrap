@@ -147,7 +147,6 @@ if not part1_match:
     sys.exit("Error: Could not extract Part 1 from " + canonical_path)
 canonical_part1 = part1_match.group(1)
 
-# Cursor reads AGENTS.md natively, so it needs no bridge file.
 bridge_rel_paths = [
     "CLAUDE.md",
     os.path.join(".github", "copilot-instructions.md"),
