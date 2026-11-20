@@ -5,7 +5,7 @@ description: "End-to-end autonomous development loop: implementation, quality ga
 
 # Autonomous Development Loop (bs-loop)
 
-Invoking `/bs-loop` authorizes discovering target repos, creating branches, staging/committing code, running tests, and managing GitHub PRs. `/bs-loop` orchestrates `/bs-task` (`{{BS_TASK_SKILL}}`), `/bs-review` (`{{BS_REVIEW_SKILL}}`), and `/bs-probe` (`{{BS_PROBE_SKILL}}`). Worker conventions (**Target**, **Probes**, **Safe commit**, **People docs**, **Follow-ups**) are defined in `{{BS_CONVENTIONS}}`; orchestrator **Dispatch** and **CI wait** rules are defined in `{{BS_DISPATCH}}`.
+Invoking `/bs-loop` authorizes discovering target repos, creating branches, staging/committing code, running tests, and managing GitHub PRs. `/bs-loop` orchestrates `/bs-task` (`{{BS_TASK_SKILL}}`), `/bs-review` (`{{BS_REVIEW_SKILL}}`), and `/bs-probe` (`{{BS_PROBE_SKILL}}`). Worker conventions (**Target**, **States**, **Probes**, **Safe commit**, **People docs**, **Follow-ups**) are defined in `{{BS_CONVENTIONS}}`; orchestrator **Dispatch** and **CI wait** rules are defined in `{{BS_DISPATCH}}`.
 
 ## Operational Workflow
 
@@ -16,11 +16,11 @@ Invoking `/bs-loop` authorizes discovering target repos, creating branches, stag
 
 ### Step 1: Target & Plan Check
 1. Resolve `$TARGET_REPO` and read `AGENTS.md` per **Target** (`{{BS_CONVENTIONS}}`).
-2. **Plan-First**: If the task is non-trivial, standalone, and has no plan in `plans/v*/` or top-level `plans/` (ignoring `plans/archive/`), run `/bs-plan`, then STOP: present the plan and remind the user to commit it (with `plans/roadmap.md`) before running `/bs-exec`.
+2. **Plan-First**: If the task is non-trivial, standalone, and has no active plan (**States** in `{{BS_CONVENTIONS}}`) in `plans/v*/` or top-level `plans/`, run `/bs-plan`, then STOP: present the plan and remind the user to commit it (with `plans/roadmap.md`) before running `/bs-exec`.
 
 ### Step 2: Branch & TDD Implementation (via `/bs-task`)
 1. **Branch Resolution**:
-   - **Interrupted run**: if the current branch (`git rev-parse --abbrev-ref HEAD`) has an open draft PR (`gh pr view --json isDraft,baseRefName,body`) whose `## Review Status` still says `in progress`, its implementation is already pushed and a run stopped mid-review, or may still be running. Report any dirty paths and ask the user to confirm no other run is still working on that branch (if the host cannot ask and wait, stop and print the stash command). On no, stop. On yes, stash any dirty paths (`git stash push -u -m "bs-loop: interrupted $(git rev-parse --abbrev-ref HEAD) $(date +%F)"`), set `WORKING_BRANCH` to the current branch and `BASE_BRANCH` to the PR's `baseRefName`, and go to **Step 3** (implement-only mode: return the PR URL + `WORKING_BRANCH` instead), skipping the rest of Step 2.
+   - **Interrupted run**: if the current branch's (`git rev-parse --abbrev-ref HEAD`) PR is **in review** (**States**; `gh pr view --json state,isDraft,baseRefName,body`), run **Resume** (**States**): set `WORKING_BRANCH` to the current branch and `BASE_BRANCH` to the PR's `baseRefName`, and skip the rest of Step 2 (implement-only mode: return the PR URL + `WORKING_BRANCH` instead of continuing to Step 3).
    - Otherwise require a clean working tree (`git status --porcelain`); if dirty, stop and report the paths—never auto-stash, discard, or commit them.
    - `BASE_BRANCH`: caller/user-specified base (e.g. `feat/<plan-slug>`), else current branch. Fetch upstream.
    - `WORKING_BRANCH`: `feat/<plan-slug>-phase-<N>` for plan phases (`git checkout -b ... $BASE_BRANCH`, or `git checkout` if resuming); for standalone tasks, stay on an existing `feat/` or `fix/` branch or `git checkout -b <type>/<task-slug> $BASE_BRANCH`.
@@ -30,14 +30,14 @@ Invoking `/bs-loop` authorizes discovering target repos, creating branches, stag
    - **Case A — Plan Phase (`Phase N from <PLAN_FILE>`)**: Loop through every unchecked `- [ ] Task N.M` in Phase N without pausing, running `/bs-task` (`{{BS_TASK_SKILL}}`) with commit permission for each task (`"feat(<plan-slug>): <summary> (Task N.M)"`).
    - **Case B — Standalone Task (`$TASK`)**: Run `/bs-task` (`{{BS_TASK_SKILL}}`) with commit permission (`"<type>[(<scope>)]: <summary>"`, scope per `AGENTS.md` **Commits & PR Titles**).
 3. **Draft PR**:
-   - `git push -u origin HEAD`. Reuse existing PR for `$WORKING_BRANCH` (`gh pr view "$WORKING_BRANCH"`) or create a draft PR (`PR_TITLE`: `feat(<plan-slug>): phase <N> - <phase-name>` for phases, `<type>[(<scope>)]: <summary>` for standalone; `PR_BODY`: Summary, Completed Tasks/Quality Gates checklist, and `## Review Status: *Automated AI review & fix cycle in progress...*`):
+   - `git push -u origin HEAD`. Reuse the existing PR for `$WORKING_BRANCH` only if it is open (`gh pr view "$WORKING_BRANCH" --json state` reports `OPEN`; a closed or merged one is never reused) or create a draft PR (`PR_TITLE`: `feat(<plan-slug>): phase <N> - <phase-name>` for phases, `<type>[(<scope>)]: <summary>` for standalone; `PR_BODY`: Summary, Completed Tasks/Quality Gates checklist, and `## Review Status: *Automated AI review & fix cycle in progress...*`):
      `gh pr create --draft --base "$BASE_BRANCH" --title "$PR_TITLE" --body "$PR_BODY"`
    - **Implement-only mode**: STOP here and return PR URL + `WORKING_BRANCH`.
 
 ### Step 3: Deterministic 2-Pass AI Code Review (via `/bs-review` & `/bs-probe`)
 Review `$WORKING_BRANCH` against `$BASE_BRANCH`.
 
-**Resumed run**: if `git log --format=%s "$BASE_BRANCH"..HEAD` already has a `Defect Fixer` commit (subject ending in `: address review feedback`), the Fix Turn was used before the interruption: run Pass 1 as the terminal pass (`LGTM` → `REVIEW_STATUS=PASSED`; High/Medium → `REVIEW_STATUS=BLOCKED_BY_DEFECTS`) with no further Fix Turn.
+**Resumed run**: if the run is **fix used** (**States**), the Fix Turn was spent before the interruption: run Pass 1 as the terminal pass (`LGTM` → `REVIEW_STATUS=PASSED`; High/Medium → `REVIEW_STATUS=BLOCKED_BY_DEFECTS`) with no further Fix Turn.
 
 > [!IMPORTANT]
 > **NO SELF-REVIEW:** Never review your own diff in the current context. If `REVIEWER` is unreachable (per **Providers & Models** in `{{BS_DISPATCH}}`), leave the PR in **Draft**, inform the user, and return PR URL with `REVIEW_STATUS=PENDING_REVIEW`. Notify the user upon dispatching and echo each pass's full findings in chat upon return.
