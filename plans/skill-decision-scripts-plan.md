@@ -1,7 +1,8 @@
 # Skill Decision Scripts — Design Plan
 
 **Version:** continuous  
-**Status:** Draft  
+**Status:** In Progress  
+**Base branch:** main  
 **Related:** Builds on the helper-script commits `809632f` (bs-tree-state, bs-commit), `4ed250d` (bs-plan-state, bs-review-state, bs-plan-ci), `0f213e1` (bs-diff-target)  
 **Release note:** The bs-* skills now decide branches, run resumption, CI waits, reviewer selection, and CLI dispatch through small tested scripts instead of long instructions, so runs behave the same way every time. Re-run `./install.sh` to install them.  
 
