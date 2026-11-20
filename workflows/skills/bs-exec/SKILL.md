@@ -1,11 +1,11 @@
 ---
 name: bs-exec
-description: "Autonomous plan orchestrator: manages a dedicated plan branch off main, executes phased tasks with TDD, delivers verified PRs per phase, and conducts a full-branch audit against the design plan before final merge into main."
+description: "Autonomous plan orchestrator: manages a dedicated plan branch off main, executes phased tasks with TDD, delivers verified PRs per phase, and opens the final PR into the base branch."
 ---
 
 # Autonomous Plan Orchestrator (bs-exec)
 
-Invoking `/bs-exec` authorizes managing plan branches, running `/bs-loop` per phase, merging passing phase PRs in `--auto` mode, and the final full-branch audit. Worker conventions (**Target**, **States**, **Probes**, **Safe commit**, **People docs**, **Follow-ups**) are in `{{BS_CONVENTIONS}}`; **Dispatch** and **CI wait** are in `{{BS_DISPATCH}}`. The orchestrator spawns every subagent itself.
+Invoking `/bs-exec` authorizes managing plan branches, running `/bs-loop` per phase, merging passing phase PRs in `--auto` mode, and preparing the final merge PR. Worker conventions (**Target**, **States**, **Probes**, **Safe commit**, **People docs**, **Follow-ups**) are in `{{BS_CONVENTIONS}}`; **Dispatch** and **CI wait** are in `{{BS_DISPATCH}}`. The orchestrator spawns every subagent itself.
 
 ## Operational Workflow
 
@@ -38,23 +38,13 @@ Invoking `/bs-exec` authorizes managing plan branches, running `/bs-loop` per ph
    - `PASSED` with `AUTO_MODE=false`: report the phase PR URL and stop (re-running `/bs-exec` after the merge resumes at the next phase).
 4. **Auto-Merge** (`REVIEW_STATUS == PASSED` and `AUTO_MODE=true`): `gh pr merge "$PHASE_BRANCH" --merge --delete-branch && git checkout "$PLAN_BRANCH" && git pull`, then loop back to **Step 2**.
 
-### Step 4: Full-Branch Final Audit & Merge Preparation
+### Step 4: Finalize Plan & Merge PR
 1. **Sync & Test**: `git checkout "$PLAN_BRANCH" && git pull`, then run the pre-commit gate from `AGENTS.md` Commands.
-2. **Follow-up Triage** (when `plans/follow-ups.md` has this plan's entries, **States**):
-   - Spawn subagent `Follow-up Triager` (inline if there is no subagent tool):
-     > Prompt: `You are a dispatched subagent (do not spawn any subagents). In $TARGET_REPO on branch $PLAN_BRANCH, re-run the repro of every open entry in plans/follow-ups.md whose provenance tuple names <plan-slug> (Follow-up entry in **States** in {{BS_CONVENTIONS}}), following the Probes rule in {{BS_CONVENTIONS}} (under .probes/, deleted afterwards). Do not modify tracked files. Reply with one line per entry: the entry text, then STILL REPRODUCES or FIXED, with the observed result.`
-   - Delete `FIXED` entries; if modified, `git add plans/follow-ups.md`, commit with `"{{BS_COMMIT}}" --exclude-hook '' -m "docs(<plan-slug>): triage review follow-ups" -- plans/follow-ups.md`, and push.
-   - If any entry still reproduces: **ask the user, even in `--auto`** (cannot ask → stop). Recommend **Schedule** for entries whose `Root:` falls under this plan's `In scope` rows (plan defects); **Defer** one only with the user's reason.
-     - **Schedule**: user runs `/bs-plan follow-ups $PLAN_FILE`, commits the updated plan on `$PLAN_BRANCH`, and re-runs `/bs-exec`.
-     - **Defer**: append ` — deferred (<plan-slug>): <reason>` to those entries (**States**); delete only entries the user drops for good. `git add -- plans/follow-ups.md`, commit with `"{{BS_COMMIT}}" --exclude-hook '' -m "docs(<plan-slug>): defer review follow-ups" -- plans/follow-ups.md`, push, and continue to Step 4.3.
-3. **Release Notes Pass**: spawn subagent `Release Notes Editor` (inline if there is no subagent tool):
-   > Prompt: `You are a dispatched subagent (do not spawn any subagents). First read **People docs** in {{BS_CONVENTIONS}} and the Audiences, Changelog, and Docs rules in $TARGET_REPO/AGENTS.md. On branch $PLAN_BRANCH, inspect git diff origin/$BASE_BRANCH...$PLAN_BRANCH -- CHANGELOG.md README.md docs/. Rewrite this plan's ## [Unreleased] entries into concise upgrade notes: merge per-phase entries into one per user-facing feature, keep every behaviour change, and give each breaking change its own **Breaking:** entry under ### Changed saying what to do. Fix README/docs passages from this diff that read like plan notes. Use $PLAN_FILE and code only to check facts; never copy IDs or symbol lists. Touch only CHANGELOG.md, README.md, and docs/. Run the pre-commit gate from AGENTS.md Commands. If anything changed, stage only those files, commit with "{{BS_COMMIT}}" --exclude-hook '' -m "docs(<plan-slug>): edit release notes" -- CHANGELOG.md README.md docs/ (exit codes: Safe commit step 4 in {{BS_CONVENTIONS}}), and push. Reply with the final entries and commit hash or "no changes".`
-4. **Full-Branch Audit**: dispatch `Plan Auditor` to `REVIEWER` like a review pass (working branch `$PLAN_BRANCH`; unreachable → halt and alert the user) with `$PLAN_FILE` and `git diff origin/$BASE_BRANCH...$PLAN_BRANCH` to verify 1) the "Done means" checklist, 2) the Scope Rule & Boundary Matrix (nothing `Excluded` leaked in), 3) test coverage, and 4) `CHANGELOG.md`, `README.md`, and `docs/` against `AGENTS.md` and **People docs** (probes per **Probes**, never modifying tracked files). Announce the dispatch, echo the full reply in chat. It replies `PLAN_VERIFIED_LGTM` or a discrepancy report (→ halt and alert the user).
-5. **Final Merge PR** (on `PLAN_VERIFIED_LGTM`):
+2. **Complete & Open PR**:
    - Set `**Status:** Completed (YYYY-MM-DD)` in `$PLAN_FILE`.
    - **Versioned (`plans/v*/`)**: Update its `Status` column in `plans/roadmap.md` to `Completed (YYYY-MM-DD)` and `git add "$PLAN_FILE" plans/roadmap.md`.
    - **Continuous (`plans/`)**: Move to `plans/archive/`, update its `plans/roadmap.md` row under `## Completed` with date and `[Feature](archive/<plan-filename>)`, and stage: `mkdir -p plans/archive && git mv "$PLAN_FILE" plans/archive/ && git add "plans/archive/$(basename "$PLAN_FILE")" plans/roadmap.md`.
    - Commit with `"{{BS_COMMIT}}" --exclude-hook '' -m "docs(<plan-slug>): complete plan" -- "$PLAN_FILE" plans/roadmap.md` (continuous: also `"plans/archive/$(basename "$PLAN_FILE")"`, the move's new side), which refuses anything else staged or added by a hook, and push.
-   - Open final PR (keep `--title` ≤72 chars; append `## Known follow-ups` with repros if any review follow-ups were deferred):
-     `gh pr create --base "$BASE_BRANCH" --head "$PLAN_BRANCH" --title "feat(<plan-slug>): complete plan implementation" --body "All phases verified against $PLAN_FILE. Full-branch audit passed."`
+   - Open final PR (keep `--title` ≤72 chars):
+     `gh pr create --base "$BASE_BRANCH" --head "$PLAN_BRANCH" --title "feat(<plan-slug>): complete plan implementation" --body "All phases completed for $PLAN_FILE."`
    - Run **CI wait** on `$PLAN_BRANCH` and report the PR URL + CI status (user merges into `$BASE_BRANCH`).

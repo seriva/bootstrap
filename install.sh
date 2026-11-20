@@ -5,15 +5,6 @@ DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SKILLS_SRC="$DOTFILES_DIR/workflows/skills"
 SHARED_SRC="$DOTFILES_DIR/workflows/shared"
 BOOTSTRAP_SHARE_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/bootstrap"
-BOOTSTRAP_CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/bootstrap"
-
-# Load default paired models, with optional local user override
-# shellcheck source=workflows/shared/models.env
-source "$SHARED_SRC/models.env"
-if [ -f "$BOOTSTRAP_CONFIG_DIR/models.env" ]; then
-  # shellcheck disable=SC1091
-  source "$BOOTSTRAP_CONFIG_DIR/models.env"
-fi
 
 echo "=== Universal AI Bootstrap Skills Installer ==="
 echo "Scanning available AI tools on this machine..."
@@ -73,9 +64,6 @@ sed_escape() {
 SHARED_SED_ARGS=(
   -e "s|{{BS_CONVENTIONS}}|$(sed_escape "$BOOTSTRAP_SHARE_DIR/conventions.md")|g"
   -e "s|{{BS_DISPATCH}}|$(sed_escape "$BOOTSTRAP_SHARE_DIR/dispatch.md")|g"
-  -e "s|{{BS_MODEL_CLAUDE}}|$(sed_escape "$BS_MODEL_CLAUDE")|g"
-  -e "s|{{BS_MODEL_AGY}}|$(sed_escape "$BS_MODEL_AGY")|g"
-  -e "s|{{BS_MODEL_CODEX}}|$(sed_escape "$BS_MODEL_CODEX")|g"
 )
 # Helper scripts are referenced as {{<NAME_UPPER>}} (bs-commit -> {{BS_COMMIT}}). Added before
 # the shared docs are rendered, because conventions.md references them too.
@@ -107,7 +95,6 @@ for installed_path in "$BOOTSTRAP_SHARE_DIR"/scripts/* "$BOOTSTRAP_SHARE_DIR"/*.
   fi
 done
 echo "Installed shared docs and helper scripts to $BOOTSTRAP_SHARE_DIR"
-echo "  Models: claude=$BS_MODEL_CLAUDE, agy=$BS_MODEL_AGY, codex=$BS_MODEL_CODEX"
 
 # Skill names and their placeholder keys, computed once (only the path pattern varies per render).
 SKILL_NAMES=()

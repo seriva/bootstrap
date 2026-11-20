@@ -13,7 +13,6 @@ COMMIT="$REPO_DIR/workflows/shared/scripts/bs-commit"
 PLAN_STATE="$REPO_DIR/workflows/shared/scripts/bs-plan-state"
 REVIEW_STATE="$REPO_DIR/workflows/shared/scripts/bs-review-state"
 DIFF_TARGET="$REPO_DIR/workflows/shared/scripts/bs-diff-target"
-CLI_DISPATCH="$REPO_DIR/workflows/shared/scripts/bs-cli-dispatch"
 WORKTREE="$REPO_DIR/workflows/shared/scripts/bs-worktree"
 PR_CI="$REPO_DIR/workflows/shared/scripts/bs-pr-ci"
 SANDBOX="$(mktemp -d "${TMPDIR:-/tmp}/bootstrap-scripts.XXXXXX")"
@@ -603,92 +602,6 @@ review_state feat/x
 expect_eq "draft without placeholder or Gate: draft" "$OUT" "draft feat/base"
 review_state
 expect_code "no branch: usage error" 2
-
-echo "== bs-cli-dispatch"
-# Fake provider CLIs: record cwd and argv (one arg per line), print a reply, exit $FAKE_PROV_RC.
-FAKE_PROV="$SANDBOX/fake-prov"
-mkdir -p "$SANDBOX/provbin" "$FAKE_PROV"
-for p in claude agy codex; do
-  cat > "$SANDBOX/provbin/$p" <<'EOF'
-#!/bin/sh
-name="$(basename "$0")"
-pwd -P > "$FAKE_PROV/$name.cwd"
-: > "$FAKE_PROV/$name.argv"
-for a in "$@"; do printf '%s\n' "$a" >> "$FAKE_PROV/$name.argv"; done
-if [ -n "${FAKE_PROV_REPLY:-}" ]; then printf '%s' "$FAKE_PROV_REPLY"; else echo "reply from $name"; fi
-exit "${FAKE_PROV_RC:-0}"
-EOF
-  chmod +x "$SANDBOX/provbin/$p"
-done
-export FAKE_PROV
-PROV_PATH="$SANDBOX/provbin:$PATH"
-# Minimal PATH without any provider CLI (real ones may be installed on the host).
-mkdir -p "$SANDBOX/toolbin"
-for t in bash git cat tee tail rm; do ln -s "$(command -v "$t")" "$SANDBOX/toolbin/$t"; done
-dispatch() { run_in "$r" env PATH="$PROV_PATH" "$CLI_DISPATCH" "$@"; }
-r="$(new_repo)"
-mkdir -p "$r/sub"; echo keep > "$r/sub/keep.txt"; git -C "$r" add sub; git -C "$r" commit -q -m sub
-dd="$r/.git/bs-loop"
-PROMPT_TEXT='Check `git log` for "quoted" and '\''single'\'' text; $HOME and $(echo nope) stay literal'
-dispatch run claude m1 rev
-expect_code "missing prompt: exit 2" 2
-mkdir -p "$dd"; printf '%s\n' "$PROMPT_TEXT" > "$dd/rev.md"
-dispatch run gemini m1 rev
-expect_code "unknown provider: exit 2" 2
-dispatch run claude m1 ../rev
-expect_code "role slug with a path: exit 2" 2
-run_in "$r" env PATH="$SANDBOX/toolbin" "$CLI_DISPATCH" run agy m1 rev
-expect_code "provider CLI not on PATH: exit 4" 4
-check "missing CLI: names the binary" grep -qF "Provider CLI 'agy' not found on PATH" "$SANDBOX/stderr"
-check "missing CLI: no log written" test ! -e "$dd/rev.log"
-for p in claude agy codex; do
-  case "$p" in
-    codex) want=(exec --model m1 -c model_reasoning_effort=medium --dangerously-bypass-approvals-and-sandbox "$PROMPT_TEXT") ;;
-    *) want=(--model m1 --effort medium --dangerously-skip-permissions -p "$PROMPT_TEXT") ;;
-  esac
-  printf '%s\n' "${want[@]}" > "$SANDBOX/want.argv"
-  run_in "$r/sub" env PATH="$PROV_PATH" "$CLI_DISPATCH" run "$p" m1 rev
-  expect_code "$p: exit 0" 0
-  check "$p: documented flags, medium effort, prompt as one literal argument" cmp -s "$SANDBOX/want.argv" "$FAKE_PROV/$p.argv"
-  expect_eq "$p: runs from the repo root" "$(cat "$FAKE_PROV/$p.cwd")" "$(cd "$r" && pwd -P)"
-  expect_eq "$p: reply then sentinel on stdout" "$OUT" "$(printf 'reply from %s\nDISPATCH_EXIT=0' "$p")"
-  expect_eq "$p: log holds the same" "$(cat "$dd/rev.log")" "$OUT"
-done
-FAKE_PROV_RC=7 dispatch run codex m1 rev
-expect_code "failing CLI: its exit code is returned" 7
-expect_eq "failing CLI: exit code recorded" "$(tail -n 1 "$dd/rev.log")" "DISPATCH_EXIT=7"
-cp "$dd/rev.md" "$dd/nonl.md"
-FAKE_PROV_REPLY=partial dispatch run claude m1 nonl
-expect_eq "reply without a trailing newline: sentinel on its own line" "$OUT" "$(printf 'partial\nDISPATCH_EXIT=0')"
-dispatch status nonl
-expect_eq "reply without a trailing newline: status sees done" "$OUT" "done 0"
-
-echo "== bs-cli-dispatch status"
-dispatch status rev
-expect_eq "after a run: done <rc>" "$OUT" "done 7"
-dispatch status other
-expect_eq "no log: missing" "$OUT" "missing"
-echo "partial output" > "$dd/other.log"
-dispatch status other
-expect_eq "log without sentinel: running" "$OUT" "running"
-dispatch status
-expect_code "status without a slug: exit 2" 2
-printf '%s\n' "$PROMPT_TEXT" > "$dd/bg.md"
-dispatch run --detach agy m1 bg
-expect_code "--detach: exit 0" 0
-for _ in $(seq 50); do
-  [ "$(cd "$r" && "$CLI_DISPATCH" status bg)" = running ] || break
-  sleep 0.1
-done
-dispatch status bg
-expect_eq "--detach: background run finishes" "$OUT" "done 0"
-run_in "$r" env PATH="$SANDBOX/toolbin" "$CLI_DISPATCH" run --detach agy m1 bg
-expect_code "--detach: missing CLI still exits 4 up front" 4
-echo keep > "$r/.git/bs-keep"
-dispatch cleanup
-expect_code "cleanup: exit 0" 0
-check "cleanup: bs-loop removed" test ! -e "$dd"
-check "cleanup: rest of the git dir kept" test -f "$r/.git/bs-keep" -a -f "$r/.git/HEAD"
 
 echo "== bs-worktree"
 r="$(new_repo)"

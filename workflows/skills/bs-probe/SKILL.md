@@ -10,7 +10,7 @@ Invoking `/bs-probe` authorizes inspecting `$TARGET_REPO` and running non-destru
 ## Workflow
 
 1. **Target & Invariants**: Resolve `$TARGET_REPO` and read `AGENTS.md` per **Target** (`{{BS_CONVENTIONS}}`).
-2. **Identify Root Cause**: Read the code producing the symptom to name the underlying mechanism (**Follow-ups** in `{{BS_CONVENTIONS}}`), not just the input or caller that exposed it.
+2. **Identify Root Cause**: Read the code producing the symptom to name the underlying mechanism (a function, rule, or data path; slug it in kebab-case), not just the input or caller that exposed it.
 3. **Run Throwaway Probes**: Write and execute minimal reproduction/verification scripts under `$TARGET_REPO/.probes/` (or scratch dir), never in source/test dirs. Before writing the first probe, exclude `.probes/` locally: `e="$(git rev-parse --git-path info/exclude)"; grep -qxs '.probes/' "$e" || echo '.probes/' >> "$e"`. Never modify tracked files.
 4. **Probe Sibling Paths**: List other callers, input forms, contexts, or targets that pass through the same mechanism and probe each one to separate failing siblings from passing controls. When comparing against a `<BASE>` ref during review, verify whether another defect also exists on `<BASE>` in a temporary detached worktree outside the repo (`"{{BS_WORKTREE}}" add <BASE> base` prints its dir; `"{{BS_WORKTREE}}" remove <dir>` afterwards).
 5. **Cleanup & Report**: Delete `.probes/` before returning. When invoked standalone (or as `Probe Investigator`), reply with:

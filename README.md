@@ -75,13 +75,12 @@ flowchart TD
 
     DL -->|"Blocked after pass 2"| Human["Draft PR, human steps in"]
     DL -.->|"Logs out-of-scope bugs"| FU["plans/follow-ups.md"]
-    FU -.->|"/bs-plan follow-ups"| DP
 ```
 
 | Skill | Role | Output |
 | :--- | :--- | :--- |
-| **`/bs-plan`** | Probe the codebase, define scope boundaries, and split work into small TDD phases (`review` audits a plan; `follow-ups` schedules logged bugs by root cause) | Verified design plan in `plans/` |
-| **`/bs-exec`** | Orchestrate an approved plan phase by phase on `feat/<plan-slug>`, then audit the full branch | One reviewed, CI-verified PR per phase and a CI-verified final PR into `main` |
+| **`/bs-plan`** | Probe the codebase, define scope boundaries, and split work into small TDD phases (`review` audits a plan) | Verified design plan in `plans/` |
+| **`/bs-exec`** | Orchestrate an approved plan phase by phase on `feat/<plan-slug>`, then open the final merge PR | One reviewed, CI-verified PR per phase and a CI-verified final PR into `main` |
 | **`/bs-loop`** | Implement a single phase or standalone task by orchestrating `/bs-task`, `/bs-review`, and `/bs-probe` through a PR and 2-pass review | Tested, AI-reviewed, CI-verified PR |
 | **`/bs-task`** | Single-task TDD implementation with root-cause checks and quality gates (used standalone on current branch or per task inside `/bs-loop`) | Verified local changes (optional safe commit) |
 | **`/bs-review`** | Fresh-context, probe-verified AI code review for local diffs, branches, or PRs (supports `--pairing`; also drives `/bs-loop` Pass 1) | Review findings (`High`/`Medium`/`Low`/`Out of Scope`) |
@@ -96,11 +95,10 @@ Probes the codebase empirically to prove every claimed problem exists before dra
 /bs-plan Add WebSocket reconnection with exponential backoff
 /bs-plan in gofront: Implement the encoding/csv stdlib package
 /bs-plan review plans/v1.8.0/portable-go-plan.md       # Audit & tighten in a fresh session/model
-/bs-plan follow-ups plans/v1.8.0/portable-go-plan.md   # Turn follow-ups.md into fix phases, grouped by root cause
 ```
 
 ### 2. `/bs-exec` — Phase-by-Phase Orchestration
-Operates on a dedicated `feat/<plan-slug>` branch and runs `/bs-loop` for each phase, checking off `- [x] Task N.M` boxes as commits land so interrupted runs resume seamlessly. Pauses after each phase PR for human merge, or merges passing phases automatically with `--auto`. Every phase PR waits for CI like any other PR. If a phase PR is blocked by the review or CI gate, it halts (even with `--auto`), leaves the PR in Draft, and alerts you to step in. Start it on a clean working tree: re-running `/bs-exec` (or `/bs-loop`) after an interrupted review picks the review up where it stopped, and if you have uncommitted files it stops and lists them instead of touching them. Finishes with follow-up triage (where you can schedule leftover bugs or defer them with a reason), release-note polishing, and a full-branch audit against the plan.
+Operates on a dedicated `feat/<plan-slug>` branch and runs `/bs-loop` for each phase, checking off `- [x] Task N.M` boxes as commits land so interrupted runs resume seamlessly. Pauses after each phase PR for human merge, or merges passing phases automatically with `--auto`. Every phase PR waits for CI like any other PR. If a phase PR is blocked by the review or CI gate, it halts (even with `--auto`), leaves the PR in Draft, and alerts you to step in. Start it on a clean working tree: re-running `/bs-exec` (or `/bs-loop`) after an interrupted review picks the review up where it stopped, and if you have uncommitted files it stops and lists them instead of touching them. Once all phases pass, it runs the full gate, marks the plan complete, and opens the final PR into the base branch.
 ```text
 /bs-exec plans/v1.8.0/portable-go-plan.md
 /bs-exec --auto plans/v1.8.0/portable-go-plan.md
@@ -110,7 +108,7 @@ Operates on a dedicated `feat/<plan-slug>` branch and runs `/bs-loop` for each p
 1. **TDD (`/bs-task` & `/bs-probe`):** Runs `/bs-task` for the standalone task or for each `Task N.M` in a plan phase (which uses `/bs-probe` when isolating root causes), writing a failing test first and the minimal implementation to pass.
 2. **Quality Gate & Docs:** Runs the project's pre-commit gate and updates `CHANGELOG.md` / user docs when behavior changed.
 3. **Draft PR:** Pushes the branch and opens a draft PR.
-4. **2-Pass Fresh AI Review (`/bs-review` & `/bs-probe`):** Pass 1 runs `/bs-review` in a fresh reviewer context with active `/bs-probe` verification in `.probes/`. High/Medium findings get at most one fix turn, after which a *new* fresh reviewer verifies the fixes. Pass 2 is terminal: `LGTM` passes the gate; anything unresolved leaves the PR in Draft as `BLOCKED_BY_DEFECTS` for you to investigate. Out-of-scope bugs are logged to `plans/follow-ups.md` with a repro and their root cause; `/bs-plan follow-ups` later groups them by cause and schedules them into a plan.
+4. **2-Pass Fresh AI Review (`/bs-review` & `/bs-probe`):** Pass 1 runs `/bs-review` in a fresh reviewer context with active `/bs-probe` verification in `.probes/`. High/Medium findings get at most one fix turn, after which a *new* fresh reviewer verifies the fixes. Pass 2 is terminal: `LGTM` passes the gate; anything unresolved leaves the PR in Draft as `BLOCKED_BY_DEFECTS` for you to investigate. Out-of-scope bugs and unfixed behavioral nits are logged to `plans/follow-ups.md` with a repro.
 5. **CI Gate:** Waits for remote CI checks before marking the PR ready, for standalone tasks and plan phases alike.
 
 ### 4. Ad-Hoc Local Workflow (`/bs-probe`, `/bs-task`, `/bs-review`)
@@ -127,25 +125,17 @@ Use these when you want fast, local iteration without design plans, Draft PRs, o
 You don't need a clean working tree for these. `/bs-task` works on your current branch next to your own uncommitted edits: it commits only when you ask, commits only its own files, won't commit a file you were already editing, and tells you when its checks ran with your edits present or changed any of your files. `/bs-review` covers your uncommitted changes too, and if your working tree changes during the review, it warns you, shows `git status`, and leaves everything as it is.
 
 ### Multi-Model Pairing
-Pair different model families so the reviewer doesn't share the implementer's blind spots. `--pairing` keeps the tool you are in as implementer and picks the first other available tool (Claude Code, Antigravity, then Codex) as reviewer; `--implementer` and `--reviewer` name them explicitly. A paired tool runs on a default model (`claude-sonnet-5-5` for Claude, `gemini-4-hydrogen` for Antigravity, `gpt-6-luna` for Codex) unless you pass `--implementer-model` or `--reviewer-model`:
+Pair different model families so the reviewer doesn't share the implementer's blind spots. `--pairing` keeps the tool you are in as implementer and picks the first other available tool (Claude Code, Antigravity, then Codex) as reviewer; `--implementer` and `--reviewer` name them explicitly. A paired tool uses its own default model unless you pass `--implementer-model` or `--reviewer-model`:
 ```text
 /bs-loop --pairing Fix race condition in session cleanup
 /bs-loop --implementer=claude --reviewer=agy --reviewer-model=gemini-4-hydrogen Fix race condition in session cleanup
 /bs-exec --auto --pairing plans/v1.8.0/portable-go-plan.md
 ```
 
-- The defaults are configured in `workflows/shared/models.env`. To change one without modifying this repo, set it in `${XDG_CONFIG_HOME:-~/.config}/bootstrap/models.env` and re-run `./install.sh`; names you leave out keep the repo default:
-  ```sh
-  BS_MODEL_AGY="<model-id>"   # also BS_MODEL_CLAUDE, BS_MODEL_CODEX
-  ```
-  The defaults are deliberately mid-tier models rather than each provider's most capable one: plans split the work into small phases, so each diff is small enough for them to handle well, which keeps paired runs fast and cheap. They apply only to the paired tool; the tool you are in keeps your session's model. Pass a model flag for a stronger model on large or risky changes.
-- If no other tool is available, `--pairing` warns and reviews with the tool you are in.
-- A model is never swapped silently: if the one you asked for, or a default, is unavailable, that role stops and tells you.
+- If no cross-provider orchestrator (`delegate_task`, such as in T3 Code) is available, `--pairing` warns and reviews with the host tool's native subagent instead.
+- A model is never swapped silently: if the one you asked for is unavailable, that role stops and tells you.
 - When the tool you are in implements, it writes the code on your session's model; `--implementer-model` then applies only to the fix turn after review.
-- Inside T3 Code (see the Docker agent server below), paired roles run as live threads you can watch instead of background CLI runs.
-
-> [!WARNING]
-> During pairing, the paired tool's CLI runs headless, without interactive permission prompts. For full isolation, run paired workflows inside the Docker container.
+- Cross-provider pairing requires an orchestrator with `delegate_task` (such as T3 Code inside the Docker agent server below), where paired roles run as live threads.
 
 ---
 
@@ -181,10 +171,10 @@ plans/                                   plans/
 
 | Tool / CLI | Skill Location | Review Mode |
 | :--- | :--- | :--- |
-| **Google Antigravity (`agy`)** | `~/.gemini/config/skills/` | Native subagents + CLI pairing |
-| **Claude Code (`claude`)** | `~/.claude/skills/` & `~/.claude/commands/` | Native subagents + CLI pairing |
-| **OpenAI Codex (`codex`)** | `~/.codex/skills/` | Native subagents + CLI pairing |
-| **GitHub Copilot / VS Code (`code`)** | User prompt files (`.prompt.md`) | Own subagents if available, else paired CLI review |
+| **Google Antigravity (`agy`)** | `~/.gemini/config/skills/` | Native subagents + T3 Code pairing |
+| **Claude Code (`claude`)** | `~/.claude/skills/` & `~/.claude/commands/` | Native subagents + T3 Code pairing |
+| **OpenAI Codex (`codex`)** | `~/.codex/skills/` | Native subagents + T3 Code pairing |
+| **GitHub Copilot / VS Code (`code`)** | User prompt files (`.prompt.md`) | Own subagents if available |
 
 ---
 
@@ -223,8 +213,7 @@ bootstrap/
 │   └── shared/         Shared docs and scripts, installed to ${XDG_DATA_HOME:-~/.local/share}/bootstrap/
 │       ├── conventions.md  Shared worker conventions
 │       ├── dispatch.md     Orchestrator dispatch rules
-│       ├── scripts/        Helpers the skills call to check the tree, commit safely, pick the diff to review, run paired tools' CLIs, check out temporary worktrees, and read plan, PR, and CI state
-│       └── models.env      Default paired model names, filled in at install (override in ${XDG_CONFIG_HOME:-~/.config}/bootstrap/models.env)
+│       └── scripts/        Helpers the skills call to check the tree, commit safely, pick the diff to review, check out temporary worktrees, and read plan, PR, and CI state
 ├── install.sh          Installs skills, shared docs, and helper scripts across detected AI tools
 ├── init.sh             Scaffolds a new project (--type continuous|versioned)
 ├── sync.sh             Synchronizes shared rules across projects (--check, --dry-run)

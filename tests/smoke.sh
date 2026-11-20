@@ -120,9 +120,6 @@ home="$SANDBOX/home"
 # Create every host's config dir so all install targets are exercised.
 mkdir -p "$home/.gemini" "$home/.claude" "$home/.codex" "$home/.config/Code/User"
 install_env=(env HOME="$home" XDG_CONFIG_HOME="$home/.config" XDG_DATA_HOME="$home/.local/share")
-# Local model override replaces one default and leaves the others alone.
-mkdir -p "$home/.config/bootstrap"
-echo 'BS_MODEL_CODEX="smoke-override-model"' > "$home/.config/bootstrap/models.env"
 # Leftovers of an earlier install (a dropped skill, a pre-rename skill, a dropped script) next to the user's own files.
 mkdir -p "$home/.claude/skills/bs-dropped" "$home/.claude/skills/dev-loop" "$home/.claude/skills/own-skill" \
   "$home/.claude/commands" "$home/.config/Code/User/prompts" "$home/.local/share/bootstrap/scripts"
@@ -137,9 +134,6 @@ done
 for own in .claude/skills/own-skill .claude/commands/own-command.md .config/Code/User/prompts/own.prompt.md; do
   check "install keeps the user's $own" test -e "$home/$own"
 done
-check "models.env override is rendered" grep -q 'smoke-override-model' "$home/.local/share/bootstrap/dispatch.md"
-default_claude="$(sed -n 's/^BS_MODEL_CLAUDE="\(.*\)"$/\1/p' "$REPO_DIR/workflows/shared/models.env")"
-check "non-overridden models keep their defaults" grep -qF "$default_claude" "$home/.local/share/bootstrap/dispatch.md"
 check "second install succeeds" "${install_env[@]}" "$INSTALL"
 
 skills=()
@@ -194,7 +188,7 @@ done
 check "bs-loop writes the **Gate:** line bs-review-state reads" grep -qF '`**Gate:** <PASSED' "$REPO_DIR/workflows/skills/bs-loop/SKILL.md"
 for pair in conventions.md:bs-plan-state skills/bs-exec/SKILL.md:bs-plan-state \
   conventions.md:bs-review-state skills/bs-loop/SKILL.md:bs-review-state skills/bs-exec/SKILL.md:bs-review-state \
-  skills/bs-review/SKILL.md:bs-diff-target dispatch.md:bs-cli-dispatch dispatch.md:bs-pr-ci \
+  skills/bs-review/SKILL.md:bs-diff-target dispatch.md:bs-pr-ci \
   skills/bs-probe/SKILL.md:bs-worktree skills/bs-review/SKILL.md:bs-worktree; do
   doc="${pair%%:*}" script="${pair##*:}"
   case "$doc" in skills/*) path="$home/.claude/$doc" ;; *) path="$home/.local/share/bootstrap/$doc" ;; esac
@@ -211,18 +205,18 @@ echo "== size budgets"
 # deliberate, visible change here; a new file needs its own entry.
 budget_of() {
   case "$1" in
-    skills/bs-exec/SKILL.md) echo 9650 ;;
-    skills/bs-loop/SKILL.md) echo 8850 ;;
-    skills/bs-plan/SKILL.md) echo 9200 ;;
+    skills/bs-exec/SKILL.md) echo 6100 ;;
+    skills/bs-loop/SKILL.md) echo 8650 ;;
+    skills/bs-plan/SKILL.md) echo 6700 ;;
     skills/bs-probe/SKILL.md) echo 2100 ;;
-    skills/bs-review/SKILL.md) echo 6300 ;;
-    skills/bs-task/SKILL.md) echo 4250 ;;
-    shared/conventions.md) echo 6750 ;;
-    shared/dispatch.md) echo 8050 ;;
+    skills/bs-review/SKILL.md) echo 6100 ;;
+    skills/bs-task/SKILL.md) echo 4050 ;;
+    shared/conventions.md) echo 5300 ;;
+    shared/dispatch.md) echo 5250 ;;
     *) echo 0 ;;
   esac
 }
-TOTAL_BUDGET=54800
+TOTAL_BUDGET=43900
 total=0
 for f in "$REPO_DIR"/workflows/skills/*/SKILL.md "$REPO_DIR"/workflows/shared/*.md; do
   rel="${f#"$REPO_DIR"/workflows/}"
