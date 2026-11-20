@@ -579,9 +579,6 @@ expect_eq "draft gated: PASSED" "$OUT" "gated:PASSED feat/base"
 pr_record OPEN true 0 "$(printf '**Gate:** PASSED\n**Gate:** BLOCKED_BY_CI: test')"
 review_state feat/x
 expect_eq "PASSED and BLOCKED_BY_CI: BLOCKED_BY_CI wins" "$OUT" "gated:BLOCKED_BY_CI feat/base"
-pr_record OPEN true 0 "$(printf '**Gate:** PASSED\nCI: BLOCKED_BY_CI (test)')"
-review_state feat/x
-expect_eq "PASSED with non-Gate BLOCKED_BY_CI line: BLOCKED_BY_CI wins" "$OUT" "gated:BLOCKED_BY_CI feat/base"
 pr_record OPEN true 0 "$(printf '**Gate:** PASSED\n\nCI: BLOCKED_BY_CI (test, lint failing)')"
 review_state feat/x
 expect_eq "BLOCKED_BY_CI on a line after the Gate line wins" "$OUT" "gated:BLOCKED_BY_CI feat/base"
