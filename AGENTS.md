@@ -41,28 +41,30 @@ Canonical headquarters for agentic development standards, project scaffolding (`
 ## Tech Stack
 
 - **Language / Runtime**: Bash (`set -euo pipefail`), Python 3 (embedded in `sync.sh`), Markdown (`SKILL.md`, templates)
-- **Verification / Quality Gates**: `bash -n install.sh sync.sh init.sh tests/smoke.sh docker/*.sh docker/harness-install docker/t3-pair`, `./sync.sh --check .`, `./tests/smoke.sh`
+- **Verification / Quality Gates**: `bash -n install.sh sync.sh init.sh tests/smoke.sh tests/scripts.sh workflows/shared/scripts/* docker/*.sh docker/harness-install docker/t3-pair`, `./sync.sh --check .`, `./tests/smoke.sh`, `./tests/scripts.sh`
 
 ## Commands
 
-- **Test**: `./sync.sh --check . && ./tests/smoke.sh` (smoke test runs `init.sh`, `sync.sh`, and `install.sh` against throwaway targets in a temp dir)
-- **Lint**: `bash -n install.sh sync.sh init.sh tests/smoke.sh docker/*.sh docker/harness-install docker/t3-pair`
+- **Test**: `./sync.sh --check . && ./tests/smoke.sh && ./tests/scripts.sh` (smoke test runs `init.sh`, `sync.sh`, and `install.sh` against throwaway targets in a temp dir; script tests run the helper scripts against throwaway git repos)
+- **Lint**: `bash -n install.sh sync.sh init.sh tests/smoke.sh tests/scripts.sh workflows/shared/scripts/* docker/*.sh docker/harness-install docker/t3-pair`
 - **Format**: none
 - **Build**: none (deploy skills with `./install.sh`, sync sibling repos with `./sync.sh`)
-- **Pre-commit gate**: `bash -n install.sh sync.sh init.sh tests/smoke.sh docker/*.sh docker/harness-install docker/t3-pair && ./sync.sh --check . && ./tests/smoke.sh`
+- **Pre-commit gate**: `bash -n install.sh sync.sh init.sh tests/smoke.sh tests/scripts.sh workflows/shared/scripts/* docker/*.sh docker/harness-install docker/t3-pair && ./sync.sh --check . && ./tests/smoke.sh && ./tests/scripts.sh`
 
 ## Architecture
 
 - `scaffold/` — Pristine starter templates copied into new repositories by `init.sh` (`AGENTS.md`, `CLAUDE.md`, `.github/`, `lefthook.yml` + shared `lefthook-bootstrap.yml`, `plans/`, plus `CHANGELOG.md` and `plans/roadmap.md` from `templates/<profile>/`). Cursor reads `AGENTS.md` natively, so it has no bridge file. `scaffold/AGENTS.md` Part 1 is the canonical source of truth.
 - `workflows/` — Everything `install.sh` deploys machine-wide. Skills contain `{{BS_*}}` placeholders that only `install.sh` renders, so they are not usable straight from the repo.
   - `workflows/skills/` — Global autonomous workflows (`bs-plan`, `bs-exec`, `bs-loop`, `bs-task`, `bs-review`, `bs-probe`).
-  - `workflows/shared/` — Shared docs installed to `${XDG_DATA_HOME:-~/.local/share}/bootstrap/`, plus the default models:
+  - `workflows/shared/` — Shared docs and helper scripts installed to `${XDG_DATA_HOME:-~/.local/share}/bootstrap/`, plus the default models:
     - `conventions.md` (worker conventions) and `dispatch.md` (orchestrator dispatch and CI rules), with placeholders rendered.
+    - `scripts/` (`bs-tree-state`, `bs-commit`): small git helpers the skills call through `{{BS_TREE_STATE}}` / `{{BS_COMMIT}}` placeholders (installed with mode 755). They hold only mechanical git steps, never task judgment, and never write working-tree files; keep them small and covered by `tests/scripts.sh`.
     - `models.env`: default paired model names substituted into the docs and skills; not installed itself (override in `${XDG_CONFIG_HOME:-~/.config}/bootstrap/models.env`).
 - `init.sh` — Scaffolding initializer for new projects with profile selection (`--type continuous|versioned`).
 - `install.sh` — Conditional multi-vendor skill installer (Antigravity, Claude Code, Codex, OpenCode, Pi, Cursor, Copilot).
 - `docker/` — Agent container: T3 Code + code-server image with worker harnesses (`harness-install`), pairing helper (`t3-pair`), `entrypoint.sh`, `upgrade.sh` (in-place), `rebuild.sh` (cacheless). Build context is the repo root, filtered by `.dockerignore`.
 - `sync.sh` — Propagates `scaffold/AGENTS.md` Part 1, tool bridge files, `plans/template.md`, `lefthook-bootstrap.yml` (and checks `lefthook.yml` extends it), and the bootstrap-managed `.gitignore` block to sibling projects (and keeps root `AGENTS.md` Part 1 in sync).
-- `tests/smoke.sh` — Smoke test: `init.sh` for both profiles, `sync.sh` drift/repair/idempotency and `--check` exit codes, and `install.sh` into a sandboxed `$HOME` (no unrendered `{{BS_*}}` placeholders, every rendered path resolves).
+- `tests/smoke.sh` — Smoke test: `init.sh` for both profiles, `sync.sh` drift/repair/idempotency and `--check` exit codes, and `install.sh` into a sandboxed `$HOME` (no unrendered `{{BS_*}}` placeholders, every rendered path resolves, helper scripts installed executable).
+- `tests/scripts.sh` — Helper script tests: `bs-tree-state` and `bs-commit` against throwaway git repos (unborn HEAD, subdirectories, renames, hook-staged paths, `--only`), asserting the working tree is unchanged after every call.
 - `README.md` — Human-facing guide: quick start, how the `bs-*` skills fit together, sync, supported tools, repository layout.
 

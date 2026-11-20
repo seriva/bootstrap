@@ -223,13 +223,15 @@ bootstrap/
 │   │   ├── bs-task/SKILL.md
 │   │   ├── bs-review/SKILL.md
 │   │   └── bs-probe/SKILL.md
-│   └── shared/         Shared docs, installed to ${XDG_DATA_HOME:-~/.local/share}/bootstrap/
+│   └── shared/         Shared docs and scripts, installed to ${XDG_DATA_HOME:-~/.local/share}/bootstrap/
 │       ├── conventions.md  Shared worker conventions
 │       ├── dispatch.md     Orchestrator dispatch rules
+│       ├── scripts/        Git helpers the skills call to snapshot the working tree and commit safely
 │       └── models.env      Default paired model names, filled in at install (override in ${XDG_CONFIG_HOME:-~/.config}/bootstrap/models.env)
-├── install.sh          Installs skills and shared docs across detected AI tools
+├── install.sh          Installs skills, shared docs, and helper scripts across detected AI tools
 ├── init.sh             Scaffolds a new project (--type continuous|versioned)
 ├── sync.sh             Synchronizes shared rules across projects (--check, --dry-run)
 ├── tests/smoke.sh      Smoke test for init.sh, sync.sh, and install.sh (runs in a temp dir)
+├── tests/scripts.sh    Tests for the git helper scripts (runs against throwaway repos in a temp dir)
 └── AGENTS.md           Agent guide for this repository
 ```

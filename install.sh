@@ -85,15 +85,28 @@ SHARED_SED_ARGS=(
   -e "s|{{BS_MODEL_AGY}}|$(sed_escape "$BS_MODEL_AGY")|g"
   -e "s|{{BS_MODEL_CODEX}}|$(sed_escape "$BS_MODEL_CODEX")|g"
 )
+# Helper scripts are referenced as {{<NAME_UPPER>}} (bs-commit -> {{BS_COMMIT}}). Added before
+# the shared docs are rendered, because conventions.md references them too.
+for script_path in "$SHARED_SRC"/scripts/*; do
+  [ -f "$script_path" ] || continue
+  script_name="$(basename "$script_path")"
+  script_key="$(printf '%s' "$script_name" | tr '[:lower:]-' '[:upper:]_')"
+  SHARED_SED_ARGS+=(-e "s|{{${script_key}}}|$(sed_escape "$BOOTSTRAP_SHARE_DIR/scripts/$script_name")|g")
+done
 
-# Install shared conventions and dispatch rules once per user
-mkdir -p "$BOOTSTRAP_SHARE_DIR"
+# Install helper scripts, shared conventions, and dispatch rules once per user
+mkdir -p "$BOOTSTRAP_SHARE_DIR/scripts"
+for script_path in "$SHARED_SRC"/scripts/*; do
+  [ -f "$script_path" ] || continue
+  cp "$script_path" "$BOOTSTRAP_SHARE_DIR/scripts/"
+  chmod 755 "$BOOTSTRAP_SHARE_DIR/scripts/$(basename "$script_path")"
+done
 for doc_path in "$SHARED_SRC"/*.md; do
   [ -f "$doc_path" ] || continue
   doc_name="$(basename "$doc_path")"
   sed "${SHARED_SED_ARGS[@]}" "$doc_path" > "$BOOTSTRAP_SHARE_DIR/$doc_name"
 done
-echo "Installed shared docs to $BOOTSTRAP_SHARE_DIR"
+echo "Installed shared docs and helper scripts to $BOOTSTRAP_SHARE_DIR"
 echo "  Models: claude=$BS_MODEL_CLAUDE, agy=$BS_MODEL_AGY, codex=$BS_MODEL_CODEX"
 
 # Skill names and their placeholder keys, computed once (only the path pattern varies per render).

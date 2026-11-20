@@ -16,8 +16,7 @@ Invoking `/bs-review` dispatches a fresh-context reviewer with zero implementati
 
 1. **Target & Diff Scope**:
    - Resolve `$TARGET_REPO` and read `AGENTS.md` per **Target** (`{{BS_CONVENTIONS}}`).
-   - In `$TARGET_REPO`, record `WORKING_BRANCH="$(git rev-parse --abbrev-ref HEAD)"` and the pre-review state, keeping the printed hash for Step 3:
-     `{ git status --porcelain --untracked-files=all; git diff HEAD; git diff --cached; git ls-files --others --exclude-standard -z | xargs -0 sh -c 'for f; do find "./$f" -type f -not -path "*/.git/*" -print -exec git hash-object --no-filters {} \; ; find "./$f" -type f -perm -u+x -not -path "*/.git/*"; done' _; } | git hash-object --stdin` (untracked files are hashed by content and exec bit, including files inside untracked nested repos; uses only `git` and POSIX tools, so it runs unchanged on Linux and macOS)
+   - In `$TARGET_REPO`, record `WORKING_BRANCH="$(git rev-parse --abbrev-ref HEAD)"` and the pre-review state hash, `"{{BS_TREE_STATE}}" hash` (covers status, diffs, and untracked files by content and exec bit), keeping it for Step 3.
    - Default `REVIEW_WORKDIR="$TARGET_REPO"` and `UNTRACKED_FILES="none"`.
    - Resolve `DEFAULT_BRANCH`: `git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||'`, else whichever of `main` or `master` exists, else `$WORKING_BRANCH`.
    - Determine `<BASE>`, `<DIFF_TARGET>`, `<UNTRACKED_FILES>`, and `<REVIEW_WORKDIR>`:
@@ -36,7 +35,7 @@ Invoking `/bs-review` dispatches a fresh-context reviewer with zero implementati
      > ```
 3. **Cleanup, Echo & Return**:
    - If a PR worktree was created, remove it: `git worktree remove --force "$PR_WORKTREE"; git worktree prune; git update-ref -d "refs/bs-review/pr-$N"`.
-   - Verify per **CLI Rules** 4 (`{{BS_DISPATCH}}`), except: instead of requiring a clean `git status --porcelain`, rerun the Step 1 state command and compare hashes.
+   - Verify per **CLI Rules** 4 (`{{BS_DISPATCH}}`), except: instead of requiring a clean `git status --porcelain`, rerun `"{{BS_TREE_STATE}}" hash` and compare it with the Step 1 hash.
    - **On mismatch**, undo nothing: the user may have edited files during the review, and the hash cannot tell those edits from the reviewer's or say which file changed. Under `### Working Tree Changed`, say the tree changed during the review and show `git status --porcelain` (which also lists the user's own pre-existing edits). Standalone: still echo the findings below; called by `/bs-loop`: report `PENDING_REVIEW`.
    - Re-dispatch once on missing reply sections. If the second run also fails, report `PENDING_REVIEW`.
    - Echo the reviewer's full findings under `### 🤖 <Role> Output (<provider>)`. When invoked standalone, stop here (do not auto-fix, commit, push, or edit `plans/follow-ups.md`). When called by `/bs-loop` Step 3, return the findings and verdict to `/bs-loop`.

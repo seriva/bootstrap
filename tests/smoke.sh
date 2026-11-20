@@ -130,6 +130,9 @@ done
 for doc in "$REPO_DIR"/workflows/shared/*.md; do
   check "installs shared $(basename "$doc")" test -f "$home/.local/share/bootstrap/$(basename "$doc")"
 done
+for script in "$REPO_DIR"/workflows/shared/scripts/*; do
+  check "installs executable script $(basename "$script")" test -x "$home/.local/share/bootstrap/scripts/$(basename "$script")"
+done
 
 leftover="$(grep -rlF '{{BS_' "$home" || true)"
 if [[ -z "$leftover" ]]; then
@@ -138,10 +141,16 @@ else
   fail "unrendered {{BS_*}} placeholders in: ${leftover//$'\n'/, }"
 fi
 
-# Every rendered path into the sandbox must point at a file install.sh created.
+# Every rendered path into the sandbox must point at a file install.sh created
+# (docs and skills), or at an executable helper script.
 missing="$(grep -rhoE "$home/[^\`\"' )]+\.(md|mdc)" "$home" | sort -u | while IFS= read -r p; do
   [[ -f "$p" ]] || echo "$p"
 done)"
+missing+="$(grep -rhoE "$home/[^\`\"' )]+/scripts/[A-Za-z0-9_-]+" "$home" | sort -u | while IFS= read -r p; do
+  [[ -x "$p" ]] || echo "$p"
+done)"
+check "conventions.md references helper scripts" grep -qF "$home/.local/share/bootstrap/scripts/" "$home/.local/share/bootstrap/conventions.md"
+check "skills reference helper scripts" grep -rqF "$home/.local/share/bootstrap/scripts/" "$home/.claude/skills"
 if [[ -z "$missing" ]]; then
   pass "rendered skill and doc paths all resolve"
 else

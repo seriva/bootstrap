@@ -1,0 +1,116 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Commit for the bs-* skills' Safe commit: check what is staged, commit with the
+# suite hook skipped, verify what went in, and undo the commit if anything else did.
+# Writes only refs and the index, never the working tree.
+# Paths are always repo-root-relative, whatever directory it is called from.
+
+usage() {
+  cat >&2 <<'EOF'
+Usage: bs-commit [--only] [--exclude-hook <name>] -m <msg> [-m <msg>]... -- <allowed-path>...
+  --only                  Commit exactly the given paths (git commit --only); other staged
+                          changes stay staged. Directory prefixes (ending in /) are rejected.
+  --exclude-hook <name>   lefthook command to skip on commit via LEFTHOOK_EXCLUDE (default: test;
+                          '' runs every hook command)
+  -m <msg>                Commit message paragraph; repeat for subject and body
+  <allowed-path>          Repo-root-relative paths the commit may contain ("./" prefix allowed);
+                          "dir/" matches everything under dir/
+Exit: 0 committed (prints short SHA), 2 usage (bad flag or path, or an --only path git does
+      not know), 3 stray staged paths (nothing committed), 4 commit undone because other
+      paths got in, 5 git commit failed (hook failure), 6 nothing to commit
+EOF
+  exit 2
+}
+
+only=false
+hook=test
+msgs=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --only) only=true; shift ;;
+    --exclude-hook) [ $# -ge 2 ] || usage; hook="$2"; shift 2 ;;
+    -m) [ $# -ge 2 ] || usage; msgs+=(-m "$2"); shift 2 ;;
+    --) shift; break ;;
+    *) usage ;;
+  esac
+done
+[ ${#msgs[@]} -gt 0 ] && [ $# -ge 1 ] || usage
+allowed=()
+for a in "$@"; do
+  while [ "${a#./}" != "$a" ]; do a="${a#./}"; done
+  case "/$a/" in
+    //* | */../* | */./*)
+      echo "bs-commit: allowed paths must be repo-root-relative: $a" >&2
+      exit 2 ;;
+  esac
+  if $only && [ "${a%/}" != "$a" ]; then
+    echo "bs-commit: --only takes file paths, not directory prefixes: $a" >&2
+    exit 2
+  fi
+  allowed+=("$a")
+done
+
+git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "bs-commit: not inside a git work tree" >&2; exit 2; }
+cd "$(git rev-parse --show-toplevel)"
+
+is_allowed() {
+  local a
+  for a in "${allowed[@]}"; do
+    if [ "$1" = "$a" ]; then return 0; fi
+    if [ "${a%/}" != "$a" ] && [ "${1#"$a"}" != "$1" ]; then return 0; fi
+  done
+  return 1
+}
+# stray_paths: read NUL-separated paths on stdin, print those not allowed (one per line).
+stray_paths() {
+  local p
+  while IFS= read -r -d '' p; do
+    is_allowed "$p" || printf '%s\n' "$p"
+  done
+}
+
+had_head=false
+git rev-parse -q --verify HEAD >/dev/null && had_head=true
+
+if $only; then
+  for a in "${allowed[@]}"; do
+    git --literal-pathspecs ls-files --error-unmatch -- "$a" >/dev/null 2>&1 \
+      || { $had_head && git cat-file -e "HEAD:$a" 2>/dev/null; } \
+      || { echo "bs-commit: --only path is not known to git (git add new files first): $a" >&2; exit 2; }
+  done
+  if $had_head && git --literal-pathspecs diff --quiet HEAD -- "${allowed[@]}"; then
+    echo "bs-commit: nothing to commit: the given paths match HEAD" >&2
+    exit 6
+  fi
+else
+  if git diff --cached --quiet; then
+    echo "bs-commit: nothing to commit: nothing is staged" >&2
+    exit 6
+  fi
+  stray="$(git diff --cached --name-only --no-renames -z | stray_paths)"
+  if [ -n "$stray" ]; then
+    echo "bs-commit: staged paths outside the allowed list (nothing committed):" >&2
+    printf '%s\n' "$stray" >&2
+    exit 3
+  fi
+fi
+
+if [ -n "$hook" ]; then export LEFTHOOK_EXCLUDE="${LEFTHOOK_EXCLUDE:+$LEFTHOOK_EXCLUDE,}$hook"; fi
+if $only; then
+  git --literal-pathspecs commit -q --only "${msgs[@]}" -- "${allowed[@]}" || exit 5
+else
+  git commit -q "${msgs[@]}" || exit 5
+fi
+
+stray="$(git diff-tree --root --no-commit-id --name-only --no-renames -r -z HEAD | stray_paths)"
+if [ -n "$stray" ]; then
+  if $had_head; then git reset -q --soft HEAD~1; else git update-ref -d HEAD; fi
+  echo "bs-commit: the commit picked up paths outside the allowed list (a gate or hook staged them); commit undone:" >&2
+  printf '%s\n' "$stray" >&2
+  exit 4
+fi
+
+# A hook's fixes reach a partial commit but not the real index: sync the index to HEAD for those files.
+if $only; then git --literal-pathspecs reset -q -- "${allowed[@]}"; fi
+git rev-parse --short HEAD
