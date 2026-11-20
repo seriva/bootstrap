@@ -52,6 +52,18 @@ for arg in "$@"; do
   done
 done
 
+# Reject unknown names before installing anything, so a typo fails the image build
+# instead of producing an image without that harness.
+for target in "${TARGETS[@]}"; do
+  case "$target" in
+    all | claude | agy | antigravity | codex) ;;
+    *)
+      echo "Error: Unknown harness '$target' (supported: claude, agy, codex, all)." >&2
+      exit 2
+      ;;
+  esac
+done
+
 for target in "${TARGETS[@]}"; do
   case "$target" in
     all)
@@ -67,9 +79,6 @@ for target in "${TARGETS[@]}"; do
       ;;
     codex)
       install_codex
-      ;;
-    *)
-      echo "Warning: Unknown harness '$target', skipping." >&2
       ;;
   esac
 done

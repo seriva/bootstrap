@@ -254,6 +254,10 @@ for target_dir in targets:
     if not target_part1_match:
         has_drift = True
         print(f"  - AGENTS.md Part 1: [DRIFT] '# Part 1: Agent Workflow ... ---' markers not found in {agents_path}; fix manually")
+        # Without Part 1 this may be a repository that never adopted the standard (auto-discovery
+        # picks up any sibling with an AGENTS.md), so nothing else is written into it.
+        print("  - Skipped: nothing else is synced until AGENTS.md has Part 1")
+        continue
     elif target_part1_match.group(1) == canonical_part1:
         print("  - AGENTS.md Part 1: up to date")
     else:

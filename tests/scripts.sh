@@ -226,6 +226,12 @@ expect_ne "hash: sees untracked content change" "$h3" "$h2"
 chmod +x "$r/sp ace.txt"
 run_in "$r" "$TREE_STATE" hash
 expect_ne "hash: sees untracked exec-bit change" "$OUT" "$h3"
+ln -s a "$r/link"
+run_in "$r" "$TREE_STATE" hash
+h4="$OUT"
+ln -sfn b "$r/link"
+run_in "$r" "$TREE_STATE" hash
+expect_ne "hash: sees untracked symlink retarget" "$OUT" "$h4"
 
 r="$(new_repo)"
 mkdir -p "$r/nested"

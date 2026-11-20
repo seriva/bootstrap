@@ -21,7 +21,7 @@ Installs skills into your local AI tools:
 cd ~/dev/bootstrap
 ./install.sh
 ```
-*The installer automatically detects your installed tools and registers the skills. Installed skills are copies, so re-run `./install.sh` after pulling to update them.*
+*The installer automatically detects your installed tools and registers the skills. Installed skills are copies, so re-run `./install.sh` after pulling to update them; it also removes `bs-*` skills and helper scripts this repository no longer ships.*
 
 #### Option B: Docker Agent Server (Isolated / Homelab)
 Spins up a headless server with T3 Code and web-based VS Code:
@@ -173,7 +173,7 @@ plans/                                   plans/
   ./sync.sh --check     # Quality gate mode: exits 1 if any repository has drifted
   ./sync.sh ~/dev/app   # Target specific repositories
   ```
-  `sync.sh` propagates `scaffold/AGENTS.md` Part 1, bridge files, `plans/template.md`, `lefthook-bootstrap.yml`, and the `# >>> bootstrap-managed` `.gitignore` block without touching project-specific Part 2 rules or your `lefthook.yml`.
+  `sync.sh` propagates `scaffold/AGENTS.md` Part 1, bridge files, `plans/template.md`, `lefthook-bootstrap.yml`, and the `# >>> bootstrap-managed` `.gitignore` block without touching project-specific Part 2 rules or your `lefthook.yml`. A repository whose `AGENTS.md` has no Part 1 (a third-party clone, for example) is reported and left untouched.
 
 ---
 
@@ -192,7 +192,7 @@ plans/                                   plans/
 
 For homelabs, remote servers, or sandboxed execution, `docker/` provides an isolated container running **T3 Code** (orchestrator), **code-server** (VS Code in the browser), and configurable worker harnesses (`claude`, `codex`, `agy`) with the bootstrap skills pre-installed.
 
-- **Security:** Both web UIs bind to `127.0.0.1` by default, and `docker compose` requires `PASSWORD` to be set in `docker/.env` before starting.
+- **Security:** Both web UIs bind to `127.0.0.1` by default, and `docker compose` requires `PASSWORD` to be set in `docker/.env` before starting. The container itself also refuses to start without `PASSWORD` (or `HASHED_PASSWORD`) unless you set `CODE_SERVER_AUTH=none`.
 - **Networking & Workers (`docker/.env`):**
   ```bash
   CODE_SERVER_HOST_PORT=8002           # Host port for VS Code web (default 8080)
@@ -200,7 +200,7 @@ For homelabs, remote servers, or sandboxed execution, `docker/` provides an isol
   CODE_SERVER_BIND=0.0.0.0             # Expose on LAN (default 127.0.0.1)
   T3_BIND=0.0.0.0                      # Expose on LAN (default 127.0.0.1)
   T3_BASE_URL=http://my-host.lan:8012  # URL minted in t3-pair links
-  ENABLED_WORKERS=claude,codex,agy     # Available: claude, codex, agy, all
+  ENABLED_WORKERS=claude,codex,agy     # Available: claude, codex, agy, all (an unknown name fails the build)
   ```
 - **Maintenance:** Install a worker dynamically with `docker compose exec agent harness-install codex`, upgrade in-place with `./upgrade.sh` (or `agent-upgrade` inside the container), or rebuild from scratch with `./rebuild.sh`.
 

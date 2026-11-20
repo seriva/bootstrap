@@ -13,6 +13,18 @@ T3_PORT="${T3_PORT:-8011}"
 CS_HOST="${CODE_SERVER_HOST:-0.0.0.0}"
 CS_PORT="${CODE_SERVER_PORT:-8080}"
 
+# code-server hands out a shell with passwordless sudo, so it is never served
+# unauthenticated unless that is asked for explicitly.
+if [ -n "${PASSWORD:-}" ] || [ -n "${HASHED_PASSWORD:-}" ]; then
+  CS_AUTH=password
+elif [ "${CODE_SERVER_AUTH:-}" = none ]; then
+  CS_AUTH=none
+  echo "[entrypoint] Warning: CODE_SERVER_AUTH=none, code-server runs without authentication" >&2
+else
+  echo "[entrypoint] Error: PASSWORD is not set. Set PASSWORD (or HASHED_PASSWORD), or CODE_SERVER_AUTH=none to run code-server without authentication." >&2
+  exit 1
+fi
+
 # Ensure directories exist
 mkdir -p "$WORKSPACE_DIR" "$T3_DIR" \
   /home/coder/.claude \
@@ -28,19 +40,32 @@ if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
   chmod 700 /home/coder/.ssh 2>/dev/null || true
 fi
 
-# Pre-accept workspace trust dialog for Claude Code to avoid headless prompts
+# Claude Code keeps its state in ~/.claude.json, outside the persisted ~/.claude volume:
+# the real file lives on the volume and ~/.claude.json links to it.
 if [ -d /home/coder/.claude ]; then
-  python3 - <<'EOF' 2>/dev/null || true
+  CLAUDE_STATE=/home/coder/.claude/.claude.json
+  CLAUDE_LINK=/home/coder/.claude.json
+  # Claude writes through the link, so a regular file here predates it (e.g. written by the
+  # installer during the image build): it only seeds a volume that has no state yet.
+  if [ -f "$CLAUDE_LINK" ] && [ ! -L "$CLAUDE_LINK" ]; then
+    if [ -e "$CLAUDE_STATE" ]; then
+      rm -f "$CLAUDE_LINK" 2>/dev/null || true
+    else
+      mv "$CLAUDE_LINK" "$CLAUDE_STATE" 2>/dev/null || true
+    fi
+  fi
+  if [ -L "$CLAUDE_LINK" ] || [ ! -e "$CLAUDE_LINK" ]; then
+    ln -sfn "$CLAUDE_STATE" "$CLAUDE_LINK" 2>/dev/null || true
+  fi
+  # Pre-accept workspace trust dialog for Claude Code to avoid headless prompts
+  WORKSPACE_DIR="$WORKSPACE_DIR" python3 - <<'EOF' 2>/dev/null || true
 import json, os
 p = os.path.expanduser("~/.claude/.claude.json")
 d = json.load(open(p)) if os.path.exists(p) else {}
-d.setdefault("projects", {}).setdefault("/home/coder/workspace", {})["hasTrustDialogAccepted"] = True
+d.setdefault("projects", {}).setdefault(os.environ["WORKSPACE_DIR"], {})["hasTrustDialogAccepted"] = True
 os.makedirs(os.path.dirname(p), exist_ok=True)
 json.dump(d, open(p, "w"), indent=2)
 EOF
-  if [ ! -L /home/coder/.claude.json ] && [ ! -f /home/coder/.claude.json ]; then
-    ln -sfn /home/coder/.claude/.claude.json /home/coder/.claude.json 2>/dev/null || true
-  fi
 fi
 
 # Dynamic runtime worker installation (if specified via ENABLED_WORKERS)
@@ -48,15 +73,16 @@ if [ -n "${ENABLED_WORKERS:-}" ]; then
   IFS=',' read -ra WORKERS <<< "$ENABLED_WORKERS"
   # Expand aliases to binary names first: `command -v all` or `command -v antigravity`
   # never succeeds, which would reinstall those harnesses on every boot.
-  # Keep the `all` list in sync with harness-install.
+  # Keep the names in sync with harness-install.
   BINARIES=()
   for w in "${WORKERS[@]}"; do
     w=$(echo "$w" | tr '[:upper:]' '[:lower:]' | xargs)
     case "$w" in
       "") ;;
       all) BINARIES+=(claude agy codex) ;;
-      antigravity) BINARIES+=(agy) ;;
-      *) BINARIES+=("$w") ;;
+      agy | antigravity) BINARIES+=(agy) ;;
+      claude | codex) BINARIES+=("$w") ;;
+      *) echo "[entrypoint] Warning: unknown worker '$w' in ENABLED_WORKERS (supported: claude, agy, codex, all); skipping" >&2 ;;
     esac
   done
   for w in "${BINARIES[@]}"; do
@@ -82,12 +108,17 @@ fi
 
 # Start T3 Code daemon in background (orchestrator)
 echo "[entrypoint] Starting T3 Code web orchestrator on $T3_HOST:$T3_PORT..."
+T3_LOG="$T3_DIR/t3-server.log"
+# Rotate the log once it passes 10 MB so the persistent volume does not grow forever.
+# Copy and truncate: t3 serve holds the log open in append mode and carries on in the emptied file.
+rotate_t3_log() {
+  if [ -f "$T3_LOG" ] && [ "$(stat -c %s "$T3_LOG")" -gt 10485760 ]; then
+    cp -f "$T3_LOG" "$T3_LOG.1" && : > "$T3_LOG"
+  fi
+}
 (
   while true; do
-    # Rotate the log once it passes 10 MB so the persistent volume does not grow forever
-    if [ -f "$T3_DIR/t3-server.log" ] && [ "$(stat -c %s "$T3_DIR/t3-server.log")" -gt 10485760 ]; then
-      mv -f "$T3_DIR/t3-server.log" "$T3_DIR/t3-server.log.1"
-    fi
+    rotate_t3_log || true
     t3 serve \
       --host "$T3_HOST" \
       --port "$T3_PORT" \
@@ -95,8 +126,14 @@ echo "[entrypoint] Starting T3 Code web orchestrator on $T3_HOST:$T3_PORT..."
       --no-browser \
       --base-dir "$T3_DIR" \
       "$WORKSPACE_DIR" \
-      >> "$T3_DIR/t3-server.log" 2>&1 || echo "[entrypoint] Warning: t3 serve exited (see $T3_DIR/t3-server.log); restarting in 5s" >&2
+      >> "$T3_LOG" 2>&1 || echo "[entrypoint] Warning: t3 serve exited (see $T3_LOG); restarting in 5s" >&2
     sleep 5
+  done
+) &
+# t3 serve can run for weeks without restarting, so the size is also checked while it runs
+(
+  while sleep 600; do
+    rotate_t3_log || true
   done
 ) &
 
@@ -106,11 +143,7 @@ CS_ARGS=(--bind-addr "$CS_HOST:$CS_PORT")
 if [ -n "${CODE_SERVER_BASE_PATH:-}" ]; then
   CS_ARGS+=(--base-path "$CODE_SERVER_BASE_PATH")
 fi
-if [ -n "${PASSWORD:-}" ]; then
-  CS_ARGS+=(--auth password)
-else
-  CS_ARGS+=(--auth none)
-fi
+CS_ARGS+=(--auth "$CS_AUTH")
 CS_ARGS+=("$WORKSPACE_DIR")
 
 exec code-server "${CS_ARGS[@]}"

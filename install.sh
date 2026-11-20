@@ -98,6 +98,14 @@ for doc_path in "$SHARED_SRC"/*.md; do
   doc_name="$(basename "$doc_path")"
   sed "${SHARED_SED_ARGS[@]}" "$doc_path" > "$BOOTSTRAP_SHARE_DIR/$doc_name"
 done
+# The share dir holds only what this installer puts there: drop scripts and docs the repo no longer ships.
+for installed_path in "$BOOTSTRAP_SHARE_DIR"/scripts/* "$BOOTSTRAP_SHARE_DIR"/*.md; do
+  [ -f "$installed_path" ] || continue
+  if [ ! -f "$SHARED_SRC/${installed_path#"$BOOTSTRAP_SHARE_DIR"/}" ]; then
+    rm -f "$installed_path"
+    echo "Removed stale $installed_path"
+  fi
+done
 echo "Installed shared docs and helper scripts to $BOOTSTRAP_SHARE_DIR"
 echo "  Models: claude=$BS_MODEL_CLAUDE, agy=$BS_MODEL_AGY, codex=$BS_MODEL_CODEX"
 
@@ -142,6 +150,33 @@ copy_skill() {
 
 strip_frontmatter() {
   awk 'BEGIN{c=0} /^---$/{if(c<2){c++; next}} c>=2{print}'
+}
+
+# Host dirs are shared with the user's own skills, so only names this installer owns are pruned:
+# the bs-* prefix and the skill names used before the bs-* rename.
+RETIRED_SKILL_NAMES=(design-plan execute-plan dev-loop)
+
+# prune_stale <dir> <suffix>: remove installer-owned entries (<skill><suffix>) of skills no longer shipped.
+prune_stale() {
+  local dir="$1" suffix="$2" path name current stale
+  [ -d "$dir" ] || return 0
+  local candidates=("$dir"/bs-*"$suffix")
+  for name in "${RETIRED_SKILL_NAMES[@]}"; do
+    candidates+=("$dir/$name$suffix")
+  done
+  for path in "${candidates[@]}"; do
+    [ -e "$path" ] || [ -L "$path" ] || continue
+    name="$(basename "$path")"
+    name="${name%"$suffix"}"
+    stale=true
+    for current in "${SKILL_NAMES[@]}"; do
+      if [ "$current" = "$name" ]; then stale=false; fi
+    done
+    if [ "$stale" = true ]; then
+      rm -rf "$path"
+      echo "Removed stale $path"
+    fi
+  done
 }
 
 for skill_path in "$SKILLS_SRC"/*/; do
@@ -189,5 +224,19 @@ EOF
     done
   fi
 done
+
+for entry in "${SKILL_DIR_HOSTS[@]}"; do
+  IFS='|' read -r enabled label host_dir <<< "$entry"
+  [ "$enabled" = true ] || continue
+  prune_stale "$host_dir" ""
+done
+if [ "$HAS_CLAUDE" = true ]; then
+  prune_stale "$CLAUDE_COMMANDS_DIR" ".md"
+fi
+if [ "$HAS_COPILOT" = true ]; then
+  for pdir in "${COPILOT_PROMPT_DIRS[@]}"; do
+    prune_stale "$pdir" ".prompt.md"
+  done
+fi
 
 echo "=== Installation Finished ==="

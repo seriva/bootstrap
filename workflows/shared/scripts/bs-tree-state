@@ -10,7 +10,7 @@ usage() {
   cat >&2 <<'EOF'
 Usage: bs-tree-state <command>
   hash                    One hash of the working-tree state: status, diffs, and
-                          untracked file contents and exec bits
+                          untracked file contents, exec bits, and symlink targets
   dirty                   Paths already dirty (modified, staged, or untracked), sorted
   baseline -- <path>...   "<blob-sha|missing|non-file> <path>" per path, in order,
                           then "staged <sha>" for the staged diff of those paths
@@ -39,9 +39,11 @@ case "$cmd" in
       worktree_diff diff
       git diff --cached
       # Untracked files by content and exec bit, including files inside untracked nested repos.
+      # Untracked symlinks by target: `-type f` skips them, and status only lists their path.
       git ls-files --others --exclude-standard -z | xargs -0 sh -c 'for f; do
         find "./$f" -type f -not -path "*/.git/*" -print -exec git hash-object --no-filters {} \;
         find "./$f" -type f -perm -u+x -not -path "*/.git/*"
+        find "./$f" -type l -not -path "*/.git/*" -print -exec readlink {} \;
       done' _
     } | git hash-object --stdin
     ;;

@@ -105,6 +105,16 @@ check_not "legacy broad ignores removed" grep -qxE '\.claude/|\.codex/' "$target
 check "project ignores kept" grep -qx 'my-local-dir/' "$target/.gitignore"
 check "--check passes after adding the block" "$SYNC" --check "$target"
 
+# AGENTS.md without Part 1 (e.g. a third-party clone next to bootstrap): reported, never written to.
+target="$SANDBOX/foreign"
+mkdir -p "$target"
+printf '# Agents\nOwn notes.\n' > "$target/AGENTS.md"
+printf 'Own Claude notes.\n' > "$target/CLAUDE.md"
+before="$(tree_hash "$target")"
+check_not "--check fails on a repo without Part 1" "$SYNC" --check "$target"
+"$SYNC" "$target" >/dev/null 2>&1 || true
+check "sync writes nothing into a repo without Part 1" test "$(tree_hash "$target")" = "$before"
+
 echo "== install.sh"
 home="$SANDBOX/home"
 # Create every host's config dir so all install targets are exercised.
@@ -113,7 +123,20 @@ install_env=(env HOME="$home" XDG_CONFIG_HOME="$home/.config" XDG_DATA_HOME="$ho
 # Local model override replaces one default and leaves the others alone.
 mkdir -p "$home/.config/bootstrap"
 echo 'BS_MODEL_CODEX="smoke-override-model"' > "$home/.config/bootstrap/models.env"
+# Leftovers of an earlier install (a dropped skill, a pre-rename skill, a dropped script) next to the user's own files.
+mkdir -p "$home/.claude/skills/bs-dropped" "$home/.claude/skills/dev-loop" "$home/.claude/skills/own-skill" \
+  "$home/.claude/commands" "$home/.config/Code/User/prompts" "$home/.local/share/bootstrap/scripts"
+touch "$home/.claude/commands/bs-dropped.md" "$home/.claude/commands/own-command.md" \
+  "$home/.config/Code/User/prompts/bs-dropped.prompt.md" "$home/.config/Code/User/prompts/own.prompt.md" \
+  "$home/.local/share/bootstrap/scripts/bs-dropped"
 check "install succeeds" "${install_env[@]}" "$INSTALL"
+for stale in .claude/skills/bs-dropped .claude/skills/dev-loop .claude/commands/bs-dropped.md \
+  .config/Code/User/prompts/bs-dropped.prompt.md .local/share/bootstrap/scripts/bs-dropped; do
+  check_not "install removes stale $stale" test -e "$home/$stale"
+done
+for own in .claude/skills/own-skill .claude/commands/own-command.md .config/Code/User/prompts/own.prompt.md; do
+  check "install keeps the user's $own" test -e "$home/$own"
+done
 check "models.env override is rendered" grep -q 'smoke-override-model' "$home/.local/share/bootstrap/dispatch.md"
 default_claude="$(sed -n 's/^BS_MODEL_CLAUDE="\(.*\)"$/\1/p' "$REPO_DIR/workflows/shared/models.env")"
 check "non-overridden models keep their defaults" grep -qF "$default_claude" "$home/.local/share/bootstrap/dispatch.md"
@@ -152,8 +175,9 @@ missing+="$(grep -rhoE "$home/[^\`\"' )]+/scripts/[A-Za-z0-9_-]+" "$home" | sort
 done)"
 check "conventions.md references helper scripts" grep -qF "$home/.local/share/bootstrap/scripts/" "$home/.local/share/bootstrap/conventions.md"
 check "skills reference helper scripts" grep -rqF "$home/.local/share/bootstrap/scripts/" "$home/.claude/skills"
-# Retired workflow rules: resume never stashes; follow-ups are open or deferred, never routed.
-for retired in 'git stash' 'unrouted' 'Route rule' 'Routed Follow-ups' 'belong'; do
+# Retired workflow rules: resume never stashes; follow-ups are open or deferred, never routed;
+# `.git` is a file in a linked worktree, so paths under it come from `git rev-parse --git-path`.
+for retired in 'git stash' 'unrouted' 'Route rule' 'Routed Follow-ups' 'belong' '.git/info/exclude'; do
   check_not "installed docs and skills never mention '$retired'" \
     grep -rqF -- "$retired" "$home/.local/share/bootstrap" "$home/.claude/skills"
 done
@@ -190,10 +214,10 @@ budget_of() {
     skills/bs-exec/SKILL.md) echo 9650 ;;
     skills/bs-loop/SKILL.md) echo 8850 ;;
     skills/bs-plan/SKILL.md) echo 9200 ;;
-    skills/bs-probe/SKILL.md) echo 2050 ;;
+    skills/bs-probe/SKILL.md) echo 2100 ;;
     skills/bs-review/SKILL.md) echo 6300 ;;
     skills/bs-task/SKILL.md) echo 4250 ;;
-    shared/conventions.md) echo 6700 ;;
+    shared/conventions.md) echo 6750 ;;
     shared/dispatch.md) echo 8050 ;;
     *) echo 0 ;;
   esac
