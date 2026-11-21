@@ -50,3 +50,5 @@ Real bugs outside the diff's scope (`### Out of Scope`) and unfixed behavioural 
 - **<Area>:** <defect in one sentence>. Repro: `<snippet or command>` → got `<actual>`, want `<expected>`. (<PR #N or branch>, <plan-slug Phase N | standalone>)
 ```
 A duplicate gets its provenance appended to the existing entry instead of a new line. An entry ending ` — deferred (…): <reason>` was deferred by the user in `/bs-plan follow-ups`; leave it as is.
+
+**Side sightings**: an agent that spots another defect during work must isolate a one-line repro with `/bs-probe` (at most two quick probes; do not debug or fix an unrelated bug) before returning, and record confirmed ones above. If two probes fail to isolate it, do not drop or paraphrase it: list the exact code and command that triggered it under `### Unconfirmed` in your reply.
