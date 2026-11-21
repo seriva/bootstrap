@@ -45,6 +45,7 @@ Versioning: continuous (rolling `[Unreleased]`, calendar sections `[YYYY-MM]` wh
 - Agent commits with a subject over 72 characters now fail straight away instead of after the full lint run, and a phase is pushed only after its checks have passed.
 - Side bugs spotted during a phase are no longer dropped when the implementer cannot immediately isolate them: the exact code is handed to the reviewer to verify instead. Plan tasks also stay in separate commits unless splitting them would break the build or a task's own tests.
 - The agent container's T3 Code log is now capped while the server keeps running, not only when it restarts.
+- `/bs-exec --auto` no longer merges a phase whose second review showed the fix broke something that used to work, and bugs that review only mentions in passing are now recorded too. Review fixes also update the changelog when they change behaviour, and each phase's commits always land on its own phase branch.
 
 <!-- Add changes here as you work. When cutting a milestone, move this block to a calendar section:
 ## [YYYY-MM]
