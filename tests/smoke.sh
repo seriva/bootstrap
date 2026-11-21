@@ -213,16 +213,16 @@ budget_of() {
   case "$1" in
     skills/bs-exec/SKILL.md) echo 6100 ;;
     skills/bs-loop/SKILL.md) echo 8650 ;;
-    skills/bs-plan/SKILL.md) echo 6700 ;;
+    skills/bs-plan/SKILL.md) echo 9350 ;;
     skills/bs-probe/SKILL.md) echo 2100 ;;
     skills/bs-review/SKILL.md) echo 6100 ;;
     skills/bs-task/SKILL.md) echo 4050 ;;
-    shared/conventions.md) echo 5300 ;;
+    shared/conventions.md) echo 5550 ;;
     shared/dispatch.md) echo 5250 ;;
     *) echo 0 ;;
   esac
 }
-TOTAL_BUDGET=43900
+TOTAL_BUDGET=46600
 total=0
 for f in "$REPO_DIR"/workflows/skills/*/SKILL.md "$REPO_DIR"/workflows/shared/*.md; do
   rel="${f#"$REPO_DIR"/workflows/}"

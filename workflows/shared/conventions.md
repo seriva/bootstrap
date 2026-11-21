@@ -39,5 +39,6 @@ Follow `AGENTS.md` **Audiences**, **Changelog**, and **Docs**. In addition:
 
 Real bugs outside the diff's scope (`### Out of Scope`) and unfixed behavioural `### Low` items (wrong output, crash, broken build, valid input rejected, invalid input accepted) must not be fixed here (**Scope**) and must not be lost in a PR body. Append them to `$TARGET_REPO/plans/follow-ups.md` (create with `# Follow-ups` if missing, skipping duplicates; pure style/wording nits stay in the PR body only):
 ```markdown
-- **<Area>:** <defect in one sentence>. Repro: `<snippet or command>` → got `<actual>`, want `<expected>`. (<PR #N or branch>)
+- **<Area>:** <defect in one sentence>. Repro: `<snippet or command>` → got `<actual>`, want `<expected>`. (<PR #N or branch>, <plan-slug Phase N | standalone>)
 ```
+A duplicate gets its provenance appended to the existing entry instead of a new line. An entry ending ` — deferred (…): <reason>` was deferred by the user in `/bs-plan follow-ups`; leave it as is.

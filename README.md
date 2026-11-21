@@ -75,11 +75,12 @@ flowchart TD
 
     DL -->|"Blocked after pass 2"| Human["Draft PR, human steps in"]
     DL -.->|"Logs out-of-scope bugs"| FU["plans/follow-ups.md"]
+    FU -.->|"You run /bs-plan follow-ups"| DP
 ```
 
 | Skill | Role | Output |
 | :--- | :--- | :--- |
-| **`/bs-plan`** | Probe the codebase, define scope boundaries, and split work into small TDD phases (`review` audits a plan) | Verified design plan in `plans/` |
+| **`/bs-plan`** | Probe the codebase, define scope boundaries, and split work into small TDD phases (`review` audits a plan; `follow-ups` turns logged bugs you pick into fix phases) | Verified design plan in `plans/` |
 | **`/bs-exec`** | Orchestrate an approved plan phase by phase on `feat/<plan-slug>`, then open the final merge PR | One reviewed, CI-verified PR per phase and a CI-verified final PR into `main` |
 | **`/bs-loop`** | Implement a single phase or standalone task by orchestrating `/bs-task`, `/bs-review`, and `/bs-probe` through a PR and 2-pass review | Tested, AI-reviewed, CI-verified PR |
 | **`/bs-task`** | Single-task TDD implementation with root-cause checks and quality gates (used standalone on current branch or per task inside `/bs-loop`) | Verified local changes (optional safe commit) |
@@ -95,6 +96,7 @@ Probes the codebase empirically to prove every claimed problem exists before dra
 /bs-plan Add WebSocket reconnection with exponential backoff
 /bs-plan in gofront: Implement the encoding/csv stdlib package
 /bs-plan review plans/v1.8.0/portable-go-plan.md       # Audit & tighten in a fresh session/model
+/bs-plan follow-ups plans/v1.8.0/portable-go-plan.md   # Re-probe follow-ups, group by root cause, you pick what to schedule
 ```
 
 ### 2. `/bs-exec` — Phase-by-Phase Orchestration
@@ -108,7 +110,7 @@ Operates on a dedicated `feat/<plan-slug>` branch and runs `/bs-loop` for each p
 1. **TDD (`/bs-task` & `/bs-probe`):** Runs `/bs-task` for the standalone task or for each `Task N.M` in a plan phase (which uses `/bs-probe` when isolating root causes), writing a failing test first and the minimal implementation to pass.
 2. **Quality Gate & Docs:** Runs the project's pre-commit gate and updates `CHANGELOG.md` / user docs when behavior changed.
 3. **Draft PR:** Pushes the branch and opens a draft PR.
-4. **2-Pass Fresh AI Review (`/bs-review` & `/bs-probe`):** Pass 1 runs `/bs-review` in a fresh reviewer context with active `/bs-probe` verification in `.probes/`. High/Medium findings get at most one fix turn, after which a *new* fresh reviewer verifies the fixes. Pass 2 is terminal: `LGTM` passes the gate; anything unresolved leaves the PR in Draft as `BLOCKED_BY_DEFECTS` for you to investigate. Out-of-scope bugs and unfixed behavioral nits are logged to `plans/follow-ups.md` with a repro.
+4. **2-Pass Fresh AI Review (`/bs-review` & `/bs-probe`):** Pass 1 runs `/bs-review` in a fresh reviewer context with active `/bs-probe` verification in `.probes/`. High/Medium findings get at most one fix turn, after which a *new* fresh reviewer verifies the fixes. Pass 2 is terminal: `LGTM` passes the gate; anything unresolved leaves the PR in Draft as `BLOCKED_BY_DEFECTS` for you to investigate. Out-of-scope bugs and unfixed behavioral nits are logged to `plans/follow-ups.md` with a repro. They stay there until you run `/bs-plan follow-ups`, which re-probes them, groups them by root cause, and asks you which groups to schedule, defer, or drop.
 5. **CI Gate:** Waits for remote CI checks before marking the PR ready, for standalone tasks and plan phases alike.
 
 ### 4. Ad-Hoc Local Workflow (`/bs-probe`, `/bs-task`, `/bs-review`)

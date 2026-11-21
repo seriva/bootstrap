@@ -1,11 +1,11 @@
 ---
 name: bs-plan
-description: Conducts an empirical codebase audit with probe verification, defines scope boundaries, and drafts an exhaustive engineering design plan matching the bootstrap standard. `review` mode audits and tightens an existing plan against the codebase.
+description: Conducts an empirical codebase audit with probe verification, defines scope boundaries, and drafts an exhaustive engineering design plan matching the bootstrap standard. `review` mode audits and tightens an existing plan against the codebase; `follow-ups` mode re-probes the open review follow-ups, groups them by root cause, and schedules the clusters the user picks as fix phases.
 ---
 
 # Autonomous Design Plan Generator (bs-plan)
 
-Invoking `/bs-plan` authorizes inspecting code, running non-destructive probes/tests, writing a plan under `plans/`, and linking it in `plans/roadmap.md`. Shared worker conventions (**Target**, **States**, **Probes**, **People docs**) are defined in `{{BS_CONVENTIONS}}`.
+Invoking `/bs-plan` authorizes inspecting code, running non-destructive probes/tests, writing a plan under `plans/`, and linking it in `plans/roadmap.md`. Shared worker conventions (**Target**, **States**, **Probes**, **People docs**, **Follow-ups**) are defined in `{{BS_CONVENTIONS}}`.
 
 ## Operational Workflow
 
@@ -26,6 +26,7 @@ Invoking `/bs-plan` authorizes inspecting code, running non-destructive probes/t
 1. **Location**: `$TARGET_REPO/plans/vX.Y.Z/<plan-slug>-plan.md` (versioned) or `$TARGET_REPO/plans/<plan-slug>-plan.md` (continuous), following `plans/template.md` sections and order.
 2. **Implementation Tasks (The Phase Contract)**:
    - **1 Phase = 1 `/bs-loop` Run** (1 phase branch, 1 PR, 1 isolated 2-pass review). Group tasks strictly by root cause and shared file/subsystem locality; never create catch-all phases that bundle unrelated modules just to pad task count, and never bundle subsystems into one mega-phase. Order prerequisite target/backend work before or inside the phase that tests it so later phases do not rewrite earlier phases' test assertions.
+   - Phases added later (`follow-ups` mode) append with the next integer; never renumber existing phases.
    - **2–4 tasks per phase** (hard max 5); ~150–400 net **production** LOC (excluding tests, fixtures, and docs) across 2–5 files per phase, and no single task over ~150 production LOC (split helpers/data structures from wiring), so mid-tier implementers and AI review stay focused.
    - **Task contract**: every `- [ ] Task N.M` specifies `Files:` (1–3 source files), `Test:` (test file + failing test written first), and `Done when:` (falsifiable condition). Each task = 1 atomic commit; each phase = 1 PR merged with a merge commit.
    - **Audience**: the plan is for agents (dense, symbol-heavy text and IDs are fine), except the **Release note:** header line, which `/bs-loop` turns into the `CHANGELOG.md` entry (write for someone upgrading per `AGENTS.md` **Changelog**).
@@ -49,3 +50,19 @@ Audits and tightens an existing plan against `$TARGET_REPO`. **NO SELF-REVIEW:**
    - **Execution readiness (Step 4)**: Phases compile and pass tests sequentially with no forward dependencies and obey the Step 4.2 task/phase contract and `AGENTS.md` **Changelog**/**Docs** rules.
    - **In-scope edge cases**: Check touched callers, types, and `AGENTS.md` boundaries for missed interactions or broken invariants without proposing features outside the `Scope Boundary Matrix`.
 3. **Revise & Summarize**: Ask the user per `AGENTS.md` **Blockers** on any scope or design trade-off; otherwise fix verified issues in `$PLAN_FILE` in-place. Report findings, probes run, and edits made (or `PLAN_LGTM`), and remind the user to commit before `/bs-exec`.
+
+---
+
+## Follow-up Mode (`/bs-plan follow-ups [<plan-path>]`)
+
+Run by the user to turn open entries in `plans/follow-ups.md` (**Follow-ups** in `{{BS_CONVENTIONS}}`) into planned work. The user decides what gets scheduled; never schedule, defer, or drop an entry without their answer (**Blockers**).
+- **With `<plan-path>`** (must not be `closed`, **States**): entries whose provenance names its `<plan-slug>`, plus open entries its Scope Rule covers.
+- **Without**: every open entry. Deferred entries only if the user asks.
+
+1. **Context**: Step 1 above, plus the Scope Rule & Boundary Matrix of every active plan (`"{{BS_PLAN_STATE}}" active`).
+2. **Re-probe every entry** per **Probes**. Entries that no longer reproduce or are already scheduled in an active plan are proposed for deletion. Name each entry's root cause by reading the code (Step 2.3), then cluster entries by root.
+3. **Widen each root** per Step 2.3: probe the root's other paths, not only the logged repros.
+4. **Ask the user**: present each cluster (root, entries, failing siblings, rough size per Step 4.2) with a recommended target: `<plan-path>`, another active plan whose Scope Rule covers it, or a new `follow-ups-YYYY-MM-DD` plan. Per cluster the user picks **Schedule** (and where), **Defer** (with their reason), or **Drop**. Write nothing until they answer.
+5. **Schedule**: in each target plan, add `### Review follow-ups (YYYY-MM-DD)` to Verified Gaps, grouped by root (`Area | Finding | Evidence & probe`: repro, observed vs expected, originating PR, siblings and passing controls). Append one phase per cluster (split by Step 4.2 sizing, never merge unrelated roots) after the last existing phase, fixing the shared mechanism with each repro and sibling as a `Test:` assertion; note under the first new phase that it was scheduled from review follow-ups. A new plan is drafted with Steps 1–5.
+6. **Update the ledger**: delete scheduled, dropped, and no-longer-reproducing entries; append ` — deferred (<plan-slug or user>): <reason>` to deferred ones.
+7. **Summary**: report re-probes, each cluster's decision, new phases or plans, and deferrals; remind the user to optionally run `/bs-plan review` in a fresh session, then commit the updated files (`docs(<plan-slug>): schedule review follow-ups`, with `plans/roadmap.md` if a plan was created) before `/bs-exec` (on `feat/<plan-slug>` when extending a plan).
