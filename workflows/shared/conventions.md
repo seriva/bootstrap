@@ -24,8 +24,8 @@ Throwaway probes go in the host's scratch dir (or `$TARGET_REPO/.probes/` when t
 
 ## Gate runs
 **Full gate**: `AGENTS.md` **Format**, **Lint**, and **Test** as written (none: **Pre-commit gate**).
-1. **Run**: `log="$(mktemp)"; <cmd> >"$log" 2>&1; echo "exit=$?" >>"$log"`, in the background if it may outlast the host's foreground limit (Claude Code: 10 min); wait for its completion notification. Never poll with `sleep`/done-files, reuse a fixed log name, or pipe a gate through `tail`/`grep`/`tee`.
-2. **Result**: `exit=0` is green; anything else is red, timeouts and "host load" included.
+1. **Run** each command on its own (never `&&`-chained into one) as `log="$(mktemp)"; <cmd> >"$log" 2>&1; echo "exit=$?" >>"$log"`, in the foreground with the host's longest timeout (Claude Code: 10 min). Only a single command that can outlast it goes to the background, and then stay in your turn with one blocking wait (Claude Code: Monitor running `until grep -q '^exit=' "$log"; do sleep 10; done`): ending your turn to wait kills a subagent's background job, and `t3_background_wait` returns at once for shell jobs. Never poll across tool calls or turns, reuse a fixed log name, or pipe a gate through `tail`/`grep`/`tee`.
+2. **Result**: `exit=0` is green; anything else is red, timeouts and "host load" included. Warnings your diff causes are yours to fix, also off its lines (e.g. an import it left unused); only warnings already on the base are pre-existing.
 3. **Report**: implementers and `Defect Fixer` end with `Full gate: exit <N> @ <short-sha>` (HEAD right after committing the gated tree).
 
 ## Safe commit
