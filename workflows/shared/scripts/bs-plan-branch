@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Plan branch setup for /bs-exec: check out (or create and push) feat/<plan-slug>, resolve the
+# base branch, and persist it in the plan's header. The one helper that writes a working-tree
+# file: it rewrites only the plan's **Status:** and **Base branch:** lines, then commits them.
+# Paths are always repo-root-relative, whatever directory it is called from.
+
+usage() {
+  cat >&2 <<'EOF'
+Usage: bs-plan-branch <plan-file>
+Requires a clean tree, fetches origin, then:
+  PLAN_BRANCH  feat/<plan-slug> (<plan-slug>: file name without .md and a trailing -plan);
+               checked out and pulled if it exists locally or on origin, else created from
+               BASE_BRANCH and pushed with tracking
+  BASE_BRANCH  the plan's **Base branch:** value (backticks stripped) if origin/<name> exists;
+               else the starting branch if it is main, master, v<digit>*, or release/*;
+               else origin's default branch
+Then writes "**Base branch:** <BASE_BRANCH>  " after **Status:** (replacing any other one),
+turns "**Status:** Draft" into "**Status:** In Progress  ", and if that changed the file
+commits it ("docs(<plan-slug>): start plan") and pushes.
+Prints KEY=value lines: PLAN_SLUG, PLAN_BRANCH, BASE_BRANCH, START_BRANCH, CREATED (true|false),
+COMMITTED (<short SHA>|none).
+Exit: 0 ok, 2 usage or bad plan file, 3 git fetch/checkout/pull/push failed, 4 dirty tree
+      (paths on stderr), 5 commit failed (bs-commit's error on stderr)
+EOF
+  exit 2
+}
+
+die() { echo "bs-plan-branch: $2" >&2; exit "$1"; }
+
+[ $# -eq 1 ] && [ -n "$1" ] || usage
+git rev-parse --is-inside-work-tree >/dev/null 2>&1 || die 2 "not inside a git work tree"
+cd "$(git rev-parse --show-toplevel)"
+plan="${1#./}"
+[ -f "$plan" ] || die 2 "no such plan file: $1"
+grep -q '^\*\*Status:\*\*' "$plan" || die 2 "no **Status:** line in $plan"
+
+dirty="$(git status --porcelain)"
+if [ -n "$dirty" ]; then
+  printf '%s\n' "$dirty" >&2
+  die 4 "working tree is not clean; commit or clean these paths first"
+fi
+git fetch -q origin || die 3 "git fetch origin failed"
+
+slug="$(basename "$plan" .md)"
+slug="${slug%-plan}"
+plan_branch="feat/$slug"
+start="$(git symbolic-ref -q --short HEAD || true)"
+created=false
+
+has_local() { git show-ref --verify --quiet "refs/heads/$1"; }
+has_remote() { git rev-parse --verify --quiet "refs/remotes/origin/$1" >/dev/null; }
+
+if has_local "$plan_branch" || has_remote "$plan_branch"; then
+  git checkout -q "$plan_branch" || die 3 "git checkout $plan_branch failed"
+  if git rev-parse --verify --quiet '@{upstream}' >/dev/null; then
+    git pull -q --ff-only || die 3 "git pull on $plan_branch failed"
+  fi
+  [ -f "$plan" ] || die 2 "$plan does not exist on $plan_branch"
+fi
+
+# base_line: the plan's **Base branch:** value, backticks and surrounding spaces stripped.
+base_line() {
+  sed -n 's/^\*\*Base branch:\*\*[[:space:]]*//p' "$plan" | head -n 1 | tr -d '`' | sed 's/[[:space:]]*$//'
+}
+recorded="$(base_line)"
+if [ -n "$recorded" ] && has_remote "$recorded"; then
+  base="$recorded"
+else
+  case "$start" in
+    main | master | v[0-9]* | release/*) base="$start" ;;
+    *)
+      base="$(git symbolic-ref -q --short refs/remotes/origin/HEAD || true)"
+      base="${base#origin/}"
+      if [ -z "$base" ]; then
+        for b in main master; do has_remote "$b" && { base="$b"; break; }; done
+      fi
+      [ -n "$base" ] || die 3 "cannot resolve origin's default branch (run: git remote set-head origin -a)"
+      ;;
+  esac
+fi
+
+if ! has_local "$plan_branch" && ! has_remote "$plan_branch"; then
+  if has_local "$base"; then from="$base"; else from="origin/$base"; fi
+  git rev-parse --verify --quiet "$from" >/dev/null || die 3 "base branch $base not found locally or on origin"
+  git cat-file -e "$from:$plan" 2>/dev/null || die 2 "$plan is not committed on $base; commit it there first"
+  git checkout -q --no-track -b "$plan_branch" "$from" || die 3 "git checkout -b $plan_branch failed"
+  git push -q -u origin "$plan_branch" || die 3 "git push -u origin $plan_branch failed"
+  created=true
+fi
+
+# Rewrite only the header lines; every other line is copied byte for byte.
+tmp="$(mktemp "${TMPDIR:-/tmp}/bs-plan-branch.XXXXXX")"
+trap 'rm -f "$tmp"' EXIT
+# A recorded line that already names the base is kept as written (backticks and all).
+keep=false
+[ "$recorded" = "$base" ] && keep=true
+awk -v base="$base" -v keep="$keep" '
+  keep == "false" && /^\*\*Base branch:\*\*/ { next }
+  !done && /^\*\*Status:\*\*/ {
+    line = $0
+    if (line ~ /^\*\*Status:\*\*[[:space:]]*Draft[[:space:]]*$/) line = "**Status:** In Progress  "
+    print line
+    if (keep == "false") print "**Base branch:** " base "  "
+    done = 1
+    next
+  }
+  { print }
+  END { if (!done) exit 3 }
+' "$plan" > "$tmp" || die 2 "no **Status:** line in $plan"
+
+committed=none
+if ! cmp -s "$tmp" "$plan"; then
+  cat "$tmp" > "$plan"
+  git add -- "$plan"
+  err="$(mktemp "${TMPDIR:-/tmp}/bs-plan-branch.err.XXXXXX")"
+  trap 'rm -f "$tmp" "$err"' EXIT
+  if ! committed="$("$(dirname "$0")/bs-commit" --exclude-hook '' -m "docs($slug): start plan" -- "$plan" 2>"$err")"; then
+    cat "$err" >&2
+    die 5 "commit of $plan failed"
+  fi
+  git push -q origin "$plan_branch" || die 3 "git push origin $plan_branch failed"
+fi
+
+printf 'PLAN_SLUG=%s\nPLAN_BRANCH=%s\nBASE_BRANCH=%s\nSTART_BRANCH=%s\nCREATED=%s\nCOMMITTED=%s\n' \
+  "$slug" "$plan_branch" "$base" "$start" "$created" "$committed"

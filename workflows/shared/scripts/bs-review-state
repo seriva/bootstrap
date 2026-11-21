@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Review-run state of a branch's PR for the bs-* skills, from one `gh pr view` call. Read-only.
-# /bs-loop writes these markers; tests/smoke.sh checks its text still matches them.
+# Review-run state of a branch's PR for the bs-* skills, from one `gh pr view` call, and the
+# writer of the Gate line /bs-loop records (`set`), so reader and writer share these markers.
+# Never writes the working tree.
 PLACEHOLDER='*Automated AI review & fix cycle in progress...*'
 FIX_SUBJECT_SUFFIX=': address review feedback'
 GATE_MARKER='**Gate:**'
@@ -10,6 +11,7 @@ GATE_MARKER='**Gate:**'
 usage() {
   cat >&2 <<'EOF'
 Usage: bs-review-state <branch>
+       bs-review-state set <branch> <GATE> <detail> [<report-file>]
 Prints "<state> <base-branch>", or "none" when the branch has no PR. <state> is the first match:
   merged | closed        the PR is merged or closed (gh may return one for a reused branch name)
   ready                  open and not a draft
@@ -18,14 +20,55 @@ Prints "<state> <base-branch>", or "none" when the branch has no PR. <state> is 
   gated:<GATE>           draft with a Gate line: BLOCKED_BY_CI (anywhere in the body), else
                          BLOCKED_BY_DEFECTS, else PASSED (on a Gate line)
   draft                  any other draft
-Exit: 0 ok, 2 usage, 3 gh failed
+set writes "**Gate:** <GATE> (<detail>)", GATE one of PASSED, BLOCKED_BY_DEFECTS, BLOCKED_BY_CI:
+  while the body has the placeholder, the line holding it becomes "## Review Status", the
+  Gate line, and <report-file>'s contents (required then; e.g. Findings and probe details);
+  afterwards it replaces the first Gate line (no <report-file>). Then prints the new state.
+Exit: 0 ok, 2 usage, 3 gh failed, 4 (set) PR body has neither the placeholder nor a Gate line
 EOF
   exit 2
 }
 
-[ $# -eq 1 ] && [ -n "$1" ] || usage
 err="$(mktemp "${TMPDIR:-/tmp}/bs-review-state.XXXXXX")"
-trap 'rm -f "$err"' EXIT
+body_file="$(mktemp "${TMPDIR:-/tmp}/bs-review-state.body.XXXXXX")"
+trap 'rm -f "$err" "$body_file"' EXIT
+
+if [ "${1:-}" = set ]; then
+  [ $# -ge 4 ] && [ $# -le 5 ] && [ -n "$2" ] && [ -n "$4" ] || usage
+  branch="$2" gate="$3" detail="$4" report="${5:-}"
+  case "$gate" in PASSED | BLOCKED_BY_DEFECTS | BLOCKED_BY_CI) ;; *) usage ;; esac
+  [ -z "$report" ] || [ -f "$report" ] || { echo "bs-review-state: no such report file: $report" >&2; exit 2; }
+  if ! body="$(gh pr view "$branch" --json body --jq '"\(.body)"' 2>"$err")"; then
+    cat "$err" >&2
+    exit 3
+  fi
+  line="$GATE_MARKER $gate ($detail)"
+  if printf '%s\n' "$body" | grep -qF -- "$PLACEHOLDER"; then
+    [ -n "$report" ] || { echo "bs-review-state: set needs a <report-file> to replace the placeholder" >&2; exit 2; }
+    printf '%s\n' "$body" | PH="$PLACEHOLDER" LINE="$line" REPORT="$report" awk '
+      !done && index($0, ENVIRON["PH"]) {
+        print "## Review Status"; print ""; print ENVIRON["LINE"]; print ""
+        while ((getline r < ENVIRON["REPORT"]) > 0) print r
+        done = 1; next
+      }
+      { print }' > "$body_file"
+  elif printf '%s\n' "$body" | grep -qE '\*\*Gate(:\*\*|\*\*:)'; then
+    [ -z "$report" ] || { echo "bs-review-state: <report-file> only replaces the placeholder" >&2; exit 2; }
+    printf '%s\n' "$body" | LINE="$line" awk '
+      !done && /\*\*Gate(:\*\*|\*\*:)/ { print ENVIRON["LINE"]; done = 1; next }
+      { print }' > "$body_file"
+  else
+    echo "bs-review-state: PR body for $branch has neither the review placeholder nor a Gate line" >&2
+    exit 4
+  fi
+  if ! gh pr edit "$branch" --body-file "$body_file" >/dev/null 2>"$err"; then
+    cat "$err" >&2
+    exit 3
+  fi
+  exec "$0" "$branch"
+fi
+
+[ $# -eq 1 ] && [ -n "$1" ] || usage
 
 # First line: state, isDraft, baseRefName, number of fix commits (tab-separated); then the body.
 jq_record="\"\(.state)\t\(.isDraft)\t\(.baseRefName)\t\([.commits[].messageHeadline | select(endswith(\"$FIX_SUBJECT_SUFFIX\"))] | length)\n\(.body)\""

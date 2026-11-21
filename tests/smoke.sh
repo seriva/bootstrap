@@ -181,9 +181,10 @@ for retired in 'git stash' 'unrouted' 'Route rule' 'Routed Follow-ups' 'belong' 
   check_not "installed docs and skills never mention '$retired'" \
     grep -rqF -- "$retired" "$home/.local/share/bootstrap" "$home/.claude/skills"
 done
-# bs-review-state reads the markers and gate tokens /bs-loop writes: both must stay in sync.
+# bs-loop writes the PR placeholder and the fix-commit subject that bs-review-state reads; the Gate
+# line itself is written by `bs-review-state set`, so only these two markers live in prose.
 review_state_src="$REPO_DIR/workflows/shared/scripts/bs-review-state"
-for name in PLACEHOLDER FIX_SUBJECT_SUFFIX GATE_MARKER; do
+for name in PLACEHOLDER FIX_SUBJECT_SUFFIX; do
   marker="$(sed -n "s/^$name='\(.*\)'\$/\1/p" "$review_state_src" 2>/dev/null || true)"
   check "bs-loop writes the bs-review-state $name" test -n "$marker" -a -n "$(grep -F -- "$marker" "$REPO_DIR/workflows/skills/bs-loop/SKILL.md")"
 done
@@ -191,8 +192,8 @@ for gate in PASSED BLOCKED_BY_DEFECTS BLOCKED_BY_CI; do
   check "bs-loop and bs-review-state agree on gate $gate" \
     sh -c 'grep -qF "$1" "$2" && grep -qF "$1" "$3"' _ "$gate" "$REPO_DIR/workflows/skills/bs-loop/SKILL.md" "$review_state_src"
 done
-check "bs-loop writes the **Gate:** line bs-review-state reads" grep -qF '`**Gate:** <PASSED' "$REPO_DIR/workflows/skills/bs-loop/SKILL.md"
-for pair in conventions.md:bs-plan-state skills/bs-exec/SKILL.md:bs-plan-state \
+check "bs-loop writes the Gate line through bs-review-state set" grep -qF 'bs-review-state" set ' "$home/.claude/skills/bs-loop/SKILL.md"
+for pair in conventions.md:bs-plan-state skills/bs-exec/SKILL.md:bs-plan-state skills/bs-exec/SKILL.md:bs-plan-branch \
   conventions.md:bs-review-state skills/bs-loop/SKILL.md:bs-review-state skills/bs-exec/SKILL.md:bs-review-state \
   skills/bs-review/SKILL.md:bs-diff-target dispatch.md:bs-pr-ci \
   skills/bs-probe/SKILL.md:bs-worktree skills/bs-review/SKILL.md:bs-worktree; do
@@ -212,7 +213,7 @@ echo "== size budgets"
 budget_of() {
   case "$1" in
     skills/bs-exec/SKILL.md) echo 6100 ;;
-    skills/bs-loop/SKILL.md) echo 8650 ;;
+    skills/bs-loop/SKILL.md) echo 8900 ;;
     skills/bs-plan/SKILL.md) echo 9350 ;;
     skills/bs-probe/SKILL.md) echo 2100 ;;
     skills/bs-review/SKILL.md) echo 6100 ;;
@@ -222,7 +223,7 @@ budget_of() {
     *) echo 0 ;;
   esac
 }
-TOTAL_BUDGET=46600
+TOTAL_BUDGET=47000
 total=0
 for f in "$REPO_DIR"/workflows/skills/*/SKILL.md "$REPO_DIR"/workflows/shared/*.md; do
   rel="${f#"$REPO_DIR"/workflows/}"

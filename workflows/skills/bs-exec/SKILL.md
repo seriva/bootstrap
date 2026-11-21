@@ -11,12 +11,8 @@ Invoking `/bs-exec` authorizes managing plan branches, running `/bs-loop` per ph
 
 ### Step 1: Target Discovery & Epic Branch Setup
 1. **Mode & Role Flags**: `AUTO_MODE=true` with `--auto`, else `false`. Resolve `IMPLEMENTER`, `REVIEWER`, and their models per **Dispatch**.
-2. **Target & Plan (`PLAN_FILE`)**: Resolve `$TARGET_REPO` and read `AGENTS.md` per **Target** (`{{BS_CONVENTIONS}}`). Use the explicit plan path, else the one plan `"{{BS_PLAN_STATE}}" active` lists (ask if it lists several). Derive `<plan-slug>` by stripping `.md` and any trailing `-plan`.
-3. **Branch Hierarchy**:
-   - Require a clean tree (`git status --porcelain`); if dirty, stop, list the paths, and ask the user to commit or clean them first (never stash, discard, or commit them). Fetch `origin`.
-   - `PLAN_BRANCH`: `feat/<plan-slug>`. Record `START_BRANCH`, then if `$PLAN_BRANCH` or `origin/$PLAN_BRANCH` exists, check it out and pull so `$PLAN_FILE` has any persisted `**Base branch:**` line.
-   - `BASE_BRANCH`: `**Base branch:** <name>` from `$PLAN_FILE` (backticks stripped) if `git rev-parse --verify --quiet "origin/<name>"` succeeds; else `START_BRANCH` if it is `main` or a version branch; else the default branch. Create a missing `$PLAN_BRANCH` (`git checkout -b "$PLAN_BRANCH" "$BASE_BRANCH"`) and push it with tracking.
-   - Persist base: if `$PLAN_FILE` lacks a valid `**Base branch:**` line, insert `**Base branch:** $BASE_BRANCH  ` (two trailing spaces) after `**Status:**` (replacing any invalid one). If `**Status:** Draft`, set `**Status:** In Progress  `. If changed, `git add -- "$PLAN_FILE"`, commit with `"{{BS_COMMIT}}" --exclude-hook '' -m "docs(<plan-slug>): start plan" -- "$PLAN_FILE"` (exit codes: **Safe commit** step 4), and push on `$PLAN_BRANCH`.
+2. **Target & Plan (`PLAN_FILE`)**: Resolve `$TARGET_REPO` and read `AGENTS.md` per **Target** (`{{BS_CONVENTIONS}}`). Use the explicit plan path, else the one plan `"{{BS_PLAN_STATE}}" active` lists (ask if it lists several).
+3. **Plan Branch**: run `"{{BS_PLAN_BRANCH}}" "$PLAN_FILE"`; it checks out (or creates and pushes) `feat/<plan-slug>`, resolves the base branch, records it in the plan's `**Base branch:**` line, turns `Draft` into `In Progress`, and commits and pushes that header. Take `PLAN_SLUG` (`<plan-slug>`), `PLAN_BRANCH`, `BASE_BRANCH`, and `START_BRANCH` from its `KEY=value` output. Exit 4 (dirty tree): stop, list the paths it printed, and ask the user to commit or clean them (never stash, discard, or commit them). Exit 2, 3, or 5: stop and report its error.
 
 ### Step 2: Plan State Analysis
 1. `git checkout "$PLAN_BRANCH" && git pull`, then `"{{BS_PLAN_STATE}}" "$PLAN_FILE"` (**States**).

@@ -12,6 +12,7 @@ TREE_STATE="$REPO_DIR/workflows/shared/scripts/bs-tree-state"
 COMMIT="$REPO_DIR/workflows/shared/scripts/bs-commit"
 PLAN_STATE="$REPO_DIR/workflows/shared/scripts/bs-plan-state"
 REVIEW_STATE="$REPO_DIR/workflows/shared/scripts/bs-review-state"
+PLAN_BRANCH="$REPO_DIR/workflows/shared/scripts/bs-plan-branch"
 DIFF_TARGET="$REPO_DIR/workflows/shared/scripts/bs-diff-target"
 WORKTREE="$REPO_DIR/workflows/shared/scripts/bs-worktree"
 PR_CI="$REPO_DIR/workflows/shared/scripts/bs-pr-ci"
@@ -87,7 +88,8 @@ add_hook() { # add_hook <repo> <script body>: install a pre-commit hook
 
 # Fake gh: logs each call to $FAKE_GH/calls and serves real JSON fixtures through the
 # script's actual --json field filter and --jq expression (via jq if installed, else Python 3):
-#   pr view: pr-view.json (or pr-view.err, exit 1);
+#   pr view: pr-view.json (or pr-view.err, exit 1); pr edit --body-file: copies the file to
+#   pr-edit.body and into pr-view.json's body (or exits with pr-edit.rc);
 #   pr checks --watch: prints pr-checks.<call#>.out (else pr-checks.out) to stderr and exits with
 #   pr-checks.<call#>.rc (else pr-checks.rc, else 0); pr checks --json: pr-checks.json, else exit 1.
 FAKE_GH="$SANDBOX/fake-gh"
@@ -99,11 +101,12 @@ d="$FAKE_GH"
 printf '%s\n' "$*" >> "$d/calls"
 cmd="$1 $2"
 shift 2
-fields="" jq_expr=""
+fields="" jq_expr="" body_file=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --json) fields="$2"; shift 2 ;;
     --jq|-q) jq_expr="$2"; shift 2 ;;
+    --body-file) body_file="$2"; shift 2 ;;
     *) shift ;;
   esac
 done
@@ -164,6 +167,16 @@ case "$cmd" in
   "pr view")
     if [ -f "$d/pr-view.err" ]; then cat "$d/pr-view.err" >&2; exit 1; fi
     render_json "$d/pr-view.json" ;;
+  "pr edit")
+    if [ -f "$d/pr-edit.rc" ]; then echo "fake gh: pr edit failed" >&2; exit "$(cat "$d/pr-edit.rc")"; fi
+    cp "$body_file" "$d/pr-edit.body"
+    python3 - "$d/pr-view.json" "$body_file" <<'PY'
+import json, sys
+data = json.load(open(sys.argv[1]))
+data["body"] = open(sys.argv[2]).read()
+json.dump(data, open(sys.argv[1], "w"))
+PY
+    ;;
   "pr checks")
     if [ -n "$fields" ]; then
       [ -f "$d/pr-checks.json" ] || { echo "no pull requests found" >&2; exit 1; }
@@ -602,6 +615,115 @@ review_state feat/x
 expect_eq "draft without placeholder or Gate: draft" "$OUT" "draft feat/base"
 review_state
 expect_code "no branch: usage error" 2
+
+echo "== bs-review-state set"
+printf '### Findings\n- High: none\n<details>probes</details>\n' > "$SANDBOX/report.md"
+pr_record OPEN true 0 "$(printf '## Summary\nDid things.\n\n## Review Status: %s\n\n## Tail\nkept' "$PH")"
+review_state set feat/x PASSED "2 passes" "$SANDBOX/report.md"
+expect_code "set: placeholder replaced, exit 0" 0
+expect_eq "set: prints the state read back" "$OUT" "gated:PASSED feat/base"
+check "set: Gate line written in the marker format" grep -qxF '**Gate:** PASSED (2 passes)' "$FAKE_GH/pr-edit.body"
+check "set: heading without the placeholder" grep -qx '## Review Status' "$FAKE_GH/pr-edit.body"
+check_not() { ! "$@"; }
+check "set: placeholder gone" check_not grep -qF "$PH" "$FAKE_GH/pr-edit.body"
+check "set: report inserted" grep -qxF '<details>probes</details>' "$FAKE_GH/pr-edit.body"
+check "set: rest of the body kept" sh -c 'grep -qx "Did things." "$1" && grep -qx kept "$1"' _ "$FAKE_GH/pr-edit.body"
+review_state set feat/x BLOCKED_BY_CI "2 passes; failing: test, lint"
+expect_eq "set: Gate line rewritten to BLOCKED_BY_CI" "$OUT" "gated:BLOCKED_BY_CI feat/base"
+expect_eq "set: still one Gate line" "$(grep -c 'Gate:' "$FAKE_GH/pr-edit.body")" "1"
+check "set: report kept on rewrite" grep -qxF '<details>probes</details>' "$FAKE_GH/pr-edit.body"
+review_state set feat/x PASSED "x" "$SANDBOX/report.md"
+expect_code "set: report with an existing Gate line: usage error" 2
+pr_record OPEN true 0 "## Review Status: $PH"
+review_state set feat/x PASSED "1 pass"
+expect_code "set: placeholder without a report: usage error" 2
+review_state set feat/x LGTM "1 pass" "$SANDBOX/report.md"
+expect_code "set: unknown gate: usage error" 2
+pr_record OPEN true 0 "Opened by hand."
+review_state set feat/x PASSED "1 pass"
+expect_code "set: neither placeholder nor Gate line: exit 4" 4
+expect_eq "set: nothing edited" "$(gh_calls 'pr edit')" "0"
+pr_record OPEN true 0 "## Review Status: $PH"
+echo 1 > "$FAKE_GH/pr-edit.rc"
+review_state set feat/x PASSED "1 pass" "$SANDBOX/report.md"
+expect_code "set: gh pr edit failure: exit 3" 3
+
+echo "== bs-plan-branch"
+# Origin with main, a release branch, and committed plans; the clone is what the script runs in.
+origin="$SANDBOX/plan-origin.git"
+git init -q --bare "$origin"
+r="$(new_repo)"
+git -C "$r" branch -M main
+git -C "$r" remote add origin "$origin"
+mkdir -p "$r/plans"
+printf '# Demo\n\n**Status:** Draft  \n**Version:** continuous  \n\nBody line.  \n' > "$r/plans/demo-plan.md"
+printf '# Tick\n\n**Status:** In Progress  \n**Base branch:** `main`  \n\nBody.\n' > "$r/plans/tick-plan.md"
+printf '# None\n\nNo status here.\n' > "$r/plans/nostatus-plan.md"
+git -C "$r" add plans; git -C "$r" commit -q -m plans
+git -C "$r" push -q -u origin main
+git -C "$r" remote set-head origin main
+git -C "$r" checkout -q -b release/1.x
+printf '# Rel\n\n**Status:** Draft\n**Base branch:** `gone`  \n**Base branch:** stale  \n' > "$r/plans/rel-plan.md"
+git -C "$r" add plans; git -C "$r" commit -q -m rel
+git -C "$r" push -q -u origin release/1.x
+git -C "$r" checkout -q main
+pb_field() { printf '%s\n' "$OUT" | sed -n "s/^$1=//p"; }
+plan_branch() { # plan_branch <plan-file>: run from the repo, capturing stdout and exit code
+  set +e
+  OUT="$(cd "$r" && "$PLAN_BRANCH" "$@" 2>"$SANDBOX/stderr")"
+  CODE=$?
+  set -e
+}
+plan_branch plans/demo-plan.md
+expect_code "new plan: exit 0" 0
+expect_eq "new plan: branch from slug" "$(pb_field PLAN_BRANCH)" "feat/demo"
+expect_eq "new plan: base is the starting main" "$(pb_field BASE_BRANCH)" "main"
+expect_eq "new plan: created" "$(pb_field CREATED)" "true"
+expect_eq "new plan: on the plan branch" "$(git -C "$r" symbolic-ref --short HEAD)" "feat/demo"
+expect_eq "new plan: header rewritten, body untouched" "$(cat "$r/plans/demo-plan.md")" \
+  "$(printf '# Demo\n\n**Status:** In Progress  \n**Base branch:** main  \n**Version:** continuous  \n\nBody line.  ')"
+expect_eq "new plan: commit subject" "$(git -C "$r" log -1 --format=%s)" "docs(demo): start plan"
+expect_eq "new plan: COMMITTED is HEAD" "$(pb_field COMMITTED)" "$(git -C "$r" rev-parse --short HEAD)"
+expect_eq "new plan: pushed with tracking" "$(git -C "$r" rev-parse origin/feat/demo)" "$(git -C "$r" rev-parse HEAD)"
+expect_eq "new plan: tree clean afterwards" "$(git -C "$r" status --porcelain)" ""
+head_before="$(git -C "$r" rev-parse HEAD)"
+plan_branch plans/demo-plan.md
+expect_eq "rerun: nothing to commit" "$(pb_field COMMITTED)" "none"
+expect_eq "rerun: not created" "$(pb_field CREATED)" "false"
+expect_eq "rerun: no new commit" "$(git -C "$r" rev-parse HEAD)" "$head_before"
+git -C "$r" checkout -q -b fix/other main
+plan_branch plans/demo-plan.md
+expect_eq "from a feature branch: checks out the plan branch" "$(git -C "$r" symbolic-ref --short HEAD)" "feat/demo"
+expect_eq "from a feature branch: recorded base wins" "$(pb_field BASE_BRANCH)" "main"
+expect_eq "from a feature branch: START_BRANCH recorded" "$(pb_field START_BRANCH)" "fix/other"
+echo junk > "$r/junk.txt"
+plan_branch plans/demo-plan.md
+expect_code "dirty tree: exit 4" 4
+check "dirty tree: paths listed" grep -q 'junk.txt' "$SANDBOX/stderr"
+expect_eq "dirty tree: HEAD unchanged" "$(git -C "$r" rev-parse HEAD)" "$head_before"
+rm "$r/junk.txt"
+git -C "$r" checkout -q release/1.x
+plan_branch plans/rel-plan.md
+expect_eq "release start with a stale base: base is the release branch" "$(pb_field BASE_BRANCH)" "release/1.x"
+expect_eq "stale base lines replaced by one" "$(grep -c '^\*\*Base branch:\*\*' "$r/plans/rel-plan.md")" "1"
+check "stale base replaced after Status" grep -qxF '**Base branch:** release/1.x  ' "$r/plans/rel-plan.md"
+check "Draft without trailing spaces flips too" grep -qxF '**Status:** In Progress  ' "$r/plans/rel-plan.md"
+git -C "$r" checkout -q main
+plan_branch plans/tick-plan.md
+expect_eq "matching backticked base: kept, nothing committed" "$(pb_field COMMITTED)" "none"
+check "matching backticked base: line kept as written" grep -qxF '**Base branch:** `main`  ' "$r/plans/tick-plan.md"
+git -C "$r" checkout -q -b topic/side main
+printf '# Side\n\n**Status:** Draft\n' > "$r/plans/side-plan.md"
+git -C "$r" add plans; git -C "$r" commit -q -m side
+plan_branch plans/side-plan.md
+expect_code "plan only on a feature branch: exit 2" 2
+check "plan only on a feature branch: no plan branch created" check_not git -C "$r" show-ref --verify --quiet refs/heads/feat/side
+expect_eq "plan only on a feature branch: still on the start branch" "$(git -C "$r" symbolic-ref --short HEAD)" "topic/side"
+plan_branch plans/nostatus-plan.md
+expect_code "no Status line: exit 2" 2
+check "no Status line: no branch created" check_not git -C "$r" show-ref --verify --quiet refs/heads/feat/nostatus
+plan_branch plans/missing-plan.md
+expect_code "missing plan file: exit 2" 2
 
 echo "== bs-worktree"
 r="$(new_repo)"
