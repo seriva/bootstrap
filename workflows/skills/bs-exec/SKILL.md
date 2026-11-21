@@ -12,7 +12,7 @@ Invoking `/bs-exec` authorizes managing plan branches, running `/bs-loop` per ph
 ### Step 1: Target Discovery & Epic Branch Setup
 1. **Mode & Role Flags**: `AUTO_MODE=true` with `--auto`, else `false`. Resolve `IMPLEMENTER`, `REVIEWER`, and their models per **Dispatch**.
 2. **Target & Plan (`PLAN_FILE`)**: Resolve `$TARGET_REPO` and read `AGENTS.md` per **Target** (`{{BS_CONVENTIONS}}`). Use the explicit plan path, else the one plan `"{{BS_PLAN_STATE}}" active` lists (ask if it lists several).
-3. **Plan Branch**: run `"{{BS_PLAN_BRANCH}}" "$PLAN_FILE"`; it checks out (or creates and pushes) `feat/<plan-slug>`, resolves the base branch, records it in the plan's `**Base branch:**` line, turns `Draft` into `In Progress`, and commits and pushes that header. Take `PLAN_SLUG` (`<plan-slug>`), `PLAN_BRANCH`, `BASE_BRANCH`, and `START_BRANCH` from its `KEY=value` output. Exit 4 (dirty tree): stop, list the paths it printed, and ask the user to commit or clean them (never stash, discard, or commit them). Exit 2, 3, or 5: stop and report its error.
+3. **Plan Branch**: run `"{{BS_PLAN_BRANCH}}" "$PLAN_FILE"`; it checks out (or creates and pushes) `feat/<plan-slug>`, resolves the base branch, records it in the plan's `**Base branch:**` line, turns `Draft` into `In Progress`, and commits and pushes that header. Take `PLAN_SLUG` (`<plan-slug>`), `PLAN_BRANCH`, `BASE_BRANCH`, and `START_BRANCH` from its `KEY=value` output. Exit 4 (dirty tree): stop, list the paths it printed, and ask the user to commit or clean them (never stash, discard, or commit them). Exit 2, 3, or 5: stop and report its error (a branch held by another worktree: **Worktrees** under **Target**).
 
 ### Step 2: Plan State Analysis
 1. `git checkout "$PLAN_BRANCH" && git pull`, then `"{{BS_PLAN_STATE}}" "$PLAN_FILE"` (**States**).
@@ -32,7 +32,7 @@ Invoking `/bs-exec` authorizes managing plan branches, running `/bs-loop` per ph
 3. **Phase Gate**:
    - `BLOCKED_BY_DEFECTS`, `BLOCKED_BY_CI`, or `PENDING_REVIEW`: halt (even in `--auto`), leave the PR in **Draft**, and alert the user.
    - `PASSED` with `AUTO_MODE=false`: report the phase PR URL and stop (re-running `/bs-exec` after the merge resumes at the next phase).
-4. **Auto-Merge** (`REVIEW_STATUS == PASSED` and `AUTO_MODE=true`): `gh pr merge "$PHASE_BRANCH" --merge --delete-branch && git checkout "$PLAN_BRANCH" && git pull`, then loop back to **Step 2**.
+4. **Auto-Merge** (`REVIEW_STATUS == PASSED` and `AUTO_MODE=true`): `git checkout "$PLAN_BRANCH" && gh pr merge "$PHASE_BRANCH" --merge --delete-branch && git pull`, then loop back to **Step 2**.
 
 ### Step 4: Finalize Plan & Merge PR
 1. **Sync & Test**: `git checkout "$PLAN_BRANCH" && git pull`, then run the pre-commit gate from `AGENTS.md` Commands.

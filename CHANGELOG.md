@@ -35,7 +35,7 @@ Versioning: continuous (rolling `[Unreleased]`, calendar sections `[YYYY-MM]` wh
 ### Fixed
 - `./sync.sh` no longer writes bridge files, hooks, or ignore rules into a neighbouring repository whose `AGENTS.md` lacks Part 1, such as a third-party clone. It reports the repository and leaves it untouched.
 - `./install.sh` now removes `bs-*` skills and helper scripts that are no longer shipped, so renamed or dropped ones stop lingering in your AI tools.
-- Reviews and probes run from a git worktree no longer fail while hiding their throwaway `.probes/` files. Re-run `./install.sh` to get the fix.
+- The skills now work from a git worktree, such as a T3 Code thread: reviews no longer pick up unrelated commits from a stale local `main`, `/bs-exec --auto` merges even when the base branch is checked out elsewhere, and a branch already open in another worktree stops the run with a note saying where. Probes run from a worktree also no longer fail while hiding their throwaway files. Re-run `./install.sh` to get the fixes.
 - In the agent container, Claude Code's settings are now kept on the persisted volume even when the image already contains a settings file, so they survive a rebuild.
 - A misspelled name in `ENABLED_WORKERS` now fails the image build instead of quietly producing an image without that tool.
 - The agent container's T3 Code log is now capped while the server keeps running, not only when it restarts.

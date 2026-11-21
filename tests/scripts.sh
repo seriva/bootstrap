@@ -926,6 +926,25 @@ expect_eq "range target: base is its left side" "$(field BASE)" "main~1"
 expect_eq "range target: diff as given" "$(field DIFF)" "git diff main~1...feat/x"
 diff_target "$r" no-such-branch
 expect_code "unknown branch target: exit 2" 2
+# Linked worktree (e.g. a T3 Code thread) whose local main is stale: origin/main moved on, and
+# the task branch starts from origin/main, as /bs-loop creates it. Reviewing against the remote
+# base shows only the task's change; the stale local main would add the upstream commit too.
+up_tree="$(printf '100644 blob %s\tupstream.txt\n' "$(echo up | git -C "$r" hash-object -w --stdin)" |
+  cat - <(git -C "$r" ls-tree main) | git -C "$r" mktree)"
+up_sha="$(git -C "$r" commit-tree -p main -m upstream "$up_tree")"
+git -C "$r" update-ref refs/remotes/origin/main "$up_sha"
+wt="$SANDBOX/thread-wt"
+git -C "$r" worktree add -q --no-track -b fix/wt "$wt" origin/main
+echo t > "$wt/task.txt"; git -C "$wt" add task.txt; git -C "$wt" commit -q -m task
+diff_target "$wt" origin/main
+expect_code "worktree, remote base target: exit 0" 0
+expect_eq "worktree, remote base target: base is origin/main" "$(field BASE)" "origin/main"
+expect_eq "worktree, remote base target: workdir is the worktree" "$(field WORKDIR)" "$(cd "$wt" && pwd -P)"
+expect_eq "worktree, remote base target: only the task's change" \
+  "$(cd "$wt" && $(field DIFF) --name-only)" "task.txt"
+check "worktree: stale local main would add the upstream commit" \
+  sh -c 'git -C "$1" diff --name-only main...HEAD | grep -qx upstream.txt' _ "$wt"
+git -C "$r" worktree remove --force "$wt"
 
 e="$(new_repo --empty)"
 diff_target "$e"

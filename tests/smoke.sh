@@ -193,6 +193,14 @@ for gate in PASSED BLOCKED_BY_DEFECTS BLOCKED_BY_CI; do
     sh -c 'grep -qF "$1" "$2" && grep -qF "$1" "$3"' _ "$gate" "$REPO_DIR/workflows/skills/bs-loop/SKILL.md" "$review_state_src"
 done
 check "bs-loop writes the Gate line through bs-review-state set" grep -qF 'bs-review-state" set ' "$home/.claude/skills/bs-loop/SKILL.md"
+# A stale local base (normal in a worktree) must not leak upstream commits into reviews or Verify.
+check "bs-loop branches from and reviews against origin/\$BASE_BRANCH" sh -c \
+  'grep -qF "\"origin/\$BASE_BRANCH\"\`" "$1" && grep -qF "with target \`origin/\$BASE_BRANCH\`" "$1"' _ \
+  "$home/.claude/skills/bs-loop/SKILL.md"
+check "dispatch Verify counts commits against origin/\$BASE_BRANCH" \
+  grep -qF 'git log "origin/$BASE_BRANCH"..HEAD' "$home/.local/share/bootstrap/dispatch.md"
+check "conventions explain a branch held by another worktree" \
+  grep -qF 'already used by worktree at' "$home/.local/share/bootstrap/conventions.md"
 for pair in conventions.md:bs-plan-state skills/bs-exec/SKILL.md:bs-plan-state skills/bs-exec/SKILL.md:bs-plan-branch \
   conventions.md:bs-review-state skills/bs-loop/SKILL.md:bs-review-state skills/bs-exec/SKILL.md:bs-review-state \
   skills/bs-review/SKILL.md:bs-diff-target dispatch.md:bs-pr-ci \
@@ -213,17 +221,17 @@ echo "== size budgets"
 budget_of() {
   case "$1" in
     skills/bs-exec/SKILL.md) echo 6100 ;;
-    skills/bs-loop/SKILL.md) echo 8900 ;;
+    skills/bs-loop/SKILL.md) echo 9300 ;;
     skills/bs-plan/SKILL.md) echo 9800 ;;
     skills/bs-probe/SKILL.md) echo 2100 ;;
     skills/bs-review/SKILL.md) echo 6100 ;;
     skills/bs-task/SKILL.md) echo 4050 ;;
-    shared/conventions.md) echo 5550 ;;
+    shared/conventions.md) echo 5900 ;;
     shared/dispatch.md) echo 5250 ;;
     *) echo 0 ;;
   esac
 }
-TOTAL_BUDGET=47000
+TOTAL_BUDGET=47600
 total=0
 for f in "$REPO_DIR"/workflows/skills/*/SKILL.md "$REPO_DIR"/workflows/shared/*.md; do
   rel="${f#"$REPO_DIR"/workflows/}"

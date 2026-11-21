@@ -5,6 +5,7 @@ Shared conventions referenced by all `bs-*` skills. Orchestrator-only dispatch a
 ## Target
 1. **`TARGET_REPO`**: in a git repo, `git rev-parse --show-toplevel`. In an umbrella workspace (e.g. `~/dev/`): resolve via prompt (`in <repo>: ...`), active editor tab, or immediate subdirectory with `.git` and `AGENTS.md`. Ask if ambiguous. All commands and edits MUST run in `$TARGET_REPO`.
 2. **Project invariants**: read `$TARGET_REPO/AGENTS.md` (Part 2) for stack, boundaries, and **Commands** (test/lint/format/build and pre-commit gate; fallback: `lefthook run pre-commit --all-files` if `lefthook.yml` exists, else ask).
+3. **Worktrees** (e.g. T3 Code threads): a branch can be checked out in only one worktree. If a checkout (yours or a helper's) fails with `already used by worktree at <path>`, stop and tell the user to continue there, or to free the branch (switch that worktree to another branch, or `git worktree remove <path>`), then re-run. Never force the checkout or use `--ignore-other-worktrees`.
 
 ## States
 ### Plan

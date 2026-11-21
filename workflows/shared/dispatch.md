@@ -35,7 +35,7 @@ Providers: `claude`, `agy`, `codex`, or `host` (= `HOST_PROVIDER`).
 
 ### Verify
 1. **Notify**: before dispatching, print `> 🤖 **Dispatching <Role>** to <provider> (<orchestrator or native>). Waiting for completion...`.
-2. **Echo & Check**: echo the role's full reply in chat under `### 🤖 <Role> Output (<provider>)` (reviews: every findings section, probe results, and verdict; implementation/fix: commit hashes and summaries). HEAD must still be `$WORKING_BRANCH` and `git status --porcelain` clean. Implementer and `Defect Fixer`: verify new commits in `git log "$BASE_BRANCH"..HEAD`, then rerun the `AGENTS.md` test and lint commands yourself. Reviews: verify expected reply sections are present. On mismatch: implementation → stop and report; review → re-dispatch once, then `PENDING_REVIEW`.
+2. **Echo & Check**: echo the role's full reply in chat under `### 🤖 <Role> Output (<provider>)` (reviews: every findings section, probe results, and verdict; implementation/fix: commit hashes and summaries). HEAD must still be `$WORKING_BRANCH` and `git status --porcelain` clean. Implementer and `Defect Fixer`: verify new commits in `git log "origin/$BASE_BRANCH"..HEAD`, then rerun the `AGENTS.md` test and lint commands yourself. Reviews: verify expected reply sections are present. On mismatch: implementation → stop and report; review → re-dispatch once, then `PENDING_REVIEW`.
 
 ## CI wait
 Every PR waits, phase PRs included: `"{{BS_PR_CI}}" "<branch>"` prints `pass`, `fail <check>,…` (→ `BLOCKED_BY_CI` with those checks), or `none-configured` (CI is `none configured`, not a failure). Exit 3 (gh failed, e.g. no PR): `BLOCKED_BY_CI` with its error.

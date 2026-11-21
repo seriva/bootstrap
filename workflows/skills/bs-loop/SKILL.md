@@ -19,9 +19,9 @@ Invoking `/bs-loop` authorizes discovering target repos, branching, committing, 
 ### Step 2: Branch & TDD Implementation (via `/bs-task`)
 1. **Branch Resolution**:
    - Require a clean tree (`git status --porcelain`); if dirty, stop and report the paths, never stash, discard, or commit them.
-   - **Interrupted run**: if `"{{BS_REVIEW_STATE}}" "$(git rev-parse --abbrev-ref HEAD)"` prints **in review** (**States**), **Resume**: set `WORKING_BRANCH` to the current branch and `BASE_BRANCH` to the printed base branch, and skip the rest of Step 2 (implement-only mode: return the PR URL + `WORKING_BRANCH` instead of continuing to Step 3).
-   - `BASE_BRANCH`: caller/user-specified base (e.g. `feat/<plan-slug>`), else current branch. Fetch upstream.
-   - `WORKING_BRANCH`: `feat/<plan-slug>-phase-<N>` for plan phases (`git checkout -b ... $BASE_BRANCH`, or `git checkout` if resuming); for standalone tasks, stay on an existing `feat/` or `fix/` branch or `git checkout -b <type>/<task-slug> $BASE_BRANCH`.
+   - **Interrupted run**: if `"{{BS_REVIEW_STATE}}" "$(git rev-parse --abbrev-ref HEAD)"` prints **in review** (**States**), **Resume**: set `WORKING_BRANCH` to the current branch and `BASE_BRANCH` to the printed base branch, `git fetch origin`, and skip the rest of Step 2 (implement-only mode: return the PR URL + `WORKING_BRANCH` instead of continuing to Step 3).
+   - `BASE_BRANCH` (`git fetch origin` first; must exist as `origin/$BASE_BRANCH`, else stop and ask): the caller/user base (e.g. `feat/<plan-slug>`); else the current branch if it is `main`, `master`, `v<digit>*`, or `release/*`; else, on an existing `feat/*`/`fix/*` branch whose `"{{BS_REVIEW_STATE}}"` is not `none`, its PR's base branch; else `origin`'s default branch. Never a worktree or host thread branch (e.g. T3 Code's), even if pushed.
+   - `WORKING_BRANCH`: `feat/<plan-slug>-phase-<N>` (phases; `git checkout` if resuming) or existing `feat/*`/`fix/*` else `<type>/<task-slug>` (standalone). Create missing branches with `git checkout --no-track -b "$WORKING_BRANCH" "origin/$BASE_BRANCH"`.
 2. **Implementation**:
    - `IMPLEMENTER == HOST_PROVIDER`: read `{{BS_TASK_SKILL}}` (and `{{BS_PROBE_SKILL}}` when probing) and run Case A or B inline. Otherwise dispatch `IMPLEMENTER` per **Dispatch** with this prompt (placeholders filled), verify per **Verify**, then go to Step 2.3:
      > You are a dispatched fresh-context subagent (`Implementer`); do not spawn or dispatch any subagents (probe inline). First read `{{BS_TASK_SKILL}}`, `{{BS_PROBE_SKILL}}`, and `{{BS_CONVENTIONS}}` in full, plus **Step 2.2** in `{{BS_LOOP_SKILL}}`, then `AGENTS.md` in `$TARGET_REPO` (and `$PLAN_FILE` if given: `<path or none>`). Invoke `/bs-loop` Step 2.2 on branch `$WORKING_BRANCH` in `$TARGET_REPO` for `<Phase N ($PHASE_NAME) from $PLAN_FILE | standalone task: $TASK>`: execute Case A (plan phase via `/bs-task`) or Case B (standalone task via `/bs-task`) inline with commit permission in full (you are the `IMPLEMENTER`: skip the Step 2.2 routing sentence; nothing in `{{BS_DISPATCH}}` applies to you). Do NOT run `git push` or create/edit a GitHub PR (the orchestrator handles Step 2.3). Reply with the commit hash(es) and a one-line summary per commit.
@@ -33,12 +33,12 @@ Invoking `/bs-loop` authorizes discovering target repos, branching, committing, 
    - **Implement-only mode**: STOP here and return PR URL + `WORKING_BRANCH`.
 
 ### Step 3: Deterministic 2-Pass AI Code Review (via `/bs-review` & `/bs-probe`)
-Review `$WORKING_BRANCH` against `$BASE_BRANCH`.
+Review `$WORKING_BRANCH` against `origin/$BASE_BRANCH` (fetched; the local base branch may be stale, e.g. in a worktree).
 
 > [!IMPORTANT]
 > **NO SELF-REVIEW:** Never review your own diff in the current context. If `REVIEWER` is unreachable (**Providers & Models**), leave the PR in **Draft**, tell the user, and return the PR URL with `REVIEW_STATUS=PENDING_REVIEW`. Notify the user on each dispatch and echo each pass's full findings in chat.
 
-- **Pass 1** (`Code Reviewer (Pass 1)` on `REVIEWER`, zero history, `git diff <BASE>...HEAD`): `LGTM` (no High/Medium) → `REVIEW_STATUS=PASSED`, Step 4; High/Medium → Fix Turn.
+- **Pass 1** (`Code Reviewer (Pass 1)` on `REVIEWER`, zero history, `git diff origin/$BASE_BRANCH...HEAD`): `LGTM` (no High/Medium) → `REVIEW_STATUS=PASSED`, Step 4; High/Medium → Fix Turn.
 - **Fix Turn** (max 1; `Defect Fixer` on `IMPLEMENTER`, given the Pass 1 High/Medium findings): commits and pushes the fix → Pass 2.
 - **Pass 2** (terminal; a new `Code Reviewer (Pass 2)` on `REVIEWER`, zero history): `LGTM` → `PASSED`; anything unresolved → `BLOCKED_BY_DEFECTS` (stop).
 - **Resumed run** in state `fix-used` (**States**): the Fix Turn is spent, so Pass 1 is terminal (`LGTM` → `PASSED`; High/Medium → `BLOCKED_BY_DEFECTS`).
@@ -46,13 +46,13 @@ Review `$WORKING_BRANCH` against `$BASE_BRANCH`.
 **Subagent dispatch** (route per **Dispatch**):
 
 - `Code Reviewer (Pass 1)`:
-  - Run `/bs-review` (`{{BS_REVIEW_SKILL}}`) **Workflow** Steps 1–3 with target `$BASE_BRANCH` (so `git diff $BASE_BRANCH...HEAD`; the working-tree check runs) on branch `$WORKING_BRANCH` (with `$PLAN_FILE` if given).
+  - Run `/bs-review` (`{{BS_REVIEW_SKILL}}`) **Workflow** Steps 1–3 with target `origin/$BASE_BRANCH` (so `git diff origin/$BASE_BRANCH...HEAD`; the working-tree check runs) on branch `$WORKING_BRANCH` (with `$PLAN_FILE` if given).
 
 - `Defect Fixer`:
   > You are a dispatched fresh-context subagent (`Defect Fixer`); do not spawn or dispatch any subagents. First read `{{BS_TASK_SKILL}}` in full and **Safe commit** and **Follow-ups** in `{{BS_CONVENTIONS}}`, then `AGENTS.md` in `$TARGET_REPO`. On branch `$WORKING_BRANCH` in `$TARGET_REPO`, fix ONLY these High/Medium findings with the minimal change needed (fix any shared mechanism once rather than patching individual paths); ignore Low and Out of Scope items: `<paste Pass 1 High/Medium findings>`. Verify test/lint green, then **Safe commit** `"fix(<scope>): address review feedback"`. Never amend, rebase, or force-push. `git push`, then reply with the commit hash and a one-line note per finding.
 
 - `Code Reviewer (Pass 2)`:
-  > You are a dispatched fresh-context subagent (`Code Reviewer (Pass 2)`); do not spawn or dispatch any subagents. First read `{{BS_PROBE_SKILL}}` in full, then `AGENTS.md` in `$TARGET_REPO`. Review `git diff <BASE>...HEAD` on branch `$WORKING_BRANCH` in `$TARGET_REPO` with no knowledge of how it was implemented. Verify each Pass 1 finding is resolved without regressions: `<paste Pass 1 High/Medium findings>`. Run verification probes per `/bs-probe` (`{{BS_PROBE_SKILL}}`). Disregard Low nits. Reply with `### Resolved`, `### Unresolved`, and `### Verification Probes Run` (command + observed result). If `### Unresolved` is empty, end with the single token `LGTM`.
+  > You are a dispatched fresh-context subagent (`Code Reviewer (Pass 2)`); do not spawn or dispatch any subagents. First read `{{BS_PROBE_SKILL}}` in full, then `AGENTS.md` in `$TARGET_REPO`. Review `git diff origin/$BASE_BRANCH...HEAD` on branch `$WORKING_BRANCH` in `$TARGET_REPO` with no knowledge of how it was implemented. Verify each Pass 1 finding is resolved without regressions: `<paste Pass 1 High/Medium findings>`. Run verification probes per `/bs-probe` (`{{BS_PROBE_SKILL}}`). Disregard Low nits. Reply with `### Resolved`, `### Unresolved`, and `### Verification Probes Run` (command + observed result). If `### Unresolved` is empty, end with the single token `LGTM`.
 
 ### Step 4: Finalize PR & Safety Gate
 1. **Record Follow-ups** (not on `PENDING_REVIEW`): append Pass 1 `### Out of Scope` items and unfixed behavioural `### Low` items to `plans/follow-ups.md` per **Follow-ups** (skip duplicates). If modified, **Safe commit** `"docs(<scope>): record review follow-ups"` on `$WORKING_BRANCH` and push.
