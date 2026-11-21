@@ -5,7 +5,8 @@ Shared conventions referenced by all `bs-*` skills. Orchestrator-only dispatch a
 ## Target
 1. **`TARGET_REPO`**: in a git repo, `git rev-parse --show-toplevel`. In an umbrella workspace (e.g. `~/dev/`): resolve via prompt (`in <repo>: ...`), active editor tab, or immediate subdirectory with `.git` and `AGENTS.md`. Ask if ambiguous. All commands and edits MUST run in `$TARGET_REPO`.
 2. **Project invariants**: read `$TARGET_REPO/AGENTS.md` (Part 2) for stack, boundaries, and **Commands** (test/lint/format/build and pre-commit gate; fallback: `lefthook run pre-commit --all-files` if `lefthook.yml` exists, else ask).
-3. **Worktrees** (e.g. T3 Code threads): a branch can be checked out in only one worktree. If a checkout (yours or a helper's) fails with `already used by worktree at <path>`, stop and tell the user to continue there, or to free the branch (switch that worktree to another branch, or `git worktree remove <path>`), then re-run. Never force the checkout or use `--ignore-other-worktrees`.
+3. **Worktrees** (e.g. T3 Code threads): a branch can be checked out in only one worktree. Checkout (yours or a helper's) fails with `already used by worktree at <path>` → stop; tell the user to continue there or free the branch (switch that worktree, or `git worktree remove <path>`), then re-run. Never force it or use `--ignore-other-worktrees`.
+4. **Dependencies**: a fresh checkout (worktree, `"{{BS_WORKTREE}}"` base) may lack installed deps (`<tool>: not found`). Lockfile but nothing installed (e.g. no `node_modules/`) → run the locked install (`AGENTS.md` **Commands**, else e.g. `npm ci`) before the first commit, gate, or probe. Never add or upgrade deps.
 
 ## States
 ### Plan
@@ -19,14 +20,20 @@ Shared conventions referenced by all `bs-*` skills. Orchestrator-only dispatch a
 **Resume** (in review; never re-implement): the tree must be clean (`git status --porcelain`); dirty → stop and list the paths, never stash, discard, or commit them. Clean → continue at `/bs-loop` Step 3.
 
 ## Probes
-Throwaway probes go in `$TARGET_REPO/.probes/` or the host's scratch directory, never in source/test dirs (see `/bs-probe` for the full root-cause and sibling-path probing workflow). Before writing the first probe, exclude `.probes/` locally: `e="$(git rev-parse --git-path info/exclude)"; grep -qxs '.probes/' "$e" || echo '.probes/' >> "$e"`. Delete probes before returning. A probe worth keeping becomes a real test in the task's `Test:` file.
+Throwaway probes go in the host's scratch dir (or `$TARGET_REPO/.probes/` when they need repo-relative imports), never in source/test dirs (workflow: `/bs-probe`). Before the first `.probes/` probe: `e="$(git rev-parse --git-path info/exclude)"; grep -qxs '.probes/' "$e" || echo '.probes/' >> "$e"` (hides it from git, not from tree-walking linters). Delete `.probes/` before any format/lint run or commit, and before returning. A probe worth keeping becomes a real test in the task's `Test:` file.
+
+## Gate runs
+**Full gate**: `AGENTS.md` **Format**, **Lint**, and **Test** as written (none: **Pre-commit gate**).
+1. **Run**: `log="$(mktemp)"; <cmd> >"$log" 2>&1; echo "exit=$?" >>"$log"`, in the background if it may outlast the host's foreground limit (Claude Code: 10 min); wait for its completion notification. Never poll with `sleep`/done-files, reuse a fixed log name, or pipe a gate through `tail`/`grep`/`tee`.
+2. **Result**: `exit=0` is green; anything else is red, timeouts and "host load" included.
+3. **Report**: implementers and `Defect Fixer` end with `Full gate: exit <N> @ <short-sha>` (HEAD right after committing the gated tree).
 
 ## Safe commit
 `PRE_DIRTY`: paths dirty when a standalone `/bs-task` started (its Step 1; empty for `/bs-loop`/`/bs-exec`). Never stage, unstage, restore, or delete them; leave the user's staged changes alone. `<suite>`: the `lefthook.yml` suite command (scaffold: `test`).
-1. **Stage**: `PRE_DIRTY` empty → `git add -A`. Else, if a task file is in `PRE_DIRTY` (mixed with the user's edits), do NOT commit: report it with a suggested message, stop; otherwise `git add -- <task-files>`.
-2. **Gate**: intermediate tasks (`Task N.1 .. N.(M-1)`): `LEFTHOOK_EXCLUDE=<suite> lefthook run pre-commit` (no `lefthook.yml`: format/lint) plus the task's `Test:`. `Task N.M`, standalone, `Defect Fixer`: the full `AGENTS.md` gate. Docs-only (follow-ups, release notes): format/lint.
+1. **Stage** (`"{{BS_COMMIT}}"` never stages): `PRE_DIRTY` empty → `git add -A`. Else, if a task file is in `PRE_DIRTY` (mixed with the user's edits), do NOT commit: report it with a suggested message, stop; otherwise `git add -- <task-files>`.
+2. **Gate**: intermediate tasks (`Task N.1 .. N.(M-1)`): the task's `Test:` (the commit hook lints; no `lefthook.yml`: also format/lint). `Task N.M`, standalone, `Defect Fixer`: the **Full gate**. Docs-only (follow-ups, release notes): the commit hook alone (no `lefthook.yml`: format/lint).
 3. **Commit**: `"{{BS_COMMIT}}" [--only] --exclude-hook <suite> -m "<subject>" [-m "<body>"] -- <allowed>...`, repo-root-relative. `PRE_DIRTY` not empty: `--only`, task files. Else task `Files:` + tests, `$PLAN_FILE`, `plans/follow-ups.md`, `CHANGELOG.md`, `README.md`, `docs/`. Standalone: only files the task needed; `Defect Fixer`: those the findings or their shared mechanism need, plus tests.
-4. **Exit**: 0 done; 2 bad path or flag: fix the call; 3 stray staged path: `git restore --staged` it, remove the stray change, retry; 4 hook added paths, commit undone: stop, report; 5 hook failed: fix, retry; 6 nothing to commit: check staging.
+4. **Exit**: 0 done; 2 bad path, flag, or subject >72: fix the call; 3 stray staged path: `git restore --staged` it, remove the stray change, retry; 4 hook added paths, commit undone: stop, report; 5 hook failed: fix (**Dependencies**), retry; 6 nothing staged: **Stage**.
 Subject ≤72 chars incl. `<type>[(<scope>)]:` and any `(Task N.M)`; truncate `<summary>` only. Plan work uses `(<plan-slug>)` as scope.
 
 ## People docs

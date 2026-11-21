@@ -13,12 +13,15 @@ Usage: bs-commit [--only] [--exclude-hook <name>] -m <msg> [-m <msg>]... -- <all
                           changes stay staged. Directory prefixes (ending in /) are rejected.
   --exclude-hook <name>   lefthook command to skip on commit via LEFTHOOK_EXCLUDE (default: test;
                           '' runs every hook command)
-  -m <msg>                Commit message paragraph; repeat for subject and body
+  -m <msg>                Commit message paragraph; repeat for subject and body. The subject
+                          (first line of the first -m) must be ≤72 chars
   <allowed-path>          Repo-root-relative paths the commit may contain ("./" prefix allowed);
-                          "dir/" matches everything under dir/
-Exit: 0 committed (prints short SHA), 2 usage (bad flag or path, or an --only path git does
-      not know), 3 stray staged paths (nothing committed), 4 commit undone because other
-      paths got in, 5 git commit failed (hook failure), 6 nothing to commit
+                          "dir/" matches everything under dir/. An allow-list only: bs-commit
+                          never stages; without --only, `git add` the changes first
+Exit: 0 committed (prints short SHA), 2 usage (bad flag or path, subject over 72 chars, or an
+      --only path git does not know), 3 stray staged paths (nothing committed), 4 commit
+      undone because other paths got in, 5 git commit failed (hook failure), 6 nothing to
+      commit (nothing staged: stage first)
 EOF
   exit 2
 }
@@ -36,6 +39,13 @@ while [ $# -gt 0 ]; do
   esac
 done
 [ ${#msgs[@]} -gt 0 ] && [ $# -ge 1 ] || usage
+# Fail fast on the commit-msg hook's length rule: git runs commit-msg only after every
+# pre-commit hook, so a long subject would otherwise cost a full format/lint run first.
+subject="${msgs[1]%%$'\n'*}"
+if [ "${#subject}" -gt 72 ]; then
+  echo "bs-commit: subject is ${#subject} chars; keep it ≤72 (shorten the summary): $subject" >&2
+  exit 2
+fi
 allowed=()
 for a in "$@"; do
   while [ "${a#./}" != "$a" ]; do a="${a#./}"; done

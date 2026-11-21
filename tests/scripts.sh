@@ -273,6 +273,13 @@ expect_eq "hash: same from a subdirectory" "$OUT" "$root_hash"
 run_in "$r/sub" "$TREE_STATE" dirty
 expect_eq "dirty: same root-relative paths from a subdirectory" "$OUT" "$root_dirty"
 
+r="$(new_repo)"
+run_in "$r" "$TREE_STATE" hash
+c1="$OUT"
+git -C "$r" commit -q --allow-empty -m "empty"
+run_in "$r" "$TREE_STATE" hash
+expect_ne "hash: sees a new commit on a clean tree" "$OUT" "$c1"
+
 echo "== bs-tree-state baseline"
 r="$(new_repo)"
 echo a > "$r/a.txt"
@@ -398,6 +405,21 @@ h="$(head_of "$r")"
 run_in "$r" "$COMMIT" -m "feat: nothing" -- base.txt
 expect_code "nothing staged: exit 6" 6
 expect_eq "nothing staged: nothing committed" "$(head_of "$r")" "$h"
+
+add_hook "$r" 'touch "$(git rev-parse --git-dir)/hook-ran"'
+echo long >> "$r/base.txt"
+git -C "$r" add base.txt
+h="$(head_of "$r")" i="$(index_hash "$r")"
+long_subject="feat(some-plan-slug): $(printf 'x%.0s' $(seq 1 51))" # 73 chars
+run_in "$r" "$COMMIT" -m "$long_subject" -- base.txt
+expect_code "subject over 72 chars: exit 2" 2
+expect_eq "subject over 72 chars: nothing committed" "$(head_of "$r")" "$h"
+expect_eq "subject over 72 chars: index unchanged" "$(index_hash "$r")" "$i"
+check "subject over 72 chars: no hook ran" test ! -e "$r/.git/hook-ran"
+check "subject over 72 chars: length on stderr" grep -q 'subject is 73 chars' "$SANDBOX/stderr"
+run_in "$r" "$COMMIT" -m "${long_subject%x}" -m "$long_subject in the body is fine" -- base.txt
+expect_code "subject of exactly 72 chars (long body): exit 0" 0
+rm -f "$r/.git/hooks/pre-commit" "$r/.git/hook-ran"
 
 echo dot > "$r/dot.txt"
 git -C "$r" add dot.txt
@@ -785,6 +807,39 @@ plan_branch plans/fresh-plan.md
 expect_code "stale local main behind origin/main: exit 0" 0
 expect_eq "stale local main: branched from origin/main" "$(git -C "$r" rev-parse HEAD~1)" "$fresh_origin_sha"
 
+# Failing commit hook (e.g. a linter not installed in a fresh worktree): the header edit is
+# rolled back, so the re-run after fixing the cause does not trip over a dirty tree.
+git -C "$r" checkout -q main
+git -C "$r" merge -q --ff-only origin/main
+printf '# Hook\n\n**Status:** Draft\n' > "$r/plans/hook-plan.md"
+git -C "$r" add plans/hook-plan.md; git -C "$r" commit -q -m "add hook plan"; git -C "$r" push -q origin main
+add_hook "$r" 'echo "biome: not found" >&2; exit 1'
+plan_branch plans/hook-plan.md
+expect_code "commit hook fails: exit 5" 5
+check "commit hook fails: hook error on stderr" grep -q 'biome: not found' "$SANDBOX/stderr"
+expect_eq "commit hook fails: header edit rolled back, tree clean" "$(git -C "$r" status --porcelain)" ""
+rm "$r/.git/hooks/pre-commit"
+plan_branch plans/hook-plan.md
+expect_code "re-run after fixing the hook: exit 0" 0
+expect_eq "re-run after fixing the hook: header committed" "$(git -C "$r" log -1 --format=%s)" "docs(hook): start plan"
+
+# Push of the header commit fails: the re-run pushes it instead of reporting success with
+# the commit only local.
+git -C "$r" checkout -q main
+printf '# Push\n\n**Status:** Draft\n' > "$r/plans/push-plan.md"
+git -C "$r" add plans/push-plan.md; git -C "$r" commit -q -m "add push plan"; git -C "$r" push -q origin main
+git -C "$r" push -q origin main:feat/push
+git -C "$r" branch -q --track feat/push origin/feat/push
+git -C "$r" remote set-url --push origin "$SANDBOX/no-such-origin.git"
+plan_branch plans/push-plan.md
+expect_code "header push fails: exit 3" 3
+git -C "$r" remote set-url --push origin "$origin"
+plan_branch plans/push-plan.md
+expect_code "re-run after a failed header push: exit 0" 0
+expect_eq "re-run after a failed header push: nothing new committed" "$(pb_field COMMITTED)" "none"
+expect_eq "re-run after a failed header push: header commit pushed" \
+  "$(git -C "$r" rev-parse origin/feat/push)" "$(git -C "$r" rev-parse feat/push)"
+
 echo "== bs-worktree"
 r="$(new_repo)"
 first="$(git -C "$r" rev-parse HEAD)"
@@ -848,6 +903,23 @@ printf '[{"name":"test","bucket":"fail"}]\n' > "$FAKE_GH/pr-checks.json"
 pr_ci feat/x
 expect_eq "checks register on retry 2: that run's result" "$OUT" "fail test"
 expect_eq "checks register on retry 2: no further retries" "$(gh_calls 'pr checks feat/x --watch')" "3"
+fake_gh_reset
+printf '[{"name":"test","bucket":"skipping"},{"name":"publish","bucket":"skipping"}]\n' > "$FAKE_GH/pr-checks.json"
+pr_ci feat/x
+expect_eq "every check skipped: skipped, not pass" "$OUT" "skipped"
+fake_gh_reset
+printf '[{"name":"test","bucket":"pass"},{"name":"publish","bucket":"skipping"}]\n' > "$FAKE_GH/pr-checks.json"
+pr_ci feat/x
+expect_eq "some checks skipped, one passed: pass" "$OUT" "pass"
+fake_gh_reset; no_checks pr-checks
+printf '{"mergeable":"CONFLICTING"}\n' > "$FAKE_GH/pr-view.json"
+pr_ci feat/x
+expect_eq "no checks reported on a conflicting PR: conflict" "$OUT" "conflict"
+expect_eq "conflicting PR: no retries" "$(gh_calls 'pr checks feat/x --watch')" "1"
+fake_gh_reset; no_checks pr-checks
+printf '{"mergeable":"UNKNOWN"}\n' > "$FAKE_GH/pr-view.json"
+pr_ci feat/x
+expect_eq "no checks, mergeability unknown: none-configured after retries" "$OUT" "none-configured"
 fake_gh_reset; echo "no pull requests found for branch \"feat/x\"" > "$FAKE_GH/pr-checks.out"; echo 1 > "$FAKE_GH/pr-checks.rc"
 pr_ci feat/x
 expect_code "other gh failure: exit 3" 3

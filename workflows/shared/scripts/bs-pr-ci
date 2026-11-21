@@ -8,8 +8,12 @@ usage() {
   cat >&2 <<'EOF'
 Usage: bs-pr-ci <branch>
 Watches the checks of <branch>'s PR (gh pr checks --watch --fail-fast) and prints one line:
-  pass                  every check passed
+  pass                  every check finished without failing, and at least one ran
+  skipped               every check was skipped (e.g. an `if:` excludes this branch): CI did
+                        not test this PR
   fail <check>,...      the failing (or cancelled) checks
+  conflict              no checks reported and the PR conflicts with its base branch
+                        (GitHub runs no pull_request workflows for an unmergeable PR)
   none-configured       GitHub reports no checks; when .github/workflows/ exists, only after
                         BS_PR_CI_POLL_LIMIT (3) retries BS_PR_CI_POLL_INTERVAL (10) seconds apart
 Exit: 0 ok, 2 usage or not a repo, 3 gh failed (e.g. no PR for <branch>)
@@ -23,13 +27,26 @@ branch="$1" interval="${BS_PR_CI_POLL_INTERVAL:-10}" limit="${BS_PR_CI_POLL_LIMI
 has_workflows=false
 [ -d "$(git rev-parse --show-toplevel)/.github/workflows" ] && has_workflows=true
 
+# checks_list: "<bucket>\t<name>" per check (empty if gh cannot list them).
+checks_list() { gh pr checks "$branch" --json name,bucket --jq '.[] | "\(.bucket)\t\(.name)"' 2>/dev/null || true; }
+
 retries=0
 while :; do
   rc=0
   out="$(gh pr checks "$branch" --watch --fail-fast 2>&1)" || rc=$?
-  [ "$rc" -ne 0 ] || { echo pass; exit 0; }
+  if [ "$rc" -eq 0 ]; then
+    list="$(checks_list)"
+    if [ -n "$list" ] && ! printf '%s\n' "$list" | awk -F '\t' '$1 != "skipping" { ran = 1 } END { exit !ran }'; then
+      echo skipped
+    else
+      echo pass
+    fi
+    exit 0
+  fi
   case "$out" in
     *"no checks reported"*)
+      mergeable="$(gh pr view "$branch" --json mergeable --jq '"\(.mergeable)"' 2>/dev/null || true)"
+      if [ "$mergeable" = CONFLICTING ]; then echo conflict; exit 0; fi
       if $has_workflows && [ "$retries" -lt "$limit" ]; then
         retries=$((retries + 1))
         sleep "$interval"
@@ -41,7 +58,7 @@ while :; do
   break
 done
 
-list="$(gh pr checks "$branch" --json name,bucket --jq '.[] | "\(.bucket)\t\(.name)"' 2>/dev/null)" || true
+list="$(checks_list)"
 failed="$(printf '%s\n' "$list" | awk -F '\t' '$1 == "fail" || $1 == "cancel" { print $2 }' | paste -sd, -)"
 [ -n "$failed" ] || { printf '%s\n' "$out" >&2; exit 3; }
 echo "fail $failed"

@@ -100,7 +100,7 @@ Probes the codebase empirically to prove every claimed problem exists before dra
 ```
 
 ### 2. `/bs-exec` — Phase-by-Phase Orchestration
-Operates on a dedicated `feat/<plan-slug>` branch and runs `/bs-loop` for each phase, checking off `- [x] Task N.M` boxes as commits land so interrupted runs resume seamlessly. Pauses after each phase PR for human merge, or merges passing phases automatically with `--auto`. Every phase PR waits for CI like any other PR. If a phase PR is blocked by the review or CI gate, it halts (even with `--auto`), leaves the PR in Draft, and alerts you to step in. Start it on a clean working tree: re-running `/bs-exec` (or `/bs-loop`) after an interrupted review picks the review up where it stopped, and if you have uncommitted files it stops and lists them instead of touching them. Once all phases pass, it runs the full gate, marks the plan complete, and opens the final PR into the base branch.
+Operates on a dedicated `feat/<plan-slug>` branch and runs `/bs-loop` for each phase, checking off `- [x] Task N.M` boxes as commits land so interrupted runs resume seamlessly. Pauses after each phase PR for human merge, or merges passing phases automatically with `--auto`. Every phase PR waits for CI like any other PR. If a phase PR is blocked by the review or CI gate, it halts (even with `--auto`), leaves the PR in Draft, and alerts you to step in. Start it on a clean working tree: re-running `/bs-exec` (or `/bs-loop`) after an interrupted review picks the review up where it stopped, and if you have uncommitted files it stops and lists them instead of touching them. In a fresh worktree, such as a T3 Code thread, it installs the project's locked dependencies before the first commit. Once all phases pass, it merges in whatever landed on the base branch meanwhile (keeping both sides when several plans added follow-ups or changelog entries), runs the full gate, marks the plan complete, and opens the final PR into the base branch.
 ```text
 /bs-exec plans/v1.8.0/portable-go-plan.md
 /bs-exec --auto plans/v1.8.0/portable-go-plan.md
@@ -108,10 +108,10 @@ Operates on a dedicated `feat/<plan-slug>` branch and runs `/bs-loop` for each p
 
 ### 3. `/bs-loop` — From Failing Test to Reviewed PR
 1. **TDD (`/bs-task` & `/bs-probe`):** Runs `/bs-task` for the standalone task or for each `Task N.M` in a plan phase (which uses `/bs-probe` when isolating root causes), writing a failing test first and the minimal implementation to pass.
-2. **Quality Gate & Docs:** Runs the project's pre-commit gate and updates `CHANGELOG.md` / user docs when behavior changed.
-3. **Draft PR:** Pushes the branch and opens a draft PR.
+2. **Quality Gate & Docs:** Runs the project's full gate (format, lint, and tests) and updates `CHANGELOG.md` / user docs when behavior changed. The orchestrator re-runs the full test suite only when the implementer's own run failed or tested a different commit; reviewers run lint, the affected tests, and their probes.
+3. **Draft PR:** Pushes the branch and opens a draft PR once the gate has passed.
 4. **2-Pass Fresh AI Review (`/bs-review` & `/bs-probe`):** Pass 1 runs `/bs-review` in a fresh reviewer context with active `/bs-probe` verification in `.probes/`. High/Medium findings get at most one fix turn, after which a *new* fresh reviewer verifies the fixes. Pass 2 is terminal: `LGTM` passes the gate; anything unresolved leaves the PR in Draft as `BLOCKED_BY_DEFECTS` for you to investigate. Out-of-scope bugs and unfixed behavioral nits are logged to `plans/follow-ups.md` with a repro. They stay there until you run `/bs-plan follow-ups`, which re-probes them, groups them by root cause, and asks you which groups to schedule, defer, or drop.
-5. **CI Gate:** Waits for remote CI checks before marking the PR ready, for standalone tasks and plan phases alike.
+5. **CI Gate:** Waits for remote CI checks before marking the PR ready, for standalone tasks and plan phases alike. If every check was skipped, the PR says CI did not test it instead of claiming a pass, and a PR that conflicts with its base branch stays in Draft.
 
 ### 4. Ad-Hoc Local Workflow (`/bs-probe`, `/bs-task`, `/bs-review`)
 Use these when you want fast, local iteration without design plans, Draft PRs, or automated fix loops:

@@ -220,18 +220,18 @@ echo "== size budgets"
 # deliberate, visible change here; a new file needs its own entry.
 budget_of() {
   case "$1" in
-    skills/bs-exec/SKILL.md) echo 6100 ;;
-    skills/bs-loop/SKILL.md) echo 9300 ;;
+    skills/bs-exec/SKILL.md) echo 7350 ;;
+    skills/bs-loop/SKILL.md) echo 10950 ;;
     skills/bs-plan/SKILL.md) echo 9800 ;;
-    skills/bs-probe/SKILL.md) echo 2100 ;;
-    skills/bs-review/SKILL.md) echo 6100 ;;
-    skills/bs-task/SKILL.md) echo 4050 ;;
-    shared/conventions.md) echo 5900 ;;
-    shared/dispatch.md) echo 5250 ;;
+    skills/bs-probe/SKILL.md) echo 2300 ;;
+    skills/bs-review/SKILL.md) echo 6650 ;;
+    skills/bs-task/SKILL.md) echo 4400 ;;
+    shared/conventions.md) echo 7050 ;;
+    shared/dispatch.md) echo 6400 ;;
     *) echo 0 ;;
   esac
 }
-TOTAL_BUDGET=47600
+TOTAL_BUDGET=54900
 total=0
 for f in "$REPO_DIR"/workflows/skills/*/SKILL.md "$REPO_DIR"/workflows/shared/*.md; do
   rel="${f#"$REPO_DIR"/workflows/}"

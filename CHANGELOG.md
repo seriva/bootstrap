@@ -31,6 +31,7 @@ Versioning: continuous (rolling `[Unreleased]`, calendar sections `[YYYY-MM]` wh
 - **Scripted plan-branch setup and review gate**: `/bs-exec` now sets up a plan's branch and records its base branch through a tested helper, and `/bs-loop` writes the review result into the PR description through one, so a plan can no longer end up with the wrong base branch and a resumed run always reads back the result it wrote. Re-run `./install.sh` to install them.
 - **Shorter skills through tested scripts**: the skills read plan and review progress, check the base branch in a temporary checkout outside your repository, and wait for PR CI through small tested scripts, so these steps behave the same way every time and the instructions stay shorter. Re-run `./install.sh` to get them.
 - **Clean active `plans/` directory**: completed continuous plans move to `plans/archive/`, while versioned plans remain in their `plans/vX.Y.Z/` milestone folder.
+- **Fewer full test runs per phase**: the full test suite now runs once per phase in the normal case. The orchestrator re-runs it only when the implementer's own run failed or tested a different commit, and reviewers run lint, the affected tests, and their probes instead, so slow suites no longer stretch a phase over an hour or end in a misread result.
 
 ### Fixed
 - `./sync.sh` no longer writes bridge files, hooks, or ignore rules into a neighbouring repository whose `AGENTS.md` lacks Part 1, such as a third-party clone. It reports the repository and leaves it untouched.
@@ -38,6 +39,10 @@ Versioning: continuous (rolling `[Unreleased]`, calendar sections `[YYYY-MM]` wh
 - The skills now work from a git worktree, such as a T3 Code thread: reviews no longer pick up unrelated commits from a stale local `main`, `/bs-exec --auto` merges even when the base branch is checked out elsewhere, and a branch already open in another worktree stops the run with a note saying where. Probes run from a worktree also no longer fail while hiding their throwaway files. Re-run `./install.sh` to get the fixes.
 - In the agent container, Claude Code's settings are now kept on the persisted volume even when the image already contains a settings file, so they survive a rebuild.
 - A misspelled name in `ENABLED_WORKERS` now fails the image build instead of quietly producing an image without that tool.
+- `/bs-exec` now works in a fresh worktree without installed dependencies, and can simply be re-run when setting up the plan branch fails: the setup undoes its own edit and pushes a setup commit a failed push left behind. Re-run `./install.sh` to get the fixes.
+- A PR whose CI checks were all skipped no longer counts as having passed CI, and a PR that conflicts with its base branch is reported as a conflict instead of as having no CI. Before opening a plan's final PR, `/bs-exec` merges in the base branch, so plans run side by side no longer leave it unmergeable.
+- Reviews no longer set aside a bug that runs through the changed code as out of scope just because it existed before the change; it is fixed in the same PR.
+- Agent commits with a subject over 72 characters now fail straight away instead of after the full lint run, and a phase is pushed only after its checks have passed.
 - The agent container's T3 Code log is now capped while the server keeps running, not only when it restarts.
 
 <!-- Add changes here as you work. When cutting a milestone, move this block to a calendar section:

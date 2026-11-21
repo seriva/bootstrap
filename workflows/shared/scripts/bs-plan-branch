@@ -18,11 +18,13 @@ Requires a clean tree, fetches origin, then:
                else origin's default branch
 Then writes "**Base branch:** <BASE_BRANCH>  " after **Status:** (replacing any other one),
 turns "**Status:** Draft" into "**Status:** In Progress  ", and if that changed the file
-commits it ("docs(<plan-slug>): start plan") and pushes.
+commits it ("docs(<plan-slug>): start plan"; hooks run, the test suite is skipped). Finally
+pushes PLAN_BRANCH if it is ahead of origin (also an earlier run's unpushed header commit).
 Prints KEY=value lines: PLAN_SLUG, PLAN_BRANCH, BASE_BRANCH, START_BRANCH, CREATED (true|false),
 COMMITTED (<short SHA>|none).
 Exit: 0 ok, 2 usage or bad plan file, 3 git fetch/checkout/pull/push failed, 4 dirty tree
-      (paths on stderr), 5 commit failed (bs-commit's error on stderr)
+      (paths on stderr), 5 commit failed (bs-commit's error on stderr; the header edit is
+      rolled back, so a re-run after fixing the cause starts from a clean tree)
 EOF
   exit 2
 }
@@ -147,10 +149,17 @@ if ! cmp -s "$tmp" "$plan"; then
   git add -- "$plan"
   err="$(mktemp "${TMPDIR:-/tmp}/bs-plan-branch.err.XXXXXX")"
   trap 'rm -f "$tmp" "$err"' EXIT
-  if ! committed="$("$(dirname "$0")/bs-commit" --exclude-hook '' -m "docs($slug): start plan" -- "$plan" 2>"$err")"; then
+  # Default --exclude-hook: a header-only docs commit needs format/lint, not the test suite.
+  if ! committed="$("$(dirname "$0")/bs-commit" -m "docs($slug): start plan" -- "$plan" 2>"$err")"; then
     cat "$err" >&2
-    die 5 "commit of $plan failed"
+    # The tree was clean on entry, so restoring the plan to HEAD drops only this script's edit
+    # and a re-run after fixing the cause (e.g. installing dependencies) starts clean.
+    git checkout -q HEAD -- "$plan"
+    die 5 "commit of $plan failed; its header edit was rolled back"
   fi
+fi
+# Also covers a header commit left unpushed by an earlier run whose push failed.
+if [ -n "$(git rev-list '@{upstream}..HEAD' 2>/dev/null)" ]; then
   git push -q origin "$plan_branch" || die 3 "git push origin $plan_branch failed"
 fi
 

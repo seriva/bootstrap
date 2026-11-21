@@ -9,7 +9,7 @@ set -euo pipefail
 usage() {
   cat >&2 <<'EOF'
 Usage: bs-tree-state <command>
-  hash                    One hash of the working-tree state: status, diffs, and
+  hash                    One hash of the working-tree state: HEAD, status, diffs, and
                           untracked file contents, exec bits, and symlink targets
   dirty                   Paths already dirty (modified, staged, or untracked), sorted
   baseline -- <path>...   "<blob-sha|missing|non-file> <path>" per path, in order,
@@ -35,6 +35,8 @@ case "$cmd" in
   hash)
     [ $# -eq 0 ] || usage
     {
+      # HEAD too, so a commit made during a review changes the hash even if the tree ends clean.
+      git rev-parse -q --verify HEAD || echo unborn
       git status --porcelain --untracked-files=all
       worktree_diff diff
       git diff --cached
