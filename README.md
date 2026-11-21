@@ -125,15 +125,20 @@ Use these when you want fast, local iteration without design plans, Draft PRs, o
 You don't need a clean working tree for these. `/bs-task` works on your current branch next to your own uncommitted edits: it commits only when you ask, commits only its own files, won't commit a file you were already editing, and tells you when its checks ran with your edits present or changed any of your files. `/bs-review` covers your uncommitted changes too, and if your working tree changes during the review, it warns you, shows `git status`, and leaves everything as it is.
 
 ### Multi-Model Pairing
-Pair different model families so the reviewer doesn't share the implementer's blind spots. `--pairing` keeps the tool you are in as implementer and picks the first other available tool (Claude Code, Antigravity, then Codex) as reviewer; `--implementer` and `--reviewer` name them explicitly. A paired tool uses its own default model unless you pass `--implementer-model` or `--reviewer-model`:
+Pair different model families so the reviewer doesn't share the implementer's blind spots. `--pairing` keeps the tool you are in as implementer and picks the first other available tool (Claude Code, Antigravity, then Codex) as reviewer; `--implementer` and `--reviewer` name them explicitly. A paired tool runs on a default model (`claude-sonnet-5-5` for Claude, `gemini-4-hydrogen` for Antigravity, `gpt-6-luna` for Codex) unless you pass `--implementer-model` or `--reviewer-model`:
 ```text
 /bs-loop --pairing Fix race condition in session cleanup
 /bs-loop --implementer=claude --reviewer=agy --reviewer-model=gemini-4-hydrogen Fix race condition in session cleanup
 /bs-exec --auto --pairing plans/v1.8.0/portable-go-plan.md
 ```
 
+- The defaults are configured in `workflows/shared/models.env`. To change one without modifying this repo, set it in `${XDG_CONFIG_HOME:-~/.config}/bootstrap/models.env` and re-run `./install.sh`; names you leave out keep the repo default:
+  ```sh
+  BS_MODEL_AGY="<model-id>"   # also BS_MODEL_CLAUDE, BS_MODEL_CODEX
+  ```
+  The defaults are deliberately mid-tier models rather than each provider's most capable one: plans split the work into small phases, so each diff is small enough for them to handle well, which keeps paired runs fast and cheap. They apply only to the paired tool; the tool you are in keeps your session's model. Pass a model flag for a stronger model on large or risky changes.
 - If no cross-provider orchestrator (`delegate_task`, such as in T3 Code) is available, `--pairing` warns and reviews with the host tool's native subagent instead.
-- A model is never swapped silently: if the one you asked for is unavailable, that role stops and tells you.
+- A model is never swapped silently: if the one you asked for, or a default, is unavailable, that role stops and tells you.
 - When the tool you are in implements, it writes the code on your session's model; `--implementer-model` then applies only to the fix turn after review.
 - Cross-provider pairing requires an orchestrator with `delegate_task` (such as T3 Code inside the Docker agent server below), where paired roles run as live threads.
 
@@ -213,7 +218,8 @@ bootstrap/
 │   └── shared/         Shared docs and scripts, installed to ${XDG_DATA_HOME:-~/.local/share}/bootstrap/
 │       ├── conventions.md  Shared worker conventions
 │       ├── dispatch.md     Orchestrator dispatch rules
-│       └── scripts/        Helpers the skills call to check the tree, commit safely, pick the diff to review, check out temporary worktrees, and read plan, PR, and CI state
+│       ├── scripts/        Helpers the skills call to check the tree, commit safely, pick the diff to review, check out temporary worktrees, and read plan, PR, and CI state
+│       └── models.env      Default paired model names, filled in at install (override in ${XDG_CONFIG_HOME:-~/.config}/bootstrap/models.env)
 ├── install.sh          Installs skills, shared docs, and helper scripts across detected AI tools
 ├── init.sh             Scaffolds a new project (--type continuous|versioned)
 ├── sync.sh             Synchronizes shared rules across projects (--check, --dry-run)

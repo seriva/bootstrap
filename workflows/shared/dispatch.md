@@ -13,7 +13,7 @@ Providers: `claude`, `agy`, `codex`, or `host` (= `HOST_PROVIDER`).
 
 #### Model Selection & Inheritance
 1. **Host role:** inherits the session's model (pass none) unless `--implementer-model` / `--reviewer-model` is given; then pass it to the native subagent tool (Claude Code's `Agent` takes only the tiers `sonnet`, `opus`, `haiku`, never full model strings), or dispatch through `delegate_task` if the native tool cannot select it. Inline work runs on the session's model: if `--implementer-model` is set and `/bs-loop` Step 2.2 runs inline, say in chat that it applies only to `Defect Fixer`.
-2. **Other-provider role** (`delegate_task`): pass its model flag if given; otherwise let `delegate_task` use the provider's default model, at `medium` reasoning/effort when supported. A model flag never selects a provider; it applies to the provider its role resolved to.
+2. **Other-provider role** (`delegate_task`): its model flag, else the provider's default paired model (`claude` → `{{BS_MODEL_CLAUDE}}`, `agy` → `{{BS_MODEL_AGY}}`, `codex` → `{{BS_MODEL_CODEX}}`), at `medium` reasoning/effort when supported. A model flag never selects a provider; it applies to the provider its role resolved to.
 3. **Rejected Model:** never substitute silently. If a native tool or `delegate_task` rejects a model (requested or default), say so in chat and stop that role (implementation or fix → stop and report; review → `PENDING_REVIEW`).
 
 ### Routing
