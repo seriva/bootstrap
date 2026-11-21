@@ -54,7 +54,8 @@ if [ "${1:-}" = set ]; then
         while ((getline r < ENVIRON["REPORT"]) > 0) print r
         done = 1; next
       }
-      /^##[[:space:]]+Review Status[[:space:]]*$/ { seen_heading = 1 }
+      # seen_heading: the placeholder sits in a "## Review Status" section; any other heading ends it.
+      /^#+[[:space:]]/ { seen_heading = ($0 ~ /^##[[:space:]]+Review Status[[:space:]]*$/) }
       { print }' > "$body_file"
   elif printf '%s\n' "$body" | grep -qE '\*\*Gate(:\*\*|\*\*:)'; then
     [ -z "$report" ] || { echo "bs-review-state: <report-file> only replaces the placeholder" >&2; exit 2; }

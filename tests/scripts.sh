@@ -668,6 +668,12 @@ printf '### Findings\n<details>\n\n```\n**Gate:** BLOCKED_BY_CI (probe)\n```\n</
 pr_record OPEN true 0 "## Review Status: $PH"
 review_state set feat/x PASSED "1 pass" "$SANDBOX/report-gate-quote.md"
 expect_eq "set: report quoting a Gate line still reads back PASSED" "$OUT" "gated:PASSED feat/base"
+pr_record OPEN true 0 "$(printf '## Review Status\n\nold notes\n\n## Checklist\n%s\n' "$PH")"
+review_state set feat/x PASSED "1 pass" "$SANDBOX/report.md"
+expect_eq "set: placeholder under another heading gets its own Review Status heading" \
+  "$(grep -c '^## Review Status' "$FAKE_GH/pr-edit.body")" "2"
+check "set: new heading follows the other heading" \
+  sh -c 'sed -n "/^## Checklist/,\$p" "$1" | grep -qx "## Review Status"' _ "$FAKE_GH/pr-edit.body"
 
 echo "== bs-plan-branch"
 # Origin with main, a release branch, and committed plans; the clone is what the script runs in.
