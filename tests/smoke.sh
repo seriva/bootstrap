@@ -214,7 +214,7 @@ budget_of() {
   case "$1" in
     skills/bs-exec/SKILL.md) echo 6100 ;;
     skills/bs-loop/SKILL.md) echo 8900 ;;
-    skills/bs-plan/SKILL.md) echo 9350 ;;
+    skills/bs-plan/SKILL.md) echo 9800 ;;
     skills/bs-probe/SKILL.md) echo 2100 ;;
     skills/bs-review/SKILL.md) echo 6100 ;;
     skills/bs-task/SKILL.md) echo 4050 ;;

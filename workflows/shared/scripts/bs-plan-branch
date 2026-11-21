@@ -31,8 +31,24 @@ die() { echo "bs-plan-branch: $2" >&2; exit "$1"; }
 
 [ $# -eq 1 ] && [ -n "$1" ] || usage
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || die 2 "not inside a git work tree"
-cd "$(git rev-parse --show-toplevel)"
-plan="${1#./}"
+top="$(git rev-parse --show-toplevel)"
+cd "$top"
+plan="$1"
+if [ "${plan#/}" != "$plan" ]; then
+  if [ "${plan#"$top"/}" != "$plan" ]; then
+    plan="${plan#"$top"/}"
+  elif [ -f "$plan" ]; then
+    real_plan="$(cd "$(dirname "$plan")" && pwd -P)/$(basename "$plan")"
+    [ "${real_plan#"$top"/}" != "$real_plan" ] || die 2 "plan file must be inside the repository: $1"
+    plan="${real_plan#"$top"/}"
+  else
+    die 2 "no such plan file: $1"
+  fi
+fi
+while [ "${plan#./}" != "$plan" ]; do plan="${plan#./}"; done
+case "/$plan/" in
+  //* | */../* | */./*) die 2 "plan path must be repo-root-relative: $1" ;;
+esac
 [ -f "$plan" ] || die 2 "no such plan file: $1"
 grep -q '^\*\*Status:\*\*' "$plan" || die 2 "no **Status:** line in $plan"
 
@@ -56,6 +72,11 @@ if has_local "$plan_branch" || has_remote "$plan_branch"; then
   git checkout -q "$plan_branch" || die 3 "git checkout $plan_branch failed"
   if git rev-parse --verify --quiet '@{upstream}' >/dev/null; then
     git pull -q --ff-only || die 3 "git pull on $plan_branch failed"
+  elif has_remote "$plan_branch"; then
+    git branch -q --set-upstream-to="origin/$plan_branch" "$plan_branch" || die 3 "failed to track origin/$plan_branch"
+    git pull -q --ff-only || die 3 "git pull on $plan_branch failed"
+  else
+    git push -q -u origin "$plan_branch" || die 3 "git push -u origin $plan_branch failed"
   fi
   [ -f "$plan" ] || die 2 "$plan does not exist on $plan_branch"
 fi
@@ -82,7 +103,17 @@ else
 fi
 
 if ! has_local "$plan_branch" && ! has_remote "$plan_branch"; then
-  if has_local "$base"; then from="$base"; else from="origin/$base"; fi
+  if has_local "$base" && has_remote "$base"; then
+    if git merge-base --is-ancestor "refs/heads/$base" "refs/remotes/origin/$base"; then
+      from="origin/$base"
+    else
+      from="$base"
+    fi
+  elif has_remote "$base"; then
+    from="origin/$base"
+  else
+    from="$base"
+  fi
   git rev-parse --verify --quiet "$from" >/dev/null || die 3 "base branch $base not found locally or on origin"
   git cat-file -e "$from:$plan" 2>/dev/null || die 2 "$plan is not committed on $base; commit it there first"
   git checkout -q --no-track -b "$plan_branch" "$from" || die 3 "git checkout -b $plan_branch failed"

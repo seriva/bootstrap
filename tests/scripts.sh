@@ -598,12 +598,21 @@ expect_eq "draft gated: BLOCKED_BY_CI (**Gate**: form)" "$OUT" "gated:BLOCKED_BY
 pr_record OPEN true 0 "**Gate:** PASSED"
 review_state feat/x
 expect_eq "draft gated: PASSED" "$OUT" "gated:PASSED feat/base"
-pr_record OPEN true 0 "$(printf '**Gate:** PASSED\n**Gate:** BLOCKED_BY_CI: test')"
+pr_record OPEN true 0 "$(printf '**Gate:** PASSED (1 pass)\n\n```\n**Gate:** BLOCKED_BY_CI (quoted probe output)\n```')"
 review_state feat/x
-expect_eq "PASSED and BLOCKED_BY_CI: BLOCKED_BY_CI wins" "$OUT" "gated:BLOCKED_BY_CI feat/base"
-pr_record OPEN true 0 "$(printf '**Gate:** PASSED\n\nCI: BLOCKED_BY_CI (test, lint failing)')"
+expect_eq "later Gate line quoted in the report does not override the first" "$OUT" "gated:PASSED feat/base"
+pr_record OPEN true 0 "**Gate:** BLOCKED_BY_CI: test"
 review_state feat/x
-expect_eq "BLOCKED_BY_CI on a line after the Gate line wins" "$OUT" "gated:BLOCKED_BY_CI feat/base"
+expect_eq "draft gated: BLOCKED_BY_CI with a colon detail" "$OUT" "gated:BLOCKED_BY_CI feat/base"
+pr_record OPEN true 0 "**Gate:** PASSED (1 pass; was BLOCKED_BY_DEFECTS)"
+review_state feat/x
+expect_eq "gate words in the detail do not override the gate" "$OUT" "gated:PASSED feat/base"
+pr_record OPEN true 0 "**Gate:** pending"
+review_state feat/x
+expect_eq "unknown gate word: draft" "$OUT" "draft feat/base"
+pr_record OPEN true 0 "$(printf '**Gate:** PASSED\n\nNotes mention BLOCKED_BY_CI in prose.')"
+review_state feat/x
+expect_eq "BLOCKED_BY_CI in prose does not override PASSED Gate" "$OUT" "gated:PASSED feat/base"
 pr_record OPEN true 0 "$(printf 'Notes mention BLOCKED_BY_CI without any Gate line.')"
 review_state feat/x
 expect_eq "BLOCKED_BY_CI without a Gate line: draft" "$OUT" "draft feat/base"
@@ -647,6 +656,18 @@ pr_record OPEN true 0 "## Review Status: $PH"
 echo 1 > "$FAKE_GH/pr-edit.rc"
 review_state set feat/x PASSED "1 pass" "$SANDBOX/report.md"
 expect_code "set: gh pr edit failure: exit 3" 3
+mkdir -p "$SANDBOX/rs-tmp"
+printf '### Findings\n- Mentioned BLOCKED_BY_CI in probe output\n' > "$SANDBOX/report-ci-prose.md"
+pr_record OPEN true 0 "$(printf '## Review Status\n\n%s\n' "$PH")"
+run_in "$r" env PATH="$GH_PATH" TMPDIR="$SANDBOX/rs-tmp" "$REVIEW_STATE" set feat/x PASSED "1 pass" "$SANDBOX/report-ci-prose.md"
+expect_code "set: separate-line placeholder + prose BLOCKED_BY_CI: exit 0" 0
+expect_eq "set: prose BLOCKED_BY_CI still reads back PASSED" "$OUT" "gated:PASSED feat/base"
+expect_eq "set: separate-line placeholder does not duplicate Review Status heading" "$(grep -c '^## Review Status' "$FAKE_GH/pr-edit.body")" "1"
+check "set: no leaked temp files in TMPDIR" test -z "$(ls -A "$SANDBOX/rs-tmp")"
+printf '### Findings\n<details>\n\n```\n**Gate:** BLOCKED_BY_CI (probe)\n```\n</details>\n' > "$SANDBOX/report-gate-quote.md"
+pr_record OPEN true 0 "## Review Status: $PH"
+review_state set feat/x PASSED "1 pass" "$SANDBOX/report-gate-quote.md"
+expect_eq "set: report quoting a Gate line still reads back PASSED" "$OUT" "gated:PASSED feat/base"
 
 echo "== bs-plan-branch"
 # Origin with main, a release branch, and committed plans; the clone is what the script runs in.
@@ -724,6 +745,39 @@ expect_code "no Status line: exit 2" 2
 check "no Status line: no branch created" check_not git -C "$r" show-ref --verify --quiet refs/heads/feat/nostatus
 plan_branch plans/missing-plan.md
 expect_code "missing plan file: exit 2" 2
+plan_branch "$r/plans/demo-plan.md"
+expect_code "absolute path inside repo: exit 0" 0
+expect_eq "absolute path inside repo: branch resolved" "$(pb_field PLAN_BRANCH)" "feat/demo"
+outside_plan="$SANDBOX/outside-plan.md"
+printf '# Outside\n\n**Status:** Draft\n' > "$outside_plan"
+plan_branch "$outside_plan"
+expect_code "absolute path outside repo: exit 2" 2
+check "absolute path outside repo: no branch created" check_not git -C "$r" show-ref --verify --quiet refs/heads/feat/outside
+git -C "$r" checkout -q main
+git -C "$r" checkout -q -b feat/localonly
+printf '# LocalOnly\n\n**Status:** In Progress  \n**Base branch:** main  \n' > "$r/plans/localonly-plan.md"
+git -C "$r" add plans/localonly-plan.md; git -C "$r" commit -q -m localonly
+plan_branch plans/localonly-plan.md
+expect_code "local-only plan branch without upstream: exit 0" 0
+expect_eq "local-only plan branch: pushed with tracking" "$(git -C "$r" rev-parse '@{upstream}')" "$(git -C "$r" rev-parse HEAD)"
+# Stale local main behind origin/main: plan merged on origin/main must still branch from origin/main.
+other_clone="$SANDBOX/plan-other"
+git clone -q -b main "$origin" "$other_clone"
+git -C "$other_clone" config user.email test@example.com
+git -C "$other_clone" config user.name Test
+printf '# Fresh\n\n**Status:** Draft\n' > "$other_clone/plans/fresh-plan.md"
+git -C "$other_clone" add plans/fresh-plan.md
+git -C "$other_clone" commit -q -m "add fresh plan"
+git -C "$other_clone" push -q origin main
+fresh_origin_sha="$(git -C "$other_clone" rev-parse HEAD)"
+git -C "$r" checkout -q main
+git -C "$r" checkout -q -b topic/unrelated
+git -C "$r" fetch -q origin
+cp "$other_clone/plans/fresh-plan.md" "$r/plans/fresh-plan.md"
+git -C "$r" add plans/fresh-plan.md; git -C "$r" commit -q -m "copy fresh"
+plan_branch plans/fresh-plan.md
+expect_code "stale local main behind origin/main: exit 0" 0
+expect_eq "stale local main: branched from origin/main" "$(git -C "$r" rev-parse HEAD~1)" "$fresh_origin_sha"
 
 echo "== bs-worktree"
 r="$(new_repo)"
