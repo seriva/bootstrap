@@ -14,7 +14,7 @@ Providers: `claude`, `agy`, `codex`, or `host` (= `HOST_PROVIDER`).
   - `agy` (Antigravity), `claude` (Claude Code), `codex` (Codex), else `host` (e.g. Copilot).
   - Unsure → ask.
 - **`IMPLEMENTER`** (`/bs-loop` Step 2.2, `Defect Fixer`): `--implementer=<provider>`, default `HOST_PROVIDER`.
-- **`REVIEWER`** (review passes; not resolved in implement-only mode), first rule that applies:
+- **`REVIEWER`** (review passes), first rule that applies:
   1. `--reviewer=<provider>` if given.
   2. With `--pairing` or `--implementer`, or when the host has no subagent tool: the first reachable of `claude`, `agy`, `codex` that differs from `IMPLEMENTER`.
      - Reachable: `HOST_PROVIDER` with a subagent tool, or a cross-provider target supported by `delegate_task` (check with `orchestrator_capabilities`).
@@ -81,7 +81,9 @@ Providers: `claude`, `agy`, `codex`, or `host` (= `HOST_PROVIDER`).
    - Review → re-dispatch once, then `PENDING_REVIEW`.
 
 ## CI wait
-Every PR waits, phase PRs included. Run `"{{BS_PR_CI}}" "<branch>"`; it prints:
+Every PR waits, phase PRs included.
+- `/bs-loop` PRs: `bs-review-state ci` runs this wait and applies the mapping below itself (`/bs-loop` Step 4.3).
+- The final plan PR (`/bs-exec` Step 4): run `"{{BS_PR_CI}}" "<branch>"` yourself; it prints:
 - `pass`: CI passed.
 - `fail <check>,…` → `BLOCKED_BY_CI` with those checks.
 - `skipped`: every check was skipped, so CI did not test this PR.

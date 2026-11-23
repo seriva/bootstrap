@@ -220,6 +220,7 @@ bootstrap/
 │   └── shared/         Shared docs and scripts, installed to ${XDG_DATA_HOME:-~/.local/share}/bootstrap/
 │       ├── conventions.md  Shared worker conventions
 │       ├── dispatch.md     Orchestrator dispatch rules
+│       ├── role-*.md       Short briefs for each subagent role (implementer, defect fixer, reviewer, fix verifier)
 │       ├── scripts/        Helpers the skills call to check the tree, commit safely, pick the diff to review, check out temporary worktrees, set up plan branches, write the PR review gate, and read plan, PR, and CI state
 │       └── models.env      Default paired model names, filled in at install (override in ${XDG_CONFIG_HOME:-~/.config}/bootstrap/models.env)
 ├── install.sh          Installs skills, shared docs, and helper scripts across detected AI tools

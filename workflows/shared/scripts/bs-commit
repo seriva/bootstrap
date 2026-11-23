@@ -21,10 +21,22 @@ Usage: bs-commit [--only] [--exclude-hook <name>] -m <msg> [-m <msg>]... -- <all
 Exit: 0 committed (prints short SHA), 2 usage (bad flag or path, subject over 72 chars, or an
       --only path git does not know), 3 stray staged paths (nothing committed), 4 commit
       undone because other paths got in, 5 git commit failed (hook failure), 6 nothing to
-      commit (nothing staged: stage first)
+      commit (nothing staged: stage first).
+On a non-zero exit, the last stderr line is "next: <action>" for the caller.
 EOF
   exit 2
 }
+
+next_on_failure() {
+  case "$1" in
+    2) echo "fix the call as the error or usage above says (repo-root-relative paths, subject ≤72 chars, git add new --only files first), then retry" ;;
+    3) echo "git restore --staged the paths above, remove those stray changes, then retry" ;;
+    4) echo "stop and report: a gate or hook staged the paths above, so the commit was undone" ;;
+    5) echo "fix what the hook reported above (\`<tool>: not found\`: install the project's locked dependencies), re-stage, then retry" ;;
+    6) echo "stage the task's files with git add, then retry; if nothing changed, skip this commit" ;;
+  esac
+}
+trap 'rc=$?; if [ "$rc" -ne 0 ]; then n="$(next_on_failure "$rc")"; [ -z "$n" ] || echo "next: $n" >&2; fi' EXIT
 
 only=false
 hook=test

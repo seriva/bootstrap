@@ -70,6 +70,11 @@ expect_eq() { # expect_eq <label> <actual> <expected>
 expect_ne() { # expect_ne <label> <a> <b>
   if [ "$2" != "$3" ]; then pass "$1"; else fail "$1 (both '$2')"; fi
 }
+expect_next() { # expect_next <label> <text>: the last stderr line is "next: ..." containing <text>
+  local last
+  last="$(tail -n 1 "$SANDBOX/stderr")"
+  case "$last" in "next: "*"$2"*) pass "$1" ;; *) fail "$1 (last stderr line: '$last')" ;; esac
+}
 new_repo() { # new_repo [--empty]: print the path of a fresh repo (with one commit unless --empty)
   local r
   r="$(mktemp -d "$SANDBOX/repo.XXXXXX")"
@@ -91,7 +96,8 @@ add_hook() { # add_hook <repo> <script body>: install a pre-commit hook
 #   pr view: pr-view.json (or pr-view.err, exit 1); pr edit --body-file: copies the file to
 #   pr-edit.body and into pr-view.json's body (or exits with pr-edit.rc);
 #   pr checks --watch: prints pr-checks.<call#>.out (else pr-checks.out) to stderr and exits with
-#   pr-checks.<call#>.rc (else pr-checks.rc, else 0); pr checks --json: pr-checks.json, else exit 1.
+#   pr-checks.<call#>.rc (else pr-checks.rc, else 0); pr checks --json: pr-checks.json, else exit 1;
+#   pr ready: exits with pr-ready.rc, else 0.
 FAKE_GH="$SANDBOX/fake-gh"
 mkdir -p "$SANDBOX/bin" "$FAKE_GH"
 cat > "$SANDBOX/bin/gh" <<'EOF'
@@ -187,6 +193,8 @@ PY
     for f in "pr-checks.$n" pr-checks; do [ -f "$d/$f.out" ] && { cat "$d/$f.out" >&2; break; }; done
     for f in "pr-checks.$n" pr-checks; do [ -f "$d/$f.rc" ] && exit "$(cat "$d/$f.rc")"; done
     exit 0 ;;
+  "pr ready")
+    if [ -f "$d/pr-ready.rc" ]; then echo "fake gh: pr ready failed" >&2; exit "$(cat "$d/pr-ready.rc")"; fi ;;
   *) echo "fake gh: unexpected call: $cmd $*" >&2; exit 64 ;;
 esac
 EOF
@@ -328,6 +336,7 @@ expect_code "stray staged path: exit 3" 3
 expect_eq "stray staged path: nothing committed" "$(head_of "$r")" "$h"
 expect_eq "stray staged path: index untouched" "$(index_hash "$r")" "$i"
 check "stray staged path: named on stderr" grep -qx 'stray.txt' "$SANDBOX/stderr"
+expect_next "stray staged path: next action restores it" "git restore --staged"
 run_in "$r" "$COMMIT" -m "feat: task" -m "Body explains why." -- task.txt stray.txt
 expect_code "allowed paths: exit 0" 0
 expect_eq "allowed paths: prints short SHA" "$OUT" "$(git -C "$r" rev-parse --short HEAD)"
@@ -360,6 +369,7 @@ run_in "$r" "$COMMIT" -m "feat: base" -- base.txt
 expect_code "hook stages an extra file: exit 4" 4
 expect_eq "hook stages an extra file: HEAD restored" "$(head_of "$r")" "$h"
 check "hook stages an extra file: named on stderr" grep -qx 'extra.txt' "$SANDBOX/stderr"
+expect_next "hook stages an extra file: next action stops" "stop and report"
 check "hook stages an extra file: index not resynced (still staged)" test -n "$(git -C "$r" diff --cached --name-only -- extra.txt)"
 git -C "$r" reset -q -- extra.txt
 
@@ -417,6 +427,7 @@ expect_eq "subject over 72 chars: nothing committed" "$(head_of "$r")" "$h"
 expect_eq "subject over 72 chars: index unchanged" "$(index_hash "$r")" "$i"
 check "subject over 72 chars: no hook ran" test ! -e "$r/.git/hook-ran"
 check "subject over 72 chars: length on stderr" grep -q 'subject is 73 chars' "$SANDBOX/stderr"
+expect_next "subject over 72 chars: next action fixes the call" "fix the call"
 run_in "$r" "$COMMIT" -m "${long_subject%x}" -m "$long_subject in the body is fine" -- base.txt
 expect_code "subject of exactly 72 chars (long body): exit 0" 0
 rm -f "$r/.git/hooks/pre-commit" "$r/.git/hook-ran"
@@ -598,6 +609,7 @@ echo 'HTTP 502: bad gateway' > "$FAKE_GH/pr-view.err"
 review_state feat/x
 expect_code "gh failure: exit 3" 3
 check "gh failure: error passed through" grep -q 'bad gateway' "$SANDBOX/stderr"
+expect_next "gh failure: next action retries once" "retry once"
 pr_record MERGED false 0 "**Gate:** PASSED"
 review_state feat/x
 expect_eq "merged" "$OUT" "merged feat/base"
@@ -673,6 +685,7 @@ expect_code "set: unknown gate: usage error" 2
 pr_record OPEN true 0 "Opened by hand."
 review_state set feat/x PASSED "1 pass"
 expect_code "set: neither placeholder nor Gate line: exit 4" 4
+expect_next "set: neither placeholder nor Gate line: next action stops" "stop and report"
 expect_eq "set: nothing edited" "$(gh_calls 'pr edit')" "0"
 pr_record OPEN true 0 "## Review Status: $PH"
 echo 1 > "$FAKE_GH/pr-edit.rc"
@@ -749,8 +762,15 @@ echo junk > "$r/junk.txt"
 plan_branch plans/demo-plan.md
 expect_code "dirty tree: exit 4" 4
 check "dirty tree: paths listed" grep -q 'junk.txt' "$SANDBOX/stderr"
+expect_next "dirty tree: next action asks the user" "ask the user to commit or clean"
 expect_eq "dirty tree: HEAD unchanged" "$(git -C "$r" rev-parse HEAD)" "$head_before"
 rm "$r/junk.txt"
+git -C "$r" checkout -q main
+git -C "$r" worktree add -q "$SANDBOX/demo-wt" feat/demo
+plan_branch plans/demo-plan.md
+expect_code "plan branch held by another worktree: exit 2" 2
+expect_next "plan branch held by another worktree: next action frees the branch" "continue in that worktree or free the branch"
+git -C "$r" worktree remove "$SANDBOX/demo-wt"
 git -C "$r" checkout -q release/1.x
 plan_branch plans/rel-plan.md
 expect_eq "release start with a stale base: base is the release branch" "$(pb_field BASE_BRANCH)" "release/1.x"
@@ -817,6 +837,8 @@ add_hook "$r" 'echo "biome: not found" >&2; exit 1'
 plan_branch plans/hook-plan.md
 expect_code "commit hook fails: exit 5" 5
 check "commit hook fails: hook error on stderr" grep -q 'biome: not found' "$SANDBOX/stderr"
+expect_next "commit hook fails with a missing tool: next action installs dependencies" "install the project's locked dependencies"
+expect_eq "commit hook fails: bs-commit's own next line is not passed through" "$(grep -c '^next: ' "$SANDBOX/stderr")" "1"
 expect_eq "commit hook fails: header edit rolled back, tree clean" "$(git -C "$r" status --porcelain)" ""
 rm "$r/.git/hooks/pre-commit"
 plan_branch plans/hook-plan.md
@@ -833,6 +855,7 @@ git -C "$r" branch -q --track feat/push origin/feat/push
 git -C "$r" remote set-url --push origin "$SANDBOX/no-such-origin.git"
 plan_branch plans/push-plan.md
 expect_code "header push fails: exit 3" 3
+expect_next "header push fails: next action re-runs once" "re-run once"
 git -C "$r" remote set-url --push origin "$origin"
 plan_branch plans/push-plan.md
 expect_code "re-run after a failed header push: exit 0" 0
@@ -923,6 +946,7 @@ expect_eq "no checks, mergeability unknown: none-configured after retries" "$OUT
 fake_gh_reset; echo "no pull requests found for branch \"feat/x\"" > "$FAKE_GH/pr-checks.out"; echo 1 > "$FAKE_GH/pr-checks.rc"
 pr_ci feat/x
 expect_code "other gh failure: exit 3" 3
+expect_next "other gh failure: next action is BLOCKED_BY_CI" "BLOCKED_BY_CI"
 r="$(new_repo)"
 fake_gh_reset; no_checks pr-checks
 pr_ci feat/x
@@ -930,6 +954,66 @@ expect_eq "no workflows dir: none-configured" "$OUT" "none-configured"
 expect_eq "no workflows dir: one call, no retries" "$(gh_calls 'pr checks')" "1"
 pr_ci
 expect_code "no branch: usage error" 2
+
+echo "== bs-review-state ci"
+r="$(new_repo)"
+mkdir -p "$r/.github/workflows"; echo 'name: CI' > "$r/.github/workflows/ci.yml"
+git -C "$r" add .github; git -C "$r" commit -q -m ci
+GATED="$(printf '## Review Status\n\n**Gate:** PASSED (Pass 1)\n\nreport')"
+# ci_record [<mergeable>]: a gated draft PR, optionally with a mergeable state for bs-pr-ci
+ci_record() {
+  pr_record OPEN true 0 "$GATED"
+  python3 - "$FAKE_GH/pr-view.json" "${1:-MERGEABLE}" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1])); d["mergeable"] = sys.argv[2]; json.dump(d, open(sys.argv[1], "w"))
+PY
+}
+ci_gate() { python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["body"])' "$FAKE_GH/pr-view.json" | grep -m1 'Gate:'; }
+ci_record
+review_state ci feat/x "Pass 1"
+expect_code "ci pass: exit 0" 0
+expect_eq "ci pass: status line" "$(printf '%s\n' "$OUT" | head -n 1)" "PASSED pass"
+expect_eq "ci pass: Gate line records CI" "$(ci_gate)" "**Gate:** PASSED (Pass 1; CI: pass)"
+expect_eq "ci pass: PR marked ready" "$(gh_calls 'pr ready feat/x')" "1"
+check "ci pass: next line returns PASSED" sh -c 'printf "%s\n" "$1" | grep -q "^next: return the PR URL with REVIEW_STATUS=PASSED"' _ "$OUT"
+ci_record
+printf '[{"name":"test","bucket":"skipping"}]\n' > "$FAKE_GH/pr-checks.json"
+review_state ci feat/x "Pass 1"
+expect_eq "ci skipped: still PASSED" "$(printf '%s\n' "$OUT" | head -n 1)" "PASSED skipped"
+expect_eq "ci skipped: Gate line says no check ran" "$(ci_gate)" "**Gate:** PASSED (Pass 1; CI: skipped, no check ran)"
+check "ci skipped: next line tells the user" sh -c 'printf "%s\n" "$1" | grep -q "^next: tell the user CI did not test this PR"' _ "$OUT"
+ci_record; echo 1 > "$FAKE_GH/pr-checks.rc"
+printf '[{"name":"test","bucket":"fail"},{"name":"lint","bucket":"pass"}]\n' > "$FAKE_GH/pr-checks.json"
+review_state ci feat/x "Pass 1, Fix, Pass 2"
+expect_eq "ci fail: BLOCKED_BY_CI with the checks" "$(printf '%s\n' "$OUT" | head -n 1)" "BLOCKED_BY_CI fail test"
+expect_eq "ci fail: Gate line names the failing checks" "$(ci_gate)" "**Gate:** BLOCKED_BY_CI (Pass 1, Fix, Pass 2; failing: test)"
+expect_eq "ci fail: PR stays a draft" "$(gh_calls 'pr ready')" "0"
+check "ci fail: next line leaves the draft" sh -c 'printf "%s\n" "$1" | grep -q "^next: leave the PR in Draft"' _ "$OUT"
+ci_record CONFLICTING; no_checks pr-checks
+review_state ci feat/x "Pass 1"
+expect_eq "ci conflict: BLOCKED_BY_CI" "$(printf '%s\n' "$OUT" | head -n 1)" "BLOCKED_BY_CI conflict"
+expect_eq "ci conflict: Gate line names the base" "$(ci_gate)" "**Gate:** BLOCKED_BY_CI (Pass 1; merge conflict with feat/base)"
+r_nowf="$(new_repo)"
+ci_record; no_checks pr-checks
+run_in "$r_nowf" env PATH="$GH_PATH" "$REVIEW_STATE" ci feat/x "Pass 1"
+expect_eq "ci none-configured: PASSED" "$(printf '%s\n' "$OUT" | head -n 1)" "PASSED none-configured"
+expect_eq "ci none-configured: Gate line" "$(ci_gate)" "**Gate:** PASSED (Pass 1; CI: none configured)"
+ci_record; echo "HTTP 502: bad gateway" > "$FAKE_GH/pr-checks.out"; echo 1 > "$FAKE_GH/pr-checks.rc"
+review_state ci feat/x "Pass 1"
+expect_code "ci gh error while waiting: exit 0" 0
+expect_eq "ci gh error while waiting: BLOCKED_BY_CI error" "$(printf '%s\n' "$OUT" | head -n 1)" "BLOCKED_BY_CI error"
+check "ci gh error while waiting: Gate line carries the error" sh -c 'grep -q "CI wait failed: HTTP 502" "$1"' _ "$FAKE_GH/pr-edit.body"
+check "ci gh error: bs-pr-ci's next line is not passed through" sh -c '! grep -q "^next: " "$1"' _ "$SANDBOX/stderr"
+ci_record; echo 1 > "$FAKE_GH/pr-ready.rc"
+review_state ci feat/x "Pass 1"
+expect_code "ci: gh pr ready failure: exit 3" 3
+expect_next "ci: gh pr ready failure: next action retries once" "retry once"
+fake_gh_reset; echo 'no pull requests found for branch "feat/x"' > "$FAKE_GH/pr-view.err"
+review_state ci feat/x "Pass 1"
+expect_code "ci without a PR: exit 3" 3
+review_state ci feat/x
+expect_code "ci without passes: usage error" 2
+expect_next "ci usage error: next action fixes the call" "fix the call"
 
 echo "== bs-diff-target"
 EMPTY_TREE="$(git hash-object -t tree /dev/null)"

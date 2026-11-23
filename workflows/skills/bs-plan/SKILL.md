@@ -8,6 +8,12 @@ description: Conducts an empirical codebase audit with probe verification, defin
 Invoking `/bs-plan` authorizes inspecting code, running non-destructive probes and tests, writing a plan under `plans/`, and linking it in `plans/roadmap.md`.
 - Shared worker conventions (**Target**, **States**, **Probes**, **People docs**, **Follow-ups**) are defined in `{{BS_CONVENTIONS}}`.
 
+## Must not break
+1. **Probe before claiming.** Every gap, baseline, and code claim in a plan is backed by a recorded probe or a read of the code.
+2. **Name the root, fix it once.** Every gap names its root cause, its sibling paths are probed, and one shared fix covers them.
+3. **Never review your own plan.** `review` mode only runs on a plan not drafted or revised in this session.
+4. **The user decides follow-ups.** Never schedule, defer, or drop a follow-up entry without their answer.
+
 ## Operational Workflow
 
 ### Step 1: Target Discovery & Context

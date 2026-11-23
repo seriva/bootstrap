@@ -22,14 +22,42 @@ commits it ("docs(<plan-slug>): start plan"; hooks run, the test suite is skippe
 pushes PLAN_BRANCH if it is ahead of origin (also an earlier run's unpushed header commit).
 Prints KEY=value lines: PLAN_SLUG, PLAN_BRANCH, BASE_BRANCH, START_BRANCH, CREATED (true|false),
 COMMITTED (<short SHA>|none).
-Exit: 0 ok, 2 usage or bad plan file, 3 git fetch/checkout/pull/push failed, 4 dirty tree
-      (paths on stderr), 5 commit failed (bs-commit's error on stderr; the header edit is
-      rolled back, so a re-run after fixing the cause starts from a clean tree)
+Exit: 0 ok, 2 usage, bad plan file, or the plan branch is checked out in another worktree,
+      3 git fetch/checkout/pull/push failed, 4 dirty tree (paths on stderr), 5 commit failed
+      (bs-commit's error on stderr; the header edit is rolled back, so a re-run after fixing
+      the cause starts from a clean tree).
+On a non-zero exit, the last stderr line is "next: <action>" for the caller.
 EOF
+  echo "next: fix the call (bs-plan-branch <plan-file>), then retry" >&2
   exit 2
 }
 
-die() { echo "bs-plan-branch: $2" >&2; exit "$1"; }
+# die <code> <message> [<next action>]: the error, then the caller's next action (default per code).
+die() {
+  local next="${3:-}"
+  echo "bs-plan-branch: $2" >&2
+  if [ -z "$next" ]; then
+    case "$1" in
+      2 | 5) next="stop and report the error above" ;;
+      3) next="re-run once (it also pushes a header commit an earlier push left behind); if it fails again, stop and report" ;;
+      4) next="stop and ask the user to commit or clean the paths above; never stash, discard, or commit them yourself" ;;
+    esac
+  fi
+  echo "next: $next" >&2
+  exit "$1"
+}
+WORKTREE_NEXT="stop: tell the user to continue in that worktree or free the branch (switch that worktree, or git worktree remove <path>), then re-run; never force it"
+# checkout_or_die <git checkout args...>: a branch held by another worktree is the user's to free.
+checkout_or_die() {
+  local out
+  if ! out="$(git checkout -q "$@" 2>&1)"; then
+    printf '%s\n' "$out" >&2
+    case "$out" in
+      *"already used by worktree"*) die 2 "$plan_branch is checked out in another worktree" "$WORKTREE_NEXT" ;;
+    esac
+    die 3 "git checkout $* failed"
+  fi
+}
 
 [ $# -eq 1 ] && [ -n "$1" ] || usage
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || die 2 "not inside a git work tree"
@@ -71,7 +99,7 @@ has_local() { git show-ref --verify --quiet "refs/heads/$1"; }
 has_remote() { git rev-parse --verify --quiet "refs/remotes/origin/$1" >/dev/null; }
 
 if has_local "$plan_branch" || has_remote "$plan_branch"; then
-  git checkout -q "$plan_branch" || die 3 "git checkout $plan_branch failed"
+  checkout_or_die "$plan_branch"
   if git rev-parse --verify --quiet '@{upstream}' >/dev/null; then
     git pull -q --ff-only || die 3 "git pull on $plan_branch failed"
   elif has_remote "$plan_branch"; then
@@ -99,7 +127,7 @@ else
       if [ -z "$base" ]; then
         for b in main master; do has_remote "$b" && { base="$b"; break; }; done
       fi
-      [ -n "$base" ] || die 3 "cannot resolve origin's default branch (run: git remote set-head origin -a)"
+      [ -n "$base" ] || die 3 "cannot resolve origin's default branch" "run git remote set-head origin -a, then re-run"
       ;;
   esac
 fi
@@ -116,9 +144,9 @@ if ! has_local "$plan_branch" && ! has_remote "$plan_branch"; then
   else
     from="$base"
   fi
-  git rev-parse --verify --quiet "$from" >/dev/null || die 3 "base branch $base not found locally or on origin"
-  git cat-file -e "$from:$plan" 2>/dev/null || die 2 "$plan is not committed on $base; commit it there first"
-  git checkout -q --no-track -b "$plan_branch" "$from" || die 3 "git checkout -b $plan_branch failed"
+  git rev-parse --verify --quiet "$from" >/dev/null || die 3 "base branch $base not found locally or on origin" "stop and ask the user which base branch the plan should use"
+  git cat-file -e "$from:$plan" 2>/dev/null || die 2 "$plan is not committed on $base" "stop and ask the user to commit the plan on $base first"
+  checkout_or_die --no-track -b "$plan_branch" "$from"
   git push -q -u origin "$plan_branch" || die 3 "git push -u origin $plan_branch failed"
   created=true
 fi
@@ -151,11 +179,15 @@ if ! cmp -s "$tmp" "$plan"; then
   trap 'rm -f "$tmp" "$err"' EXIT
   # Default --exclude-hook: a header-only docs commit needs format/lint, not the test suite.
   if ! committed="$("$(dirname "$0")/bs-commit" -m "docs($slug): start plan" -- "$plan" 2>"$err")"; then
-    cat "$err" >&2
+    grep -v '^next: ' "$err" >&2 || true
     # The tree was clean on entry, so restoring the plan to HEAD drops only this script's edit
     # and a re-run after fixing the cause (e.g. installing dependencies) starts clean.
     git checkout -q HEAD -- "$plan"
-    die 5 "commit of $plan failed; its header edit was rolled back"
+    next=""
+    if grep -q 'not found' "$err"; then
+      next="install the project's locked dependencies (AGENTS.md Commands, else e.g. npm ci), then re-run once"
+    fi
+    die 5 "commit of $plan failed; its header edit was rolled back" "$next"
   fi
 fi
 # Also covers a header commit left unpushed by an earlier run whose push failed.

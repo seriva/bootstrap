@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Review-run state of a branch's PR for the bs-* skills, from one `gh pr view` call, and the
-# writer of the Gate line /bs-loop records (`set`), so reader and writer share these markers.
+# writer of the Gate line /bs-loop records (`set`, `ci`), so reader and writer share these markers.
 # Never writes the working tree.
 PLACEHOLDER='*Automated AI review & fix cycle in progress...*'
 FIX_SUBJECT_SUFFIX=': address review feedback'
@@ -12,6 +12,7 @@ usage() {
   cat >&2 <<'EOF'
 Usage: bs-review-state <branch>
        bs-review-state set <branch> <GATE> <detail> [<report-file>]
+       bs-review-state ci <branch> <passes-run>
 Prints "<state> <base-branch>", or "none" when the branch has no PR. <state> is the first match:
   merged | closed        the PR is merged or closed (gh may return one for a reused branch name)
   ready                  open and not a draft
@@ -24,18 +25,60 @@ set writes "**Gate:** <GATE> (<detail>)", GATE one of PASSED, BLOCKED_BY_DEFECTS
   while the body has the placeholder, the line holding it becomes "## Review Status", the
   Gate line, and <report-file>'s contents (required then; e.g. Findings and probe details);
   afterwards it replaces the first Gate line (no <report-file>). Then prints the new state.
-Exit: 0 ok, 2 usage, 3 gh failed, 4 (set) PR body has neither the placeholder nor a Gate line
+ci waits for the PR's CI (bs-pr-ci), rewrites the Gate line from the result, marks the PR ready
+  when it is PASSED, and prints "<REVIEW_STATUS> <ci-result>" and a "next: <action>" line:
+    pass, skipped, none-configured   PASSED (skipped: CI did not test this PR)
+    fail <checks>, conflict          BLOCKED_BY_CI (the PR stays a draft)
+    gh failure while waiting         BLOCKED_BY_CI error
+Exit: 0 ok, 2 usage, 3 gh failed, 4 (set, ci) PR body has neither the placeholder nor a Gate line.
+On a non-zero exit, the last stderr line is "next: <action>" for the caller.
 EOF
   exit 2
 }
 
+next_on_failure() {
+  case "$1" in
+    2) echo "fix the call as the error or usage above says, then retry" ;;
+    3) echo "gh failed (error above): retry once; if it fails again, stop and report the error" ;;
+    4) echo "stop and report: the PR body has neither the review placeholder nor a Gate line" ;;
+  esac
+}
+
 err="$(mktemp "${TMPDIR:-/tmp}/bs-review-state.XXXXXX")"
 body_file="$(mktemp "${TMPDIR:-/tmp}/bs-review-state.body.XXXXXX")"
-trap 'rm -f "$err" "$body_file"' EXIT
+trap 'rc=$?; rm -f "$err" "$body_file"; if [ "$rc" -ne 0 ]; then n="$(next_on_failure "$rc")"; [ -z "$n" ] || echo "next: $n" >&2; fi' EXIT
 
-if [ "${1:-}" = set ]; then
-  [ $# -ge 4 ] && [ $# -le 5 ] && [ -n "$2" ] && [ -n "$4" ] || usage
-  branch="$2" gate="$3" detail="$4" report="${5:-}"
+# read_state <branch>: print "<state> <base-branch>", or "none".
+read_state() {
+  local record state draft base fixes body gate s
+  # First line: state, isDraft, baseRefName, number of fix commits (tab-separated); then the body.
+  local jq_record="\"\(.state)\t\(.isDraft)\t\(.baseRefName)\t\([.commits[].messageHeadline | select(endswith(\"$FIX_SUBJECT_SUFFIX\"))] | length)\n\(.body)\""
+  if ! record="$(gh pr view "$1" --json state,isDraft,baseRefName,body,commits --jq "$jq_record" 2>"$err")"; then
+    if grep -q 'no pull requests found' "$err"; then echo none; return 0; fi
+    cat "$err" >&2
+    exit 3
+  fi
+  IFS="$(printf '\t')" read -r state draft base fixes <<EOF
+$(printf '%s\n' "$record" | head -n 1)
+EOF
+  body="$(printf '%s\n' "$record" | sed 1d)"
+  # Only the first Gate line counts: it is the one `set` writes and rewrites, ahead of the report,
+  # whose Findings or probe output may quote other Gate lines.
+  gate="$(printf '%s\n' "$body" | sed -nE 's/.*\*\*Gate(:\*\*|\*\*:)[[:space:]]*([A-Z_]+).*/\2/p' | head -n 1)"
+  if [ "$state" = MERGED ]; then s=merged
+  elif [ "$state" = CLOSED ]; then s=closed
+  elif [ "$draft" != true ]; then s=ready
+  elif printf '%s\n' "$body" | grep -qF -- "$PLACEHOLDER"; then
+    if [ "${fixes:-0}" -gt 0 ]; then s=fix-used; else s=in-review; fi
+  else
+    case "$gate" in PASSED | BLOCKED_BY_DEFECTS | BLOCKED_BY_CI) s="gated:$gate" ;; *) s=draft ;; esac
+  fi
+  echo "$s $base"
+}
+
+# set_gate <branch> <GATE> <detail> [<report-file>]: write the Gate line into the PR body.
+set_gate() {
+  local branch="$1" gate="$2" detail="$3" report="${4:-}" body line
   case "$gate" in PASSED | BLOCKED_BY_DEFECTS | BLOCKED_BY_CI) ;; *) usage ;; esac
   [ -z "$report" ] || [ -f "$report" ] || { echo "bs-review-state: no such report file: $report" >&2; exit 2; }
   if ! body="$(gh pr view "$branch" --json body --jq '"\(.body)"' 2>"$err")"; then
@@ -70,34 +113,52 @@ if [ "${1:-}" = set ]; then
     cat "$err" >&2
     exit 3
   fi
-  rm -f "$err" "$body_file"
-  exec "$0" "$branch"
-fi
+}
 
-[ $# -eq 1 ] && [ -n "$1" ] || usage
-
-# First line: state, isDraft, baseRefName, number of fix commits (tab-separated); then the body.
-jq_record="\"\(.state)\t\(.isDraft)\t\(.baseRefName)\t\([.commits[].messageHeadline | select(endswith(\"$FIX_SUBJECT_SUFFIX\"))] | length)\n\(.body)\""
-if ! record="$(gh pr view "$1" --json state,isDraft,baseRefName,body,commits --jq "$jq_record" 2>"$err")"; then
-  if grep -q 'no pull requests found' "$err"; then echo none; exit 0; fi
-  cat "$err" >&2
-  exit 3
-fi
-
-IFS="$(printf '\t')" read -r state draft base fixes <<EOF
-$(printf '%s\n' "$record" | head -n 1)
-EOF
-body="$(printf '%s\n' "$record" | sed 1d)"
-# Only the first Gate line counts: it is the one `set` writes and rewrites, ahead of the report,
-# whose Findings or probe output may quote other Gate lines.
-gate="$(printf '%s\n' "$body" | sed -nE 's/.*\*\*Gate(:\*\*|\*\*:)[[:space:]]*([A-Z_]+).*/\2/p' | head -n 1)"
-
-if [ "$state" = MERGED ]; then s=merged
-elif [ "$state" = CLOSED ]; then s=closed
-elif [ "$draft" != true ]; then s=ready
-elif printf '%s\n' "$body" | grep -qF -- "$PLACEHOLDER"; then
-  if [ "${fixes:-0}" -gt 0 ]; then s=fix-used; else s=in-review; fi
-else
-  case "$gate" in PASSED | BLOCKED_BY_DEFECTS | BLOCKED_BY_CI) s="gated:$gate" ;; *) s=draft ;; esac
-fi
-echo "$s $base"
+case "${1:-}" in
+  set)
+    [ $# -ge 4 ] && [ $# -le 5 ] && [ -n "$2" ] && [ -n "$4" ] || usage
+    set_gate "$2" "$3" "$4" "${5:-}"
+    read_state "$2"
+    ;;
+  ci)
+    [ $# -eq 3 ] && [ -n "$2" ] && [ -n "$3" ] || usage
+    branch="$2" passes="$3"
+    current="$(read_state "$branch")"
+    [ "$current" != none ] || { echo "bs-review-state: no PR for $branch" >&2; exit 3; }
+    base="${current#* }"
+    ci_err="$(mktemp "${TMPDIR:-/tmp}/bs-review-state.ci.XXXXXX")"
+    rc=0
+    result="$("$(dirname "$0")/bs-pr-ci" "$branch" 2>"$ci_err")" || rc=$?
+    ci_msg="$(grep -v '^next: ' "$ci_err" || true)"
+    rm -f "$ci_err"
+    if [ "$rc" -eq 2 ]; then printf '%s\n' "$ci_msg" >&2; exit 2; fi
+    case "$rc:$result" in
+      0:pass) status=PASSED ci=pass detail="$passes; CI: pass" ;;
+      0:skipped) status=PASSED ci=skipped detail="$passes; CI: skipped, no check ran" ;;
+      0:none-configured) status=PASSED ci=none-configured detail="$passes; CI: none configured" ;;
+      "0:fail "*) status=BLOCKED_BY_CI ci="$result" detail="$passes; failing: ${result#fail }" ;;
+      0:conflict) status=BLOCKED_BY_CI ci=conflict detail="$passes; merge conflict with $base" ;;
+      *)
+        [ -z "$ci_msg" ] || printf '%s\n' "$ci_msg" >&2
+        status=BLOCKED_BY_CI ci=error detail="$passes; CI wait failed: $(printf '%s\n' "$ci_msg" | head -n 1)" ;;
+    esac
+    set_gate "$branch" "$status" "$detail"
+    if [ "$status" = PASSED ]; then
+      if ! gh pr ready "$branch" >/dev/null 2>"$err"; then
+        cat "$err" >&2
+        exit 3
+      fi
+    fi
+    echo "$status $ci"
+    case "$ci" in
+      pass | none-configured) echo "next: return the PR URL with REVIEW_STATUS=PASSED (the PR is marked ready)" ;;
+      skipped) echo "next: tell the user CI did not test this PR (every check was skipped: a workflow \`if:\` excludes the branch; never say CI passed), then return the PR URL with REVIEW_STATUS=PASSED (the PR is marked ready)" ;;
+      *) echo "next: leave the PR in Draft, alert the user ($detail), and return the PR URL with REVIEW_STATUS=BLOCKED_BY_CI" ;;
+    esac
+    ;;
+  *)
+    [ $# -eq 1 ] && [ -n "$1" ] || usage
+    read_state "$1"
+    ;;
+esac

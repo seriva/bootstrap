@@ -16,10 +16,15 @@ Watches the checks of <branch>'s PR (gh pr checks --watch --fail-fast) and print
                         (GitHub runs no pull_request workflows for an unmergeable PR)
   none-configured       GitHub reports no checks; when .github/workflows/ exists, only after
                         BS_PR_CI_POLL_LIMIT (3) retries BS_PR_CI_POLL_INTERVAL (10) seconds apart
-Exit: 0 ok, 2 usage or not a repo, 3 gh failed (e.g. no PR for <branch>)
+Exit: 0 ok, 2 usage or not a repo, 3 gh failed (e.g. no PR for <branch>).
+On a non-zero exit, the last stderr line is "next: <action>" for the caller.
 EOF
   exit 2
 }
+trap 'rc=$?; case "$rc" in
+  2) echo "next: fix the call (bs-pr-ci <branch>, inside the repo), then retry" >&2 ;;
+  3) echo "next: treat it as BLOCKED_BY_CI with the gh error above (e.g. no PR for the branch)" >&2 ;;
+esac' EXIT
 
 [ $# -eq 1 ] && [ -n "$1" ] || usage
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "bs-pr-ci: not inside a git work tree" >&2; exit 2; }

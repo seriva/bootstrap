@@ -204,10 +204,16 @@ check "conventions explain a branch held by another worktree" \
 for pair in conventions.md:bs-plan-state skills/bs-exec/SKILL.md:bs-plan-state skills/bs-exec/SKILL.md:bs-plan-branch \
   conventions.md:bs-review-state skills/bs-loop/SKILL.md:bs-review-state skills/bs-exec/SKILL.md:bs-review-state \
   skills/bs-review/SKILL.md:bs-diff-target dispatch.md:bs-pr-ci \
-  skills/bs-probe/SKILL.md:bs-worktree skills/bs-review/SKILL.md:bs-worktree; do
+  skills/bs-probe/SKILL.md:bs-worktree role-reviewer.md:bs-worktree; do
   doc="${pair%%:*}" script="${pair##*:}"
   case "$doc" in skills/*) path="$home/.claude/$doc" ;; *) path="$home/.local/share/bootstrap/$doc" ;; esac
   check "$doc calls $script" grep -qF "$home/.local/share/bootstrap/scripts/$script" "$path"
+done
+# Each role brief is handed to its subagent by an orchestrating skill.
+for pair in role-implementer.md:bs-loop role-implementer.md:bs-exec role-defect-fixer.md:bs-loop \
+  role-verifier.md:bs-loop role-reviewer.md:bs-review; do
+  brief="${pair%%:*}" skill="${pair##*:}"
+  check "$skill hands out $brief" grep -qF "$home/.local/share/bootstrap/$brief" "$home/.claude/skills/$skill/SKILL.md"
 done
 if [[ -z "$missing" ]]; then
   pass "rendered skill and doc paths all resolve"

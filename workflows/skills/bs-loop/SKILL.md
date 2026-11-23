@@ -6,29 +6,32 @@ description: "End-to-end autonomous development loop: implementation, quality ga
 # Autonomous Development Loop (bs-loop)
 
 Invoking `/bs-loop` authorizes discovering target repos, branching, committing, running tests, and managing GitHub PRs.
-- It orchestrates `/bs-task` (`{{BS_TASK_SKILL}}`), `/bs-review` (`{{BS_REVIEW_SKILL}}`), and `/bs-probe` (`{{BS_PROBE_SKILL}}`).
+- It orchestrates `/bs-review` (`{{BS_REVIEW_SKILL}}`) and the role briefs its subagents follow: `Implementer` (`{{BS_ROLE_IMPLEMENTER}}`), `Defect Fixer` (`{{BS_ROLE_DEFECT_FIXER}}`), and `Code Reviewer (Pass 2)` (`{{BS_ROLE_VERIFIER}}`).
 - Worker conventions (**Target**, **States**, **Probes**, **Gate runs**, **Safe commit**, **People docs**, **Follow-ups**) are in `{{BS_CONVENTIONS}}`.
 - **Dispatch** and **CI wait** are in `{{BS_DISPATCH}}`.
 
+## Must not break
+1. **Never review your own diff.** Every review pass is a fresh-context subagent; none reachable → `PENDING_REVIEW`.
+2. **One Fix Turn, then the verdict stands.** Another only when the user explicitly grants one.
+3. **Pass leads, not conclusions.** Forward sightings as code and command, never your own verdict.
+4. **Never skip or mask a gate**, and never push an implementer's commits before **Verify**.
+5. **Never touch the user's uncommitted files.** Dirty tree → stop and list the paths.
+
 ## Operational Workflow
 
-- **Modes**:
-  - **Full** (default): Steps 1–4.
-  - **Implement-only** (Steps 1–2.2; used by `/bs-exec`'s `Phase Implementer`): stop after the implementation commits, without pushing. Return `WORKING_BRANCH`, the commits, and the **Gate runs** `Full gate:` line. The caller verifies them, then runs Step 2.3.
 - **Role & Model Flags**: resolve `IMPLEMENTER`, `REVIEWER`, and their models per `{{BS_DISPATCH}}`, e.g. `/bs-loop --pairing --reviewer-model=<model> <task>`.
 
 ### Step 1: Target & Plan Check
 1. Resolve `$TARGET_REPO` and read `AGENTS.md` per **Target** (`{{BS_CONVENTIONS}}`).
 2. **Plan-First**: the task is non-trivial and standalone, and `"{{BS_PLAN_STATE}}" active` lists no plan → run `/bs-plan`, then STOP. Present the plan and remind the user to commit it (with `plans/roadmap.md`) before running `/bs-exec`.
 
-### Step 2: Branch & TDD Implementation (via `/bs-task`)
+### Step 2: Branch & TDD Implementation (via the `Implementer` brief)
 1. **Branch Resolution**:
    - **Clean tree**: require a clean tree (`git status --porcelain`). Dirty → stop and report the paths; never stash, discard, or commit them.
    - **Interrupted run**: check `"{{BS_REVIEW_STATE}}" "$(git rev-parse --abbrev-ref HEAD)"` (**States**).
      - Prints **in review** → **Resume**:
        - Set `WORKING_BRANCH` to the current branch and `BASE_BRANCH` to the printed base branch, then `git fetch origin`.
        - Skip the rest of Step 2.
-       - Implement-only mode: return `WORKING_BRANCH` and say the run resumed an existing PR, instead of continuing.
      - Prints `gated:BLOCKED_BY_DEFECTS` and the user asks to fix it → set both branches the same way, `git fetch origin`, and go to the **User-granted Fix Turn** (Step 3).
    - **`BASE_BRANCH`**: `git fetch origin` first. It must exist as `origin/$BASE_BRANCH`, else stop and ask. First rule that applies:
      1. The caller's or user's base (e.g. `feat/<plan-slug>`).
@@ -40,25 +43,16 @@ Invoking `/bs-loop` authorizes discovering target repos, branching, committing, 
      - Phases: `feat/<plan-slug>-phase-<N>` (`git checkout` it if resuming).
      - Standalone: the existing `feat/*`/`fix/*` branch, else `<type>/<task-slug>`.
      - Create a missing branch with `git checkout --no-track -b "$WORKING_BRANCH" "origin/$BASE_BRANCH"`.
-2. **Implementation**:
+2. **Implementation** (one phase, or one standalone task):
    - **Routing**:
-     - `IMPLEMENTER == HOST_PROVIDER` → read `{{BS_TASK_SKILL}}` (and `{{BS_PROBE_SKILL}}` when probing) and run Case A or B inline.
-     - Otherwise → dispatch `IMPLEMENTER` per **Dispatch** with the prompt below (placeholders filled), verify per **Verify**, then go to Step 2.3.
-   - **`Implementer` prompt**:
-     > You are a dispatched fresh-context subagent (`Implementer`); do not spawn or dispatch any subagents (probe inline).
-     > 1. First read `{{BS_TASK_SKILL}}`, `{{BS_PROBE_SKILL}}`, and `{{BS_CONVENTIONS}}` in full, plus **Step 2.2** in `{{BS_LOOP_SKILL}}`, then `AGENTS.md` in `$TARGET_REPO` (and `$PLAN_FILE` if given: `<path or none>`).
-     > 2. Invoke `/bs-loop` Step 2.2 on branch `$WORKING_BRANCH` in `$TARGET_REPO` for `<Phase N ($PHASE_NAME) from $PLAN_FILE | standalone task: $TASK>`: execute Case A (plan phase via `/bs-task`) or Case B (standalone task via `/bs-task`) inline, in full, with commit permission.
-     > 3. You are the `IMPLEMENTER`: skip the Step 2.2 **Routing** bullet; nothing in `{{BS_DISPATCH}}` applies to you.
-     > 4. Do NOT run `git push` or create/edit a GitHub PR (the orchestrator handles Step 2.3).
-     > 5. Reply with:
-     >    - the commit hash(es), with a one-line summary per commit;
-     >    - any `### Side Sightings`, `### Unconfirmed`, and `### Tests Changed` sections;
-     >    - last, the `Full gate:` line from **Gate runs** in `{{BS_CONVENTIONS}}`.
-   - **Case A — Plan Phase N**: run `/bs-task` with commit permission for every unchecked `- [ ] Task N.M` in Phase N, without pausing (`"feat(<plan-slug>): <summary> (Task N.M)"`).
-     - Each task gets its own commit.
-     - Combine adjacent tasks only when the earlier task's commit would fail its own tests or not build, and say why in the commit body.
-   - **Case B — Standalone `$TASK`**: run `/bs-task` with commit permission (`"<type>[(<scope>)]: <summary>"`, scope per `AGENTS.md` **Commits & PR Titles**).
-   - **Implement-only mode**: STOP here, unpushed, and reply per **Modes**.
+     - `IMPLEMENTER == HOST_PROVIDER` → follow `{{BS_ROLE_IMPLEMENTER}}` inline, with the inputs below.
+     - Otherwise → dispatch `Implementer` on `IMPLEMENTER` per **Dispatch** with the prompt below, verify per **Verify**, then go to Step 2.3.
+   - **`Implementer` prompt** (placeholders filled):
+     > You are a dispatched fresh-context subagent (`Implementer`); do not spawn or dispatch any subagents. Read `{{BS_ROLE_IMPLEMENTER}}` and follow it.
+     > - `TARGET_REPO`: `$TARGET_REPO`
+     > - `WORKING_BRANCH`: `$WORKING_BRANCH` (checked out), `BASE_BRANCH`: `$BASE_BRANCH`
+     > - Work: `<Phase N ($PHASE_NAME) of $PLAN_FILE | standalone task: $TASK>`
+     > - `PROBE_SKILL`: `{{BS_PROBE_SKILL}}`
 3. **Draft PR**:
    - Push: `git push -u origin HEAD`.
    - Reuse the existing PR for `$WORKING_BRANCH` only if `"{{BS_REVIEW_STATE}}" "$WORKING_BRANCH"` prints neither `none`, `merged`, nor `closed`.
@@ -83,11 +77,11 @@ Review `$WORKING_BRANCH` against `origin/$BASE_BRANCH` (fetched; the local base 
     - each `### Out of Scope` item;
     - each implementer `### Side Sightings` item Pass 1 did not classify;
     - each line the diff adds to `plans/follow-ups.md`.
-  - A candidate whose own repro runs through the mechanism of a High/Medium finding, or through a mechanism the diff changes, is a failing sibling (Review Rubric item 3), even if the reviewer found it on `<BASE>` too.
+  - A candidate whose own repro runs through the mechanism of a High/Medium finding, or through a mechanism the diff changes, is a failing sibling (**Review Rubric** item 3 in `{{BS_ROLE_REVIEWER}}`), even if the reviewer found it on `<BASE>` too.
   - Promote it to Medium, say so in chat, and treat it as a Medium finding from then on. An `LGTM` with a promoted item goes to the Fix Turn.
   - Never demote a finding.
 - **Fix Turn** (max 1): `Defect Fixer` on `IMPLEMENTER`, given the Pass 1 High/Medium findings, promoted ones included.
-  - It commits the fix. Verify it per **Verify**, then `git push` → Pass 2.
+  - It commits the fix as `"fix(<scope>): address review feedback"`. Verify it per **Verify**, then `git push` → Pass 2.
   - Red gate → still push (the PR must show the spent Fix Turn for **States**), then `BLOCKED_BY_DEFECTS` (Step 4).
 - **Pass 2** (terminal; a new `Code Reviewer (Pass 2)` on `REVIEWER`, zero history):
   - `LGTM` → `PASSED`, unless its own probe results show the fix regressed something against `<BASE>`. Then `BLOCKED_BY_DEFECTS`, and say so in chat.
@@ -99,7 +93,7 @@ Review `$WORKING_BRANCH` against `origin/$BASE_BRANCH` (fetched; the local base 
   - When: the PR is `BLOCKED_BY_DEFECTS` and the user explicitly asks to fix it on its branch. One per request; never grant one yourself.
   - Clean tree first (`git status --porcelain`). Dirty → stop and list the paths.
   - Run a Fix Turn on the latest `### Unresolved` items. In a new session, take them from the latest **Findings** in the PR body or its comments.
-  - Then a new `Code Reviewer (Pass <N+1>)` with the Pass 2 prompt; it is terminal like Pass 2.
+  - Then a new `Code Reviewer (Pass <N+1>)` with the Pass 2 prompt (given those items); it is terminal like Pass 2.
   - Step 4: name every pass in `<passes run>`.
   - `set` refuses a report once a Gate line exists: post the report with `gh pr comment "$WORKING_BRANCH" --body-file <report.md>`, then `set` without `<report.md>`.
 
@@ -111,35 +105,21 @@ Review `$WORKING_BRANCH` against `origin/$BASE_BRANCH` (fetched; the local base 
   - Implementer reported `### Tests Changed` → append it verbatim for the reviewer to audit.
 
 - **`Defect Fixer`** prompt:
-  > You are a dispatched fresh-context subagent (`Defect Fixer`); do not spawn or dispatch any subagents.
-  > 1. First read `{{BS_TASK_SKILL}}` in full and **Target**, **Probes**, **Gate runs**, **Safe commit**, **People docs**, and **Follow-ups** in `{{BS_CONVENTIONS}}`, then `AGENTS.md` in `$TARGET_REPO`.
-  > 2. On branch `$WORKING_BRANCH` in `$TARGET_REPO`, fix ONLY these High/Medium findings, with the minimal change needed: `<paste Pass 1 High/Medium findings>`.
-  >    - Fix any shared mechanism once rather than patching individual paths.
-  >    - Ignore Low and Out of Scope items.
-  > 3. The fix changes user-facing behaviour → update `CHANGELOG.md` and `docs/` per **People docs**. New errors for programs that used to build need a `**Breaking:**` entry.
-  > 4. Run the **Full gate** per **Gate runs** until green, then **Safe commit** `"fix(<scope>): address review feedback"`.
-  > 5. Never amend, rebase, or push (the orchestrator pushes after verifying).
-  > 6. Reply with:
-  >    - the commit hash, with a one-line note per finding;
-  >    - any `### Side Sightings`, `### Unconfirmed`, and `### Tests Changed` sections;
-  >    - last, the `Full gate:` line.
+  > You are a dispatched fresh-context subagent (`Defect Fixer`); do not spawn or dispatch any subagents. Read `{{BS_ROLE_DEFECT_FIXER}}` and follow it.
+  > - `TARGET_REPO`: `$TARGET_REPO`
+  > - `WORKING_BRANCH`: `$WORKING_BRANCH` (checked out)
+  > - Findings to fix: `<paste Pass 1 High/Medium findings>`
+  > - `PROBE_SKILL`: `{{BS_PROBE_SKILL}}`
 
-- **`Code Reviewer (Pass 2)`** prompt:
-  > You are a dispatched fresh-context subagent (`Code Reviewer (Pass 2)`); do not spawn or dispatch any subagents.
-  > 1. First read `{{BS_PROBE_SKILL}}` in full, then `AGENTS.md` in `$TARGET_REPO`.
-  > 2. Review `git diff origin/$BASE_BRANCH...HEAD` on branch `$WORKING_BRANCH` in `$TARGET_REPO`, with no knowledge of how it was implemented.
-  > 3. Verify each Pass 1 finding is resolved without regressions: `<paste Pass 1 High/Medium findings>`.
-  > 4. Probe any `Defect Fixer` `### Side Sightings` and `### Unconfirmed` (their code and command appended verbatim if present). Still unreproduced → `### Unconfirmed`.
-  > 5. Classify:
-  >    - A test the fix rewrote or deleted (see its `### Tests Changed`, appended verbatim) that no longer covers an invariant the code still has → `### Unresolved`.
-  >    - A regression against `origin/$BASE_BRANCH` that the fix causes → `### Unresolved`, never with `LGTM`.
-  >    - Any other defect you find, wherever → `### Out of Scope` with a one-line repro, never only in another section.
-  >    - Disregard Low nits.
-  > 6. Run verification probes per `/bs-probe` (`{{BS_PROBE_SKILL}}`), plus the **Lint** command and the test files the fix touched. Never the full **Test** command (the orchestrator's **Verify** and CI gate it).
-  > 7. Reply in one final message with `### Resolved`, `### Unresolved`, and `### Verification Probes Run` (command + observed result), plus `### Out of Scope` / `### Unconfirmed` when any.
-  > 8. `### Unresolved` empty → end with the single token `LGTM`.
+- **`Code Reviewer (Pass 2)`** prompt (and any later pass):
+  > You are a dispatched fresh-context subagent (`Code Reviewer (Pass <N>)`); do not spawn or dispatch any subagents. Read `{{BS_ROLE_VERIFIER}}` and follow it.
+  > - `TARGET_REPO`: `$TARGET_REPO`
+  > - `WORKING_BRANCH`: `$WORKING_BRANCH`, `BASE`: `origin/$BASE_BRANCH`
+  > - Findings to verify: `<paste the findings the fix addressed>`
+  > - `Defect Fixer` `### Side Sightings`, `### Unconfirmed`, and `### Tests Changed`: `<verbatim, or none>`
+  > - `PROBE_SKILL`: `{{BS_PROBE_SKILL}}`
 
-### Step 4: Finalize PR & Safety Gate
+### Step 4: Finalize PR & CI Gate
 1. **Record Follow-ups** (skip on `PENDING_REVIEW`):
    - Append to `plans/follow-ups.md` per **Follow-ups** (skip duplicates):
      - every pass's `### Out of Scope` items;
@@ -152,15 +132,10 @@ Review `$WORKING_BRANCH` against `origin/$BASE_BRANCH` (fetched; the local base 
      - a collapsed `<details>` block containing `### Verification Probes Run`.
    - Run `"{{BS_REVIEW_STATE}}" set "$WORKING_BRANCH" <PASSED | BLOCKED_BY_DEFECTS> "<passes run>" <report.md>`. It replaces the Step 2.3 placeholder with the Gate line and the report, and prints the state it reads back.
    - Remove the temp file.
-3. **CI Gate** (only if `REVIEW_STATUS == PASSED`):
-   - Start only after steps 1–2 finished and step 1's push landed, never before or alongside them: CI must watch the PR's last commit.
-   - Run **CI wait** (`{{BS_DISPATCH}}`) on `$WORKING_BRANCH`, then by result:
-     - `pass` → keep `PASSED` (step 2 already wrote it).
-     - `fail <checks>` → `REVIEW_STATUS=BLOCKED_BY_CI`; `"{{BS_REVIEW_STATE}}" set "$WORKING_BRANCH" BLOCKED_BY_CI "<passes run>; failing: <checks>"`.
-     - `conflict` → `REVIEW_STATUS=BLOCKED_BY_CI`; `... set "$WORKING_BRANCH" BLOCKED_BY_CI "<passes run>; merge conflict with $BASE_BRANCH"`.
-     - `none-configured` → `... set "$WORKING_BRANCH" PASSED "<passes run>; CI: none configured"`.
-     - `skipped` → `... set "$WORKING_BRANCH" PASSED "<passes run>; CI: skipped, no check ran"`, and tell the user CI did not test this PR.
-   - `set` exits non-zero → report its error and leave the PR in **Draft**.
-4. **Safety Gate**:
-   - `PASSED` → `gh pr ready "$WORKING_BRANCH"`, and return the PR URL + `REVIEW_STATUS`.
-   - `BLOCKED_BY_DEFECTS` or `BLOCKED_BY_CI` → leave the PR in **Draft** and alert the user.
+3. **CI Gate**:
+   - `BLOCKED_BY_DEFECTS` → leave the PR in **Draft**, alert the user, and return the PR URL + `REVIEW_STATUS`.
+   - `PASSED` → wait until steps 1–2 finished and step 1's push landed (never before or alongside them: CI must watch the PR's last commit). Then run `"{{BS_REVIEW_STATE}}" ci "$WORKING_BRANCH" "<passes run>"`:
+     - It waits for CI, rewrites the Gate line from the result, and marks the PR ready when it stays `PASSED`. A failing check or a merge conflict makes it `BLOCKED_BY_CI`, and the PR stays a **Draft**.
+     - Its first line is `<REVIEW_STATUS> <ci-result>`: take `REVIEW_STATUS` from it.
+     - Its second line is `next: <action>`: do it (e.g. tell the user when CI was skipped, or alert them when it is blocked).
+     - Non-zero exit → do its stderr `next:` line (**Helpers**), and leave the PR in **Draft**.

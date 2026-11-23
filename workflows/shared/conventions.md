@@ -18,6 +18,11 @@ Shared conventions referenced by all `bs-*` skills. Orchestrator-only dispatch a
    - Lockfile present but nothing installed (e.g. no `node_modules/`) → run the locked install (`AGENTS.md` **Commands**, else e.g. `npm ci`) before the first commit, gate, or probe.
    - Never add or upgrade deps.
 
+## Helpers
+- The `bs-*` helper scripts (installed under `scripts/`, called by full path) do the mechanical steps; never redo their work by hand or work around them.
+- **On a non-zero exit**, a helper's last stderr line is `next: <action>`. Do exactly that action.
+- Commands that decide something (`bs-review-state ci`) print their `next:` line on stdout instead.
+
 ## States
 ### Plan
 Run `"{{BS_PLAN_STATE}}" <plan-file>` on the plan branch. It prints one of:
@@ -45,6 +50,28 @@ Run `"{{BS_PLAN_STATE}}" <plan-file>` on the plan branch. It prints one of:
 - **Before the first `.probes/` probe**: `e="$(git rev-parse --git-path info/exclude)"; grep -qxs '.probes/' "$e" || echo '.probes/' >> "$e"`. This hides it from git, not from tree-walking linters.
 - **Cleanup**: delete `.probes/` before any format or lint run, before any commit, and before returning.
 - **Keeping one**: a probe worth keeping becomes a real test in the task's `Test:` file.
+
+## Implementation
+How a task is implemented (`/bs-task`, `Implementer`, `Defect Fixer`):
+1. **Plan task already done?** Before writing tests for `Task N.M`, check whether its `Done when:` already holds (an earlier or prerequisite plan may have landed it). If it does:
+   1. Add only the tests it still lacks.
+   2. Run them on `origin/$BASE_BRANCH`: copy them into a `"{{BS_WORKTREE}}" add "origin/$BASE_BRANCH" base` checkout (deps per **Dependencies**), then remove it.
+   3. Expected result: they fail there when an earlier task in this phase did the work. When a prerequisite plan did it, base passes them too, which is expected.
+   4. Say which case it was in your report, and tick the task. Do not re-implement it.
+2. **Tests first**: write failing tests first (TDD) when applicable. For a plan task `Task N.M`, write them in its `Test:` file(s), targeting only its `Files:` and `Done when:`.
+3. **Implement** the minimal fix or feature within the `AGENTS.md` boundaries.
+4. **Same root, same fix** (**Follow-ups**): fix the shared mechanism once across sibling paths rather than patching a single caller.
+5. **Existing tests**: when you rewrite or delete one:
+   - Keep a test for the invariant it protected. Never weaken it just to go green.
+   - List it under `### Tests Changed` in your reply: the test, its invariant, and what covers it now (or why the invariant is gone).
+6. **Verification & People docs**:
+   - **Intermediate plan task (`Task N.1 .. N.(M-1)`)**:
+     - Run the task's `Test:` file(s) and the `AGENTS.md` lint command until green.
+     - Check off `- [x] Task N.M` in `$PLAN_FILE`.
+   - **Final plan task in the phase (`Task N.M`), a standalone task, or a fix**:
+     - User-facing behaviour changed (or this is the plan's final phase) → update `CHANGELOG.md` (`## [Unreleased]`) and `README.md`/`docs/` (when scheduled) per **People docs**.
+     - Plan task → check off `- [x] Task N.M` in `$PLAN_FILE`.
+     - Run the **Full gate** per **Gate runs** until green. Once committed, report its `Full gate:` line.
 
 ## Gate runs
 **Full gate**: the `AGENTS.md` **Format**, **Lint**, and **Test** commands as written (none listed: **Pre-commit gate**).
@@ -84,13 +111,7 @@ Run `"{{BS_PLAN_STATE}}" <plan-file>` on the plan branch. It prints one of:
    - Plan task: its `Files:` and tests, `$PLAN_FILE`, `CHANGELOG.md`, `README.md`, `docs/`.
    - Standalone: only the files the task needed (`plans/follow-ups.md` for its **Side sightings**).
    - `Defect Fixer`: the files the findings or their shared mechanism need, plus tests and the **People docs** files its change needs.
-4. **Exit codes**:
-   - 0: done.
-   - 2: bad path, flag, or subject over 72 chars → fix the call.
-   - 3: stray staged path → `git restore --staged` it, remove the stray change, retry.
-   - 4: the hook added paths and the commit was undone → stop and report.
-   - 5: the hook failed → fix it (**Dependencies**), retry.
-   - 6: nothing staged → go back to **Stage**.
+4. **Exit**: 0 means committed (it prints the short SHA). Otherwise do its `next:` line (**Helpers**).
 5. **Subject**:
    - At most 72 chars, including `<type>[(<scope>)]:` and any `(Task N.M)`; truncate only the `<summary>`.
    - Plan work uses `(<plan-slug>)` as its scope.

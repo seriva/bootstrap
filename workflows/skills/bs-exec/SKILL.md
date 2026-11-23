@@ -10,6 +10,12 @@ Invoking `/bs-exec` authorizes managing plan branches, running `/bs-loop` per ph
 - **Dispatch** and **CI wait** are in `{{BS_DISPATCH}}`.
 - The orchestrator spawns every subagent itself.
 
+## Must not break
+1. **Never re-implement a phase that has an open PR.** Resume, merge, or stop per its state.
+2. **Halt on `BLOCKED_BY_DEFECTS`, `BLOCKED_BY_CI`, or `PENDING_REVIEW`**, even with `--auto`.
+3. **Push a phase only after its gate passed** (**Verify**).
+4. **Never touch the user's uncommitted files.** Dirty tree → stop and list the paths.
+
 ## Operational Workflow
 
 ### Step 1: Target Discovery & Epic Branch Setup
@@ -22,11 +28,7 @@ Invoking `/bs-exec` authorizes managing plan branches, running `/bs-loop` per ph
 3. **Plan Branch**: run `"{{BS_PLAN_BRANCH}}" "$PLAN_FILE"`.
    - What it does: checks out (or creates and pushes) `feat/<plan-slug>`, resolves the base branch, records it in the plan's `**Base branch:**` line, turns `Draft` into `In Progress`, and commits and pushes that header.
    - Take `PLAN_SLUG` (`<plan-slug>`), `PLAN_BRANCH`, `BASE_BRANCH`, and `START_BRANCH` from its `KEY=value` output.
-   - Exit codes:
-     - 4 (dirty tree): stop, list the paths it printed, and ask the user to commit or clean them. Never stash, discard, or commit them yourself.
-     - 5 (header commit failed; the script already rolled back its edit): a hook reported `<tool>: not found` → install per **Dependencies** (**Target**) and re-run once. Otherwise stop and report its error.
-     - 3 (a git network step failed): re-run once (it also pushes a header commit an earlier push left behind), then stop and report.
-     - 2: stop and report its error (a branch held by another worktree: **Worktrees** under **Target**).
+   - Non-zero exit → do its `next:` line (**Helpers** in `{{BS_CONVENTIONS}}`). Dependencies, dirty trees, network retries, and a branch held by another worktree each get their own action.
 
 ### Step 2: Plan State Analysis
 1. `git checkout "$PLAN_BRANCH" && git pull`, then `"{{BS_PLAN_STATE}}" "$PLAN_FILE"` (**States**).
@@ -39,7 +41,7 @@ Invoking `/bs-exec` authorizes managing plan branches, running `/bs-loop` per ph
        - Otherwise → report the PR URL and state, and STOP.
      - **Drift note**: a plan named in `$PLAN_FILE`'s **Related:** line may have landed after this plan was written.
        - Check: it shows `Completed` in the base branch's roadmap (`git show "origin/$BASE_BRANCH:plans/roadmap.md"`; the plan branch's copy predates it), with a date after `$PLAN_FILE` last changed on the base branch (`git log -1 --format=%cs "origin/$BASE_BRANCH" -- "$PLAN_FILE"`).
-       - If so, say in chat that the plan may be stale and that `/bs-plan review` re-audits it, then continue (`/bs-task` checks each task's `Done when:` before implementing it).
+       - If so, say in chat that the plan may be stale and that `/bs-plan review` re-audits it, then continue (the `Phase Implementer` checks each task's `Done when:` before implementing it).
      - Otherwise go to **Step 3**.
    - **`finishing …`**: go to **Step 4**.
    - **`closed`**: report that the plan is complete and stop.
@@ -49,16 +51,11 @@ Invoking `/bs-exec` authorizes managing plan branches, running `/bs-loop` per ph
    - **`IMPLEMENTER == HOST_PROVIDER` and the host has a subagent tool**:
      1. Check out `$PHASE_BRANCH` yourself: `git fetch origin`, then `git checkout "$PHASE_BRANCH"` if it exists, else `git checkout --no-track -b "$PHASE_BRANCH" "origin/$PLAN_BRANCH"`.
      2. Spawn subagent `Phase Implementer`. `--implementer-model`, if set, is its model per **Model Selection & Inheritance**, not a flag in the prompt. Prompt:
-        > You are a dispatched fresh-context subagent (`Phase Implementer`); do not spawn or dispatch any subagents (probe inline).
-        > 1. First read `{{BS_TASK_SKILL}}`, `{{BS_PROBE_SKILL}}`, and `{{BS_CONVENTIONS}}` in full, plus **Steps 1–2.2** in `{{BS_LOOP_SKILL}}`.
-        > 2. Run `/bs-loop` in implement-only mode (Steps 1–2.2, `--implementer=host`, so `IMPLEMENTER == HOST_PROVIDER` and Step 2.2 runs inline; you need nothing from `{{BS_DISPATCH}}`) in `$TARGET_REPO`, on base branch `$PLAN_BRANCH`, for Phase `$PHASE_NUM` (`$PHASE_NAME`) from `$PLAN_FILE`.
-        > 3. `WORKING_BRANCH` is `$PHASE_BRANCH`, already checked out for you: commit only there, never on `$PLAN_BRANCH`.
-        > 4. Do NOT run `git push` or create/edit a GitHub PR (the orchestrator verifies your commits first).
-        > 5. Reply with:
-        >    - `WORKING_BRANCH`;
-        >    - the commit hash(es), with a one-line summary each;
-        >    - any `### Side Sightings`, `### Unconfirmed`, and `### Tests Changed` sections;
-        >    - last, the `Full gate:` line from **Gate runs** in `{{BS_CONVENTIONS}}`.
+        > You are a dispatched fresh-context subagent (`Phase Implementer`); do not spawn or dispatch any subagents. Read `{{BS_ROLE_IMPLEMENTER}}` and follow it.
+        > - `TARGET_REPO`: `$TARGET_REPO`
+        > - `WORKING_BRANCH`: `$PHASE_BRANCH` (checked out; commit only there, never on `$PLAN_BRANCH`), `BASE_BRANCH`: `$PLAN_BRANCH`
+        > - Work: Phase `$PHASE_NUM` (`$PHASE_NAME`) of `$PLAN_FILE`
+        > - `PROBE_SKILL`: `{{BS_PROBE_SKILL}}`
      3. Verify per **Verify**, then run `/bs-loop` Step 2.3 yourself (push and open the draft PR). A phase is pushed only after its gate passed, as in the path below.
    - **Otherwise**: run `/bs-loop` Steps 1–2 yourself for Phase N with `BASE_BRANCH="$PLAN_BRANCH"`. Step 2.2 routes per **Dispatch**; you push and open the draft PR.
 2. **Review**: run `/bs-loop` Steps 3–4 on `$PHASE_BRANCH` against `$PLAN_BRANCH`, routing roles per **Dispatch**.

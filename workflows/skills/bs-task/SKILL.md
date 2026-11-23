@@ -7,9 +7,17 @@ description: "Ad-hoc local TDD implementation with root-cause checks, quality ga
 
 Invoking `/bs-task` executes a single task via TDD, either:
 - ad-hoc on the current branch (no plan, clean tree, push, or PR required), or
-- for a plan task (`Task N.M` from `$PLAN_FILE`) when called by `/bs-loop`.
+- for one plan task (`Task N.M` from `$PLAN_FILE`).
 
-Shared worker conventions (**Target**, **Probes**, **Gate runs**, **Safe commit**, **People docs**, **Follow-ups**) are defined in `{{BS_CONVENTIONS}}`.
+`/bs-loop` and `/bs-exec` do not use this skill: their implementers follow `{{BS_ROLE_IMPLEMENTER}}`, which shares its **Implementation** rules.
+
+Shared worker conventions (**Target**, **Probes**, **Implementation**, **Gate runs**, **Safe commit**, **People docs**, **Follow-ups**) are defined in `{{BS_CONVENTIONS}}`.
+
+## Must not break
+1. **Same root, same fix, now.** A defect through a mechanism your diff touches is part of this task: fix that mechanism once.
+2. **Keep test invariants.** Never weaken a test to go green; say which tests you rewrote and why.
+3. **Never stage, revert, or commit the user's edits** (`PRE_DIRTY` paths).
+4. **Commit only when the user asked.**
 
 ## Workflow
 
@@ -24,26 +32,7 @@ Shared worker conventions (**Target**, **Probes**, **Gate runs**, **Safe commit*
    - Root cause unclear (typically on standalone bug fixes) → run `/bs-probe` (`{{BS_PROBE_SKILL}}`) before editing tracked files.
    - Running in the top-level host session (not a dispatched subagent) with a subagent tool → you may spawn subagent `Probe Investigator` with the prompt: `You are a dispatched subagent (do not spawn any subagents). First read {{BS_PROBE_SKILL}} in full, then AGENTS.md in $TARGET_REPO, and run /bs-probe in $TARGET_REPO for: <task>`.
    - Otherwise probe inline. Subagents never spawn subagents, and every dispatched prompt forbids it.
-3. **TDD & Implementation**:
-   - **Plan task already done?** Before writing tests for `Task N.M`, check whether its `Done when:` already holds (an earlier or prerequisite plan may have landed it). If it does:
-     1. Add only the tests it still lacks.
-     2. Run them on `origin/$BASE_BRANCH`: copy them into a `"{{BS_WORKTREE}}" add "origin/$BASE_BRANCH" base` checkout (deps per **Dependencies**), then remove it.
-     3. Expected result: they fail there when an earlier task in this phase did the work. When a prerequisite plan did it, base passes them too, which is expected.
-     4. Say which case it was in your report, and tick the task. Do not re-implement it.
-   - **Tests first**: write failing tests first (TDD) when applicable. For a plan task `Task N.M`, write them in its `Test:` file(s), targeting only its `Files:` and `Done when:`.
-   - **Implement** the minimal fix or feature within the `AGENTS.md` boundaries.
-   - **Same root, same fix** (**Follow-ups** in `{{BS_CONVENTIONS}}`): fix the shared mechanism once across sibling paths rather than patching a single caller.
-   - **Existing tests**: when you rewrite or delete one:
-     - Keep a test for the invariant it protected. Never weaken it just to go green.
-     - List it under `### Tests Changed` in your reply: the test, its invariant, and what covers it now (or why the invariant is gone).
-   - **Verification & People docs**:
-     - **Intermediate plan task (`Task N.1 .. N.(M-1)`)**:
-       - Run the task's `Test:` file(s) and the `AGENTS.md` lint command until green.
-       - Check off `- [x] Task N.M` in `$PLAN_FILE`.
-     - **Final plan task in the phase (`Task N.M`), or a standalone task**:
-       - User-facing behaviour changed (or this is the plan's final phase) → update `CHANGELOG.md` (`## [Unreleased]`) and `README.md`/`docs/` (when scheduled) per **People docs** (`{{BS_CONVENTIONS}}`).
-       - Plan task → check off `- [x] Task N.M` in `$PLAN_FILE`.
-       - Run the **Full gate** per **Gate runs** (`{{BS_CONVENTIONS}}`) until green. Once committed, report its `Full gate:` line.
+3. **TDD & Implementation**: follow **Implementation** in `{{BS_CONVENTIONS}}`.
 4. **Safe Commit (Only When Permitted)**:
    - **Standalone default**: respect `AGENTS.md` **No Auto-Commit**.
      - Do not commit unless the user asked you to.
@@ -54,7 +43,7 @@ Shared worker conventions (**Target**, **Probes**, **Gate runs**, **Safe commit*
      - Name every `PRE_DIRTY` file whose line changed (e.g. a tree-wide formatter rewrote it).
      - Say whether the user's staged changes changed (the final `staged` line).
      - Never revert them.
-   - **When committing** (the user asked, or `/bs-loop` called you):
+   - **When committing** (the user asked you to):
      - Run **Safe commit** (`{{BS_CONVENTIONS}}`). With `PRE_DIRTY` not empty, it commits only the task's files, refuses to commit mixed files, and undoes the commit if anything else got in.
      - Subject: `"feat(<plan-slug>): <summary> (Task N.M)"` for plan tasks, `"<type>[(<scope>)]: <summary>"` for standalone tasks.
      - Never run `git push` or open a PR.
