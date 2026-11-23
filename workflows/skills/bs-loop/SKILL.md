@@ -74,7 +74,7 @@ Review `$WORKING_BRANCH` against `origin/$BASE_BRANCH` (fetched; the local base 
   - High/Medium → Fix Turn.
 - **Same-root check** (before acting on a Pass 1 verdict):
   - Candidates:
-    - each `### Low` and `### Out of Scope` item;
+    - each behavioural `### Low` item (wrong output, crash, broken build, valid input rejected, invalid input accepted; never a style nit) and each `### Out of Scope` item;
     - each implementer `### Side Sightings` or `### Unconfirmed` item Pass 1 did not classify;
     - each line the diff adds to `plans/follow-ups.md`.
   - Check both tests for every candidate, even when Pass 1 has no High/Medium findings. Its own repro runs through:
@@ -84,6 +84,7 @@ Review `$WORKING_BRANCH` against `origin/$BASE_BRANCH` (fetched; the local base 
   - Promote it to Medium, say so in chat, and treat it as a Medium finding from then on. An `LGTM` with a promoted item goes to the Fix Turn.
   - Never demote a finding yourself.
 - **Plan design** (a High/Medium finding, promoted ones included, marked `(plan design: …)` or that the plan prescribes): ask the user before the Fix Turn, even under `/bs-exec --auto`: fix it now, or record it in `plans/follow-ups.md`. Their answer stands; it is the only way a finding leaves the Fix Turn.
+  - No High/Medium finding left → `REVIEW_STATUS=PASSED`, Step 4 (no Fix Turn).
 - **Fix Turn** (max 1): `Defect Fixer` on `IMPLEMENTER`, given the Pass 1 High/Medium findings, promoted ones included.
   - It commits the fix as `"fix(<scope>): address review feedback"`. Verify it per **Verify**, then `git push` → Pass 2.
   - Red gate → still push (the PR must show the spent Fix Turn for **States**), then `BLOCKED_BY_DEFECTS` (Step 4).
