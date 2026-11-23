@@ -16,6 +16,7 @@ Shared conventions referenced by all `bs-*` skills. Orchestrator-only dispatch a
    - Never force it or use `--ignore-other-worktrees`.
 4. **Dependencies**: a fresh checkout (a worktree, or a `"{{BS_WORKTREE}}"` base) may lack installed deps (`<tool>: not found`).
    - Lockfile present but nothing installed (e.g. no `node_modules/`) → run the locked install (`AGENTS.md` **Commands**, else e.g. `npm ci`) before the first commit, gate, or probe.
+   - Tool-managed binaries a gate command needs (e.g. Playwright browsers) → install them with the project's documented command (`AGENTS.md`, `README.md`, or `package.json` scripts). None documented → report it in your gate line (**Gate runs**), never skip the command silently.
    - Never add or upgrade deps.
 
 ## Helpers
@@ -90,6 +91,8 @@ How a task is implemented (`/bs-task`, `Implementer`, `Defect Fixer`):
    - Warnings your diff causes are yours to fix, also off its lines (e.g. an import it left unused).
    - Only warnings already on the base are pre-existing.
 3. **Report**: implementers and `Defect Fixer` end their reply with `Full gate: exit <N> @ <short-sha> (<S>s)`.
+   - It covers every Full-gate command, each sub-command included (e.g. both halves of `npm test && npm run test:e2e`).
+   - A command you could not run (missing browser, service, or tool) → `Full gate: incomplete (<command>: <reason>) @ <short-sha>`, never `exit 0`.
    - `<S>`: the summed `secs` of the gate's commands.
    - `<short-sha>`: HEAD right after committing the gated tree.
    - Docs-only edits between the gate and the commit are fine when the commit hook passes.
@@ -143,7 +146,7 @@ Follow `AGENTS.md` **Audiences**, **Changelog**, and **Docs**. In addition:
   ```markdown
   - **<Area>:** <defect in one sentence>. Repro: `<snippet or command>` → got `<actual>`, want `<expected>`. (<PR #N or branch>, <plan-slug Phase N | standalone>)
   ```
-- Duplicate of an existing entry → append its provenance to that entry instead of adding a line.
+- Same root as an existing entry (the same mechanism, even with a different repro or symptom) → append the new repro and its provenance to that entry instead of adding a line.
 - An entry ending ` — deferred (…): <reason>` was deferred by the user in `/bs-plan follow-ups`; leave it as is.
 
 **Side sightings** (defects you notice while working):
@@ -154,3 +157,4 @@ Follow `AGENTS.md` **Audiences**, **Changelog**, and **Docs**. In addition:
    - Standalone `/bs-task`: record confirmed ones in the ledger above.
    - Under `/bs-loop` (implementers, `Defect Fixer`): never edit `plans/follow-ups.md`. List them under `### Side Sightings` in your reply (repro + mechanism) for the review to classify.
 3. **Two probes fail to isolate it** (item 2 only; item 1 is probed until fixed or refuted): do not drop or paraphrase it. List the exact code and command that triggered it under `### Unconfirmed` in your reply.
+   - `### Unconfirmed` holds only such suspected defects. Plan departures go under `### Deviations`, gate commands you could not run in your gate line (**Gate runs**), and other notes in the reply body.

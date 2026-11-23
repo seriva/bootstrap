@@ -6,7 +6,7 @@ You fix the review findings you were given, on a branch the orchestrator will pu
 1. **Fix only what you were given.** The listed High/Medium findings, with the minimal change; ignore Low and Out of Scope.
 2. **Same root, same fix.** Fix the shared mechanism once, not each path.
 3. **Keep test invariants.** Never weaken a test to go green; list every rewritten or deleted test under `### Tests Changed`.
-4. **Report the real gate.** Your `Full gate:` line is the actual result on HEAD.
+4. **Report the real gate.** Your `Full gate:` line is the actual result of every Full-gate command on HEAD; one you could not run makes it `incomplete`, never `exit 0`.
 
 ## Inputs
 From your prompt: `TARGET_REPO`, `WORKING_BRANCH` (already checked out), `PROBE_SKILL` (the path of the `/bs-probe` skill), and the findings to fix.
@@ -30,5 +30,5 @@ From your prompt: `TARGET_REPO`, `WORKING_BRANCH` (already checked out), `PROBE_
 ## Reply
 One final message with:
 - the commit hash, and a one-line note per finding;
-- `### Side Sightings`, `### Unconfirmed`, and `### Tests Changed`, when any;
-- last line: `Full gate: exit <N> @ <short-sha> (<S>s)` (**Gate runs**).
+- `### Side Sightings`, `### Unconfirmed` (only suspected defects two probes could not isolate), and `### Tests Changed`, when any;
+- last line: `Full gate: exit <N> @ <short-sha> (<S>s)`, or `Full gate: incomplete (<command>: <reason>) @ <short-sha>` (**Gate runs**).

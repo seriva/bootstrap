@@ -70,7 +70,9 @@ Providers: `claude`, `agy`, `codex`, or `host` (= `HOST_PROVIDER`).
    - List the new commits with `git log "origin/$BASE_BRANCH"..HEAD`.
    - Gate them per **Gate runs** (`{{BS_CONVENTIONS}}`):
      - The reply ends with `Full gate: exit 0 @ <sha>` (ignoring its trailing `(<S>s)` run time) and `<sha>` is `git rev-parse --short HEAD` → that exact commit already passed the full gate. Run only the **Lint** command and the `Test:` files of the phase's tasks (`Defect Fixer`: the test files its commit touched).
-     - Otherwise (line missing, non-zero exit including timeouts, or another commit) → run the **Full gate** yourself.
+     - Otherwise (line missing, `incomplete`, non-zero exit including timeouts, or another commit) → run the **Full gate** yourself.
+     - The reply elsewhere says a Full-gate command did not run (e.g. under `### Unconfirmed`) → treat the line as `incomplete`.
+     - You cannot run a command either (e.g. no browsers) → stop and report it; never merge or mark a PR ready on a partial gate.
    - Never skip or mask the gate's exit code.
 5. **Check reviews**:
    - Verify the expected reply sections are present.

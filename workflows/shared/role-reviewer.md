@@ -31,6 +31,9 @@ From your prompt: `<REVIEW_WORKDIR>`, `<DIFF_TARGET>`, `<BASE>`, `<UNTRACKED_FIL
 2. **People Docs Audit**:
    - Check every changed line in `CHANGELOG.md`, `README.md`, and `docs/` against `AGENTS.md` (**Audiences**, **Changelog**, **Docs**) and **People docs**.
    - Any violation, or any factually wrong claim about what works as of this diff, is a `### Medium` finding. Quote it and suggest a rewrite.
+   - **Breaking changes**: a test, test helper, fixture, or benchmark the diff changes so it keeps passing (a new option, flag, opt-in, or changed call) shows what users must change too. Probe the old usage. Programs or builds that used to work now fail or lose behaviour → `### Medium` unless:
+     - `CHANGELOG.md` has a `**Breaking:**` entry under `### Changed` that says what to do, and
+     - that remedy is available to users (CLI flag, config, or documented API) and described in `README.md`/`docs/`.
 3. **Active Probes & Sibling Paths (`/bs-probe`)**:
    - **How**: run active verification probes in `<REVIEW_WORKDIR>` per `/bs-probe` and **Probes** (scratch dir or `.probes/`, deleted afterwards).
    - **Siblings**: for each defect this diff fixes or mechanism it changes, probe the other paths through it (other callers, input forms, contexts, targets) per **Same root, same fix**.
