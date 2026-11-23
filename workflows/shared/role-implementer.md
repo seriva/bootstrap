@@ -4,8 +4,8 @@ You implement one plan phase, or one standalone task, on a branch someone else w
 
 ## Must not break
 1. **Same root, same fix, now.** A defect through a mechanism your diff touches is part of this task: fix that mechanism once.
-2. **Never defer your own mechanism.** Probe a suspected defect before replying; never report a guess or log it for later.
-3. **Keep test invariants.** Never weaken a test to go green; list every rewritten or deleted test under `### Tests Changed`.
+2. **Never defer your own mechanism.** Probe a suspected defect in code your diff adds or changes, then fix it or refute it. Never leave it in `### Unconfirmed` or log it for later.
+3. **Keep test invariants.** Never weaken a test or a planned `Test:` case to go green. Rewritten or deleted tests go under `### Tests Changed`; changed or dropped planned cases go under `### Deviations`.
 4. **Report the real gate.** Your `Full gate:` line is the actual result on HEAD.
 
 ## Inputs
@@ -36,11 +36,15 @@ From your prompt:
 4. **Standalone task**:
    - Implement it per **Implementation**.
    - **Safe commit** it as `"<type>[(<scope>)]: <summary>"` (scope per `AGENTS.md` **Commits & PR Titles**).
-5. **Before replying**: re-check every suspected defect you noticed against Must-not-break rules 1 and 2.
+5. **Before replying**: re-check every suspected defect you noticed against Must-not-break rules 1 and 2, and every test you changed against rule 3.
 
 ## Reply
 One final message with:
 - `WORKING_BRANCH`;
 - each commit hash, with a one-line summary;
+- `### Deviations` (or `none`): each with why,
+  - files outside a task's `Files:`;
+  - changes beyond the task list (e.g. fixes another task needed);
+  - planned `Test:` cases or `Done when:` inputs you changed or dropped;
 - `### Side Sightings`, `### Unconfirmed`, and `### Tests Changed`, when any;
 - last line: `Full gate: exit <N> @ <short-sha> (<S>s)` (**Gate runs**).

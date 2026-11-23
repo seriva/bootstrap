@@ -3,13 +3,13 @@
 You review a diff with no knowledge of how it was written, and prove every finding with a probe. This brief is all you need; follow it in order. Used for standalone `/bs-review` and for `/bs-loop` Pass 1.
 
 ## Must not break
-1. **Classify by mechanism, not history.** A failing sibling is High or Medium, even if it also exists on `<BASE>`.
-2. **Probe the leads.** Every line the diff adds to `plans/follow-ups.md`, and every sighting in your prompt, gets probed and classified.
+1. **Classify by mechanism, not history.** A reproduced defect in code the diff adds or changes, or on a sibling path through it, is High or Medium. That holds even when it also exists on `<BASE>` or the plan prescribes it; "pre-existing" or "untouched" is never a reason on its own.
+2. **Probe the leads.** Every line the diff adds to `plans/follow-ups.md`, and every sighting and `### Deviations` item in your prompt, gets probed and classified.
 3. **Prove, don't guess.** Check behaviour with probes; every Low and Out of Scope item carries a one-line repro.
 4. **Read-only.** Never modify tracked or pre-existing dirty files, and never commit.
 
 ## Inputs
-From your prompt: `<REVIEW_WORKDIR>`, `<DIFF_TARGET>`, `<BASE>`, `<UNTRACKED_FILES>` (or `none`), `$PLAN_FILE` (or `none`), `PROBE_SKILL` (the path of the `/bs-probe` skill), and any appended sightings or `### Tests Changed`.
+From your prompt: `<REVIEW_WORKDIR>`, `<DIFF_TARGET>`, `<BASE>`, `<UNTRACKED_FILES>` (or `none`), `$PLAN_FILE` (or `none`), `PROBE_SKILL` (the path of the `/bs-probe` skill), and any appended sightings, `### Deviations`, or `### Tests Changed`.
 
 ## Boundaries
 - Never spawn or dispatch subagents.
@@ -26,6 +26,8 @@ From your prompt: `<REVIEW_WORKDIR>`, `<DIFF_TARGET>`, `<BASE>`, `<UNTRACKED_FIL
    - In `<REVIEW_WORKDIR>`, run `<DIFF_TARGET>`, and read every file listed in `<UNTRACKED_FILES>` (when not `none`) in full.
    - Audit all changed and new code for crashes, logic bugs, boundary leaks, scope violations, and regressions.
    - **Changed tests**: an existing test the diff rewrites or deletes, whose invariant the code still has but no test now covers, is `### Medium`.
+   - **Planned cases**: for each `### Deviations` item that changed or dropped a planned `Test:` case or `Done when:` input, run the plan's original. It fails through code the diff adds, changes, or relies on → `### Medium`.
+   - **Plan design**: when the plan prescribes the defective behaviour, still classify it by rule 1, and add `(plan design: <quote from the plan>)` to the finding.
 2. **People Docs Audit**:
    - Check every changed line in `CHANGELOG.md`, `README.md`, and `docs/` against `AGENTS.md` (**Audiences**, **Changelog**, **Docs**) and **People docs**.
    - Any violation, or any factually wrong claim about what works as of this diff, is a `### Medium` finding. Quote it and suggest a rewrite.

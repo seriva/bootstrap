@@ -64,7 +64,7 @@ Providers: `claude`, `agy`, `codex`, or `host` (= `HOST_PROVIDER`).
 1. **Notify**: before dispatching, print `> 🤖 **Dispatching <Role>** to <provider> (<orchestrator or native>). Waiting for completion...` and note the time (`date +%s`).
 2. **Echo**: echo the role's full reply in chat under `### 🤖 <Role> Output (<provider>, <M> min since Notify)`.
    - Reviews: every findings section, the probe results, and the verdict.
-   - Implementation or fix: commit hashes and summaries, and any sightings and `### Tests Changed`.
+   - Implementation or fix: commit hashes and summaries, `### Deviations`, and any sightings and `### Tests Changed`.
 3. **Check the tree**: HEAD must still be `$WORKING_BRANCH`, and `git status --porcelain` must be clean.
 4. **Check implementer and `Defect Fixer` commits**:
    - List the new commits with `git log "origin/$BASE_BRANCH"..HEAD`.
@@ -79,6 +79,10 @@ Providers: `claude`, `agy`, `codex`, or `host` (= `HOST_PROVIDER`).
 7. **On a mismatch or a red gate**:
    - Implementation → stop and report.
    - Review → re-dispatch once, then `PENDING_REVIEW`.
+8. **Implementer stopped for a user decision** (e.g. a plan's "stop and report" condition): ask the user, even with `--auto`. To apply their answer:
+   1. Edit on `$WORKING_BRANCH` and **Safe commit** it.
+   2. Run the **Full gate** yourself: your commit is not the one the implementer gated.
+   3. Only when it is green, push (`/bs-loop` Step 2.3). Nothing is pushed before this gate.
 
 ## CI wait
 Every PR waits, phase PRs included.

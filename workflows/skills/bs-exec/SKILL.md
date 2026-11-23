@@ -13,7 +13,7 @@ Invoking `/bs-exec` authorizes managing plan branches, running `/bs-loop` per ph
 ## Must not break
 1. **Never re-implement a phase that has an open PR.** Resume, merge, or stop per its state.
 2. **Halt on `BLOCKED_BY_DEFECTS`, `BLOCKED_BY_CI`, or `PENDING_REVIEW`**, even with `--auto`.
-3. **Push a phase only after its gate passed** (**Verify**).
+3. **Push a phase only after its gate passed** (**Verify**), also after your own edits from a user decision.
 4. **Never touch the user's uncommitted files.** Dirty tree → stop and list the paths.
 
 ## Operational Workflow
@@ -62,6 +62,9 @@ Invoking `/bs-exec` authorizes managing plan branches, running `/bs-loop` per ph
 3. **Phase Gate**:
    - `BLOCKED_BY_DEFECTS`, `BLOCKED_BY_CI`, or `PENDING_REVIEW` → halt (even in `--auto`), leave the PR in **Draft**, and alert the user.
      - The user then asks to fix a `BLOCKED_BY_DEFECTS` PR → run the **User-granted Fix Turn** (`/bs-loop` Step 3) and `/bs-loop` Step 4, then apply this gate again.
+   - **CI skipped** (`bs-review-state ci` printed `PASSED skipped`) for the first time in this run → ask the user, even with `--auto`:
+     - continue without phase CI for the rest of the run (the final PR still waits for CI), or
+     - stop, so they can delete the workflow `if:` that excludes phase branches (projects scaffolded before phase PRs got CI skip `-phase-` heads).
    - `PASSED` with `AUTO_MODE=false` → report the phase PR URL and stop. Re-running `/bs-exec` after the merge resumes at the next phase.
    - `PASSED` with `AUTO_MODE=true` → Step 3.4.
 4. **Auto-Merge** (`REVIEW_STATUS == PASSED` and `AUTO_MODE=true`):

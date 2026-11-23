@@ -59,6 +59,8 @@ How a task is implemented (`/bs-task`, `Implementer`, `Defect Fixer`):
    3. Expected result: they fail there when an earlier task in this phase did the work. When a prerequisite plan did it, base passes them too, which is expected.
    4. Say which case it was in your report, and tick the task. Do not re-implement it.
 2. **Tests first**: write failing tests first (TDD) when applicable. For a plan task `Task N.M`, write them in its `Test:` file(s), targeting only its `Files:` and `Done when:`.
+   - Write the planned cases as given.
+   - A planned case fails for a reason the task did not name → never swap it for one that passes. Find the mechanism (**Side sightings**) and list the case under `### Deviations`.
 3. **Implement** the minimal fix or feature within the `AGENTS.md` boundaries.
 4. **Same root, same fix** (**Follow-ups**): fix the shared mechanism once across sibling paths rather than patching a single caller.
 5. **Existing tests**: when you rewrite or delete one:
@@ -151,4 +153,4 @@ Follow `AGENTS.md` **Audiences**, **Changelog**, and **Docs**. In addition:
 2. **Any other defect**: isolate a one-line repro with `/bs-probe` before returning (at most two quick probes; do not debug or fix it).
    - Standalone `/bs-task`: record confirmed ones in the ledger above.
    - Under `/bs-loop` (implementers, `Defect Fixer`): never edit `plans/follow-ups.md`. List them under `### Side Sightings` in your reply (repro + mechanism) for the review to classify.
-3. **Two probes fail to isolate it**: do not drop or paraphrase it. List the exact code and command that triggered it under `### Unconfirmed` in your reply.
+3. **Two probes fail to isolate it** (item 2 only; item 1 is probed until fixed or refuted): do not drop or paraphrase it. List the exact code and command that triggered it under `### Unconfirmed` in your reply.

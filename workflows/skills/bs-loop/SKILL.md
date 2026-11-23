@@ -74,12 +74,16 @@ Review `$WORKING_BRANCH` against `origin/$BASE_BRANCH` (fetched; the local base 
   - High/Medium → Fix Turn.
 - **Same-root check** (before acting on a Pass 1 verdict):
   - Candidates:
-    - each `### Out of Scope` item;
-    - each implementer `### Side Sightings` item Pass 1 did not classify;
+    - each `### Low` and `### Out of Scope` item;
+    - each implementer `### Side Sightings` or `### Unconfirmed` item Pass 1 did not classify;
     - each line the diff adds to `plans/follow-ups.md`.
-  - A candidate whose own repro runs through the mechanism of a High/Medium finding, or through a mechanism the diff changes, is a failing sibling (**Review Rubric** item 3 in `{{BS_ROLE_REVIEWER}}`), even if the reviewer found it on `<BASE>` too.
+  - Check both tests for every candidate, even when Pass 1 has no High/Medium findings. Its own repro runs through:
+    1. the mechanism of a High/Medium finding, or
+    2. a mechanism the diff adds or changes (code in a file the diff creates counts).
+  - Either one holds → a failing sibling (**Review Rubric** item 3 in `{{BS_ROLE_REVIEWER}}`), even if the reviewer found it on `<BASE>` too or the plan prescribes it.
   - Promote it to Medium, say so in chat, and treat it as a Medium finding from then on. An `LGTM` with a promoted item goes to the Fix Turn.
-  - Never demote a finding.
+  - Never demote a finding yourself.
+- **Plan design** (a High/Medium finding, promoted ones included, marked `(plan design: …)` or that the plan prescribes): ask the user before the Fix Turn, even under `/bs-exec --auto`: fix it now, or record it in `plans/follow-ups.md`. Their answer stands; it is the only way a finding leaves the Fix Turn.
 - **Fix Turn** (max 1): `Defect Fixer` on `IMPLEMENTER`, given the Pass 1 High/Medium findings, promoted ones included.
   - It commits the fix as `"fix(<scope>): address review feedback"`. Verify it per **Verify**, then `git push` → Pass 2.
   - Red gate → still push (the PR must show the spent Fix Turn for **States**), then `BLOCKED_BY_DEFECTS` (Step 4).
@@ -102,7 +106,7 @@ Review `$WORKING_BRANCH` against `origin/$BASE_BRANCH` (fetched; the local base 
 - **`Code Reviewer (Pass 1)`**:
   - Run `/bs-review` (`{{BS_REVIEW_SKILL}}`) **Workflow** Steps 1–3 with target `origin/$BASE_BRANCH` (so `git diff origin/$BASE_BRANCH...HEAD`; the working-tree check runs) on branch `$WORKING_BRANCH` (with `$PLAN_FILE` if given).
   - Implementer reported `### Side Sightings` or `### Unconfirmed` → append their code and command verbatim (not their classification) to the reviewer prompt as extra probe targets. Do not probe them yourself.
-  - Implementer reported `### Tests Changed` → append it verbatim for the reviewer to audit.
+  - Implementer reported `### Deviations` or `### Tests Changed` → append them verbatim for the reviewer to audit.
 
 - **`Defect Fixer`** prompt:
   > You are a dispatched fresh-context subagent (`Defect Fixer`); do not spawn or dispatch any subagents. Read `{{BS_ROLE_DEFECT_FIXER}}` and follow it.
@@ -123,7 +127,7 @@ Review `$WORKING_BRANCH` against `origin/$BASE_BRANCH` (fetched; the local base 
 1. **Record Follow-ups** (skip on `PENDING_REVIEW`):
    - Append to `plans/follow-ups.md` per **Follow-ups** (skip duplicates):
      - every pass's `### Out of Scope` items;
-     - unfixed behavioural `### Low` items;
+     - unfixed behavioural `### Low` items, and **Plan design** findings the user chose to record;
      - confirmed `### Side Sightings` that were neither fixed nor refuted.
    - File modified → `git add -- plans/follow-ups.md`, then **Safe commit** `"docs(<scope>): record review follow-ups"` on `$WORKING_BRANCH` (`--` `plans/follow-ups.md`), and push.
 2. **Update PR Body**:
