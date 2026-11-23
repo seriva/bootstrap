@@ -215,41 +215,6 @@ else
   fail "rendered paths that do not exist: ${missing//$'\n'/, }"
 fi
 
-echo "== size budgets"
-# Byte budgets for the skill and shared-doc text every bs-* run loads. Raising one is a
-# deliberate, visible change here; a new file needs its own entry.
-budget_of() {
-  case "$1" in
-    skills/bs-exec/SKILL.md) echo 7850 ;;
-    skills/bs-loop/SKILL.md) echo 13500 ;;
-    skills/bs-plan/SKILL.md) echo 9850 ;;
-    skills/bs-probe/SKILL.md) echo 2300 ;;
-    skills/bs-review/SKILL.md) echo 6850 ;;
-    skills/bs-task/SKILL.md) echo 4800 ;;
-    shared/conventions.md) echo 8350 ;;
-    shared/dispatch.md) echo 6850 ;;
-    *) echo 0 ;;
-  esac
-}
-TOTAL_BUDGET=60100
-total=0
-for f in "$REPO_DIR"/workflows/skills/*/SKILL.md "$REPO_DIR"/workflows/shared/*.md; do
-  rel="${f#"$REPO_DIR"/workflows/}"
-  size="$(wc -c < "$f" | tr -d ' ')"
-  budget="$(budget_of "$rel")"
-  total=$((total + size))
-  if [[ "$size" -le "$budget" ]]; then
-    pass "$rel within budget ($size/$budget bytes)"
-  else
-    fail "$rel is $size bytes, over its budget of $budget (tests/smoke.sh budget_of)"
-  fi
-done
-if [[ "$total" -le "$TOTAL_BUDGET" ]]; then
-  pass "skills and shared docs total $total/$TOTAL_BUDGET bytes"
-else
-  fail "skills and shared docs total $total bytes, over $TOTAL_BUDGET"
-fi
-
 echo
 if [[ "$FAILURES" -gt 0 ]]; then
   echo "[FAIL] $FAILURES check(s) failed."

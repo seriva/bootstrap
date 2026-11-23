@@ -3,29 +3,55 @@
 Orchestrator-only rules for `/bs-exec`, `/bs-loop`, and `/bs-review`; worker conventions are in `{{BS_CONVENTIONS}}`.
 
 ## Dispatch
-"Spawn subagent `<Role>`" = a fresh-context agent (zero chat history), routed below. The invoking agent orchestrates every role and always waits for the result; subagents never spawn subagents. Prompts name installed skills and docs by `install.sh` placeholders. You may append risks to probe and questions to a review prompt, never conclusions, a suspected verdict, or how the code was implemented.
+- **"Spawn subagent `<Role>`"** means a fresh-context agent (zero chat history), routed per **Routing** below.
+- **Who orchestrates**: the invoking agent orchestrates every role and always waits for the result. Subagents never spawn subagents.
+- **Prompts** name installed skills and docs by their `install.sh` placeholders.
+- **What you may add to a prompt**: risks to probe, and questions for a review. Never conclusions, a suspected verdict, or how the code was implemented.
 
 ### Providers & Models
 Providers: `claude`, `agy`, `codex`, or `host` (= `HOST_PROVIDER`).
-- **`HOST_PROVIDER`**: the tool you run in (system prompt, tools): `agy` (Antigravity), `claude` (Claude Code), `codex` (Codex), else `host` (e.g. Copilot). Ask if unsure.
+- **`HOST_PROVIDER`**: the tool you run in (from your system prompt and tools).
+  - `agy` (Antigravity), `claude` (Claude Code), `codex` (Codex), else `host` (e.g. Copilot).
+  - Unsure → ask.
 - **`IMPLEMENTER`** (`/bs-loop` Step 2.2, `Defect Fixer`): `--implementer=<provider>`, default `HOST_PROVIDER`.
-- **`REVIEWER`** (review passes; not resolved in implement-only mode): `--reviewer=<provider>` if given. Else, with `--pairing` or `--implementer`, or when the host has no subagent tool: the first reachable of `claude`, `agy`, `codex` that differs from `IMPLEMENTER` (reachable: `HOST_PROVIDER` with a subagent tool, or a cross-provider target supported by `delegate_task` via `orchestrator_capabilities`); none → warn that cross-provider pairing requires an orchestrator tool (`delegate_task`) and use `HOST_PROVIDER`. Else `HOST_PROVIDER`. E.g. `--pairing` in Claude Code inside T3 Code → `claude` implements, `agy` reviews.
+- **`REVIEWER`** (review passes; not resolved in implement-only mode), first rule that applies:
+  1. `--reviewer=<provider>` if given.
+  2. With `--pairing` or `--implementer`, or when the host has no subagent tool: the first reachable of `claude`, `agy`, `codex` that differs from `IMPLEMENTER`.
+     - Reachable: `HOST_PROVIDER` with a subagent tool, or a cross-provider target supported by `delegate_task` (check with `orchestrator_capabilities`).
+     - None reachable → warn that cross-provider pairing requires an orchestrator tool (`delegate_task`) and use `HOST_PROVIDER`.
+  3. Else `HOST_PROVIDER`.
+  - Example: `--pairing` in Claude Code inside T3 Code → `claude` implements, `agy` reviews.
 
 #### Model Selection & Inheritance
-1. **Host role:** inherits the session's model (pass none) unless `--implementer-model` / `--reviewer-model` is given; then pass it to the native subagent tool (Claude Code's `Agent` takes only the tiers `sonnet`, `opus`, `haiku`, never full model strings), or dispatch through `delegate_task` if the native tool cannot select it. Inline work runs on the session's model: if `--implementer-model` is set and `/bs-loop` Step 2.2 runs inline, say in chat that it applies only to `Defect Fixer`.
-2. **Other-provider role** (`delegate_task`): its model flag, else the provider's default paired model (`claude` → `{{BS_MODEL_CLAUDE}}`, `agy` → `{{BS_MODEL_AGY}}`, `codex` → `{{BS_MODEL_CODEX}}`), at `medium` reasoning/effort when supported. A model flag never selects a provider; it applies to the provider its role resolved to.
-3. **Rejected Model:** never substitute silently. If a native tool or `delegate_task` rejects a model (requested or default), say so in chat and stop that role (implementation or fix → stop and report; review → `PENDING_REVIEW`).
+1. **Host role**:
+   - Inherits the session's model (pass none) unless `--implementer-model` / `--reviewer-model` is given.
+   - Flag given → pass it to the native subagent tool. Claude Code's `Agent` takes only the tiers `sonnet`, `opus`, `haiku`, never full model strings.
+   - The native tool cannot select that model → dispatch through `delegate_task` instead.
+   - Inline work runs on the session's model. If `--implementer-model` is set and `/bs-loop` Step 2.2 runs inline, say in chat that it applies only to `Defect Fixer`.
+2. **Other-provider role** (`delegate_task`):
+   - Its model flag, else the provider's default paired model: `claude` → `{{BS_MODEL_CLAUDE}}`, `agy` → `{{BS_MODEL_AGY}}`, `codex` → `{{BS_MODEL_CODEX}}`.
+   - Use `medium` reasoning/effort when supported.
+   - A model flag never selects a provider; it applies to the provider its role resolved to.
+3. **Rejected Model**: never substitute silently.
+   - A native tool or `delegate_task` rejects a model (requested or default) → say so in chat and stop that role.
+   - Implementation or fix → stop and report. Review → `PENDING_REVIEW`.
 
 ### Routing
-1. **Same provider** (`role's provider == HOST_PROVIDER`, without an unselectable model flag):
+1. **Same provider** (`role's provider == HOST_PROVIDER`, with no model flag the native tool cannot select):
    - `/bs-loop` Step 2.2 runs inline (never a nested subagent).
-   - `Defect Fixer` uses the native subagent tool, else inline (Pass 2 still reviews independently).
-   - Reviews always use the native subagent tool in a fresh context, never inline (no subagent tool and no `delegate_task` → `PENDING_REVIEW`, `/bs-loop` Step 3).
-2. **Cross-provider or explicit non-native model (`delegate_task`):**
-   - Requires `delegate_task` (e.g. T3 Code). If absent when a cross-provider role was requested explicitly (`--implementer` / `--reviewer`), stop and report that cross-provider dispatch requires an orchestrator tool (`delegate_task`); never substitute another provider silently.
-   - Check availability with `orchestrator_capabilities` and dispatch a fresh child in the parent checkout (`isolation="shared"`, `mode="wait"`, never `isolation="worktree"`, never reusing an earlier round's thread) per the orchestrator's `delegate_task` instructions. Print the **Verify** → Notify line first.
-   - `mode="wait"` returning on its own timeout (T3 Code: about 45 s) while the child keeps running is normal, not a failure: wait for the child's completion notification. Never re-dispatch, poll, or pass a delegate or `Agent` id to a background-wait tool (it rejects them).
-   - **Unavailable** provider or model: say so and stop that role as in **Rejected Model**; never switch provider or model or fall back to native tools.
+   - `Defect Fixer` uses the native subagent tool, else runs inline (Pass 2 still reviews independently).
+   - Reviews always use the native subagent tool in a fresh context, never inline.
+   - No subagent tool and no `delegate_task` → `PENDING_REVIEW` (`/bs-loop` Step 3).
+2. **Cross-provider, or an explicit model the native tool cannot select** (`delegate_task`):
+   - **Requires `delegate_task`** (e.g. T3 Code). Absent while a cross-provider role was requested explicitly (`--implementer` / `--reviewer`) → stop and report that cross-provider dispatch requires an orchestrator tool (`delegate_task`). Never substitute another provider silently.
+   - **Dispatch**: check availability with `orchestrator_capabilities`, print the **Verify** → Notify line, then dispatch a fresh child per the orchestrator's `delegate_task` instructions:
+     - in the parent checkout: `isolation="shared"`, never `isolation="worktree"`;
+     - `mode="wait"`;
+     - never reuse an earlier round's thread.
+   - **Waiting**: `mode="wait"` returning on its own timeout (T3 Code: about 45 s) while the child keeps running is normal, not a failure. Wait for the child's completion notification.
+     - Never re-dispatch or poll.
+     - Never pass a delegate or `Agent` id to a background-wait tool (it rejects them).
+   - **Unavailable** provider or model → say so and stop that role as in **Rejected Model**. Never switch provider or model, or fall back to native tools.
 
 | Provider | Native subagent tool |
 |---|---|
@@ -36,7 +62,32 @@ Providers: `claude`, `agy`, `codex`, or `host` (= `HOST_PROVIDER`).
 
 ### Verify
 1. **Notify**: before dispatching, print `> 🤖 **Dispatching <Role>** to <provider> (<orchestrator or native>). Waiting for completion...` and note the time (`date +%s`).
-2. **Echo & Check**: echo the role's full reply in chat under `### 🤖 <Role> Output (<provider>, <M> min since Notify)` (reviews: every findings section, probe results, and verdict; implementation/fix: commit hashes and summaries, and any sightings and `### Tests Changed`). HEAD must still be `$WORKING_BRANCH` and `git status --porcelain` clean. Implementer and `Defect Fixer`: verify new commits in `git log "origin/$BASE_BRANCH"..HEAD`, then gate them per **Gate runs** (`{{BS_CONVENTIONS}}`): if the reply ends with `Full gate: exit 0 @ <sha>` (its trailing `(<S>s)` run time aside) and `<sha>` is `git rev-parse --short HEAD`, run only the **Lint** command and the `Test:` files of the phase's tasks (`Defect Fixer`: the test files its commit touched), since that exact commit already passed the full gate; otherwise (line missing, non-zero exit including timeouts, or another commit) run the **Full gate** yourself. Never skip or mask the gate's exit code. Reviews: verify expected reply sections are present; if a reply looks cut off (e.g. split across messages), read the child thread (T3 Code: `t3_thread_read`) before treating sections as missing. Never check out another revision into the working tree to compare (use `"{{BS_WORKTREE}}" add`). On mismatch or a red gate: implementation → stop and report; review → re-dispatch once, then `PENDING_REVIEW`.
+2. **Echo**: echo the role's full reply in chat under `### 🤖 <Role> Output (<provider>, <M> min since Notify)`.
+   - Reviews: every findings section, the probe results, and the verdict.
+   - Implementation or fix: commit hashes and summaries, and any sightings and `### Tests Changed`.
+3. **Check the tree**: HEAD must still be `$WORKING_BRANCH`, and `git status --porcelain` must be clean.
+4. **Check implementer and `Defect Fixer` commits**:
+   - List the new commits with `git log "origin/$BASE_BRANCH"..HEAD`.
+   - Gate them per **Gate runs** (`{{BS_CONVENTIONS}}`):
+     - The reply ends with `Full gate: exit 0 @ <sha>` (ignoring its trailing `(<S>s)` run time) and `<sha>` is `git rev-parse --short HEAD` → that exact commit already passed the full gate. Run only the **Lint** command and the `Test:` files of the phase's tasks (`Defect Fixer`: the test files its commit touched).
+     - Otherwise (line missing, non-zero exit including timeouts, or another commit) → run the **Full gate** yourself.
+   - Never skip or mask the gate's exit code.
+5. **Check reviews**:
+   - Verify the expected reply sections are present.
+   - A reply looks cut off (e.g. split across messages) → read the child thread (T3 Code: `t3_thread_read`) before treating sections as missing.
+6. **Comparing revisions**: never check out another revision into the working tree; use `"{{BS_WORKTREE}}" add`.
+7. **On a mismatch or a red gate**:
+   - Implementation → stop and report.
+   - Review → re-dispatch once, then `PENDING_REVIEW`.
 
 ## CI wait
-Every PR waits, phase PRs included: `"{{BS_PR_CI}}" "<branch>"` prints `pass`, `fail <check>,…` (→ `BLOCKED_BY_CI` with those checks), `skipped` (every check was skipped, so CI did not test this PR: not a failure, so the review gate keeps its result with `CI: skipped`, but never say CI passed, and tell the user a workflow `if:` excludes the branch), `conflict` (the PR conflicts with its base, so GitHub ran nothing: `BLOCKED_BY_CI` with `merge conflict with <base>`), or `none-configured` (CI is `none configured`, not a failure). Exit 3 (gh failed, e.g. no PR): `BLOCKED_BY_CI` with its error.
+Every PR waits, phase PRs included. Run `"{{BS_PR_CI}}" "<branch>"`; it prints:
+- `pass`: CI passed.
+- `fail <check>,…` → `BLOCKED_BY_CI` with those checks.
+- `skipped`: every check was skipped, so CI did not test this PR.
+  - Not a failure: the review gate keeps its result, with `CI: skipped`.
+  - Never say CI passed.
+  - Tell the user a workflow `if:` excludes the branch.
+- `conflict`: the PR conflicts with its base, so GitHub ran nothing → `BLOCKED_BY_CI` with `merge conflict with <base>`.
+- `none-configured`: CI is `none configured`; not a failure.
+- Exit 3 (gh failed, e.g. no PR) → `BLOCKED_BY_CI` with its error.
