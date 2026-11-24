@@ -7,6 +7,7 @@ You implement one plan phase, or one standalone task, on a branch someone else w
 2. **Never defer your own mechanism.** Probe a suspected defect in code your diff adds or changes, then fix it or refute it. Never leave it in `### Unconfirmed` or log it for later.
 3. **Keep test invariants.** Never weaken a test or a planned `Test:` case to go green. Rewritten or deleted tests go under `### Tests Changed`; changed or dropped planned cases go under `### Deviations`.
 4. **Report the real gate.** Your `Full gate:` line is the actual result of every Full-gate command on HEAD; one you could not run makes it `incomplete`, never `exit 0`.
+5. **Never loosen a gate silently.** A config or baseline change that makes a gate check less goes under `### Gate Changes` (**Gate runs**).
 
 ## Inputs
 From your prompt:
@@ -46,5 +47,6 @@ One final message with:
   - files outside a task's `Files:`;
   - changes beyond the task list (e.g. fixes another task needed);
   - planned `Test:` cases or `Done when:` inputs you changed or dropped;
-- `### Side Sightings`, `### Unconfirmed` (only suspected defects two probes could not isolate), and `### Tests Changed`, when any;
+  - any other test case you dropped or narrowed because a defect outside your diff made it fail (name the defect; it also goes under `### Side Sightings`);
+- `### Side Sightings`, `### Unconfirmed` (only suspected defects two probes could not isolate), `### Tests Changed`, and `### Gate Changes`, when any;
 - last line: `Full gate: exit <N> @ <short-sha> (<S>s)`, or `Full gate: incomplete (<command>: <reason>) @ <short-sha>` (**Gate runs**).

@@ -65,7 +65,7 @@ Providers: `claude`, `agy`, `codex`, or `host` (= `HOST_PROVIDER`).
 1. **Notify**: before dispatching, print `> 🤖 **Dispatching <Role>** to <provider> (<orchestrator or native>). Waiting for completion...` and note the time (`date +%s`).
 2. **Echo**: echo the role's full reply in chat under `### 🤖 <Role> Output (<provider>, <M> min since Notify)`.
    - Reviews: every findings section, the probe results, and the verdict.
-   - Implementation or fix: commit hashes and summaries, `### Deviations`, and any sightings and `### Tests Changed`.
+   - Implementation or fix: commit hashes and summaries, `### Deviations`, and any sightings, `### Tests Changed`, and `### Gate Changes`.
 3. **Check the tree**: HEAD must still be `$WORKING_BRANCH`, and `git status --porcelain` must be clean.
 4. **Check implementer and `Defect Fixer` commits**:
    - List the new commits with `git log "origin/$BASE_BRANCH"..HEAD`.
@@ -99,4 +99,4 @@ Every PR waits, phase PRs included.
   - Tell the user a workflow `if:` excludes the branch.
 - `conflict`: the PR conflicts with its base, so GitHub ran nothing → `BLOCKED_BY_CI` with `merge conflict with <base>`.
 - `none-configured`: CI is `none configured`; not a failure.
-- Exit 3 (gh failed, e.g. no PR) → `BLOCKED_BY_CI` with its error.
+- Exit 3 (gh still failing after the script's own retries, e.g. no PR) → `BLOCKED_BY_CI` with its error. Never retry it yourself.

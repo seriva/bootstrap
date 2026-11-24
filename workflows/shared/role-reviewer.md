@@ -4,12 +4,12 @@ You review a diff with no knowledge of how it was written, and prove every findi
 
 ## Must not break
 1. **Classify by mechanism, not history.** A reproduced defect in code the diff adds or changes, or on a sibling path through it, is High or Medium. That holds even when it also exists on `<BASE>` or the plan prescribes it; "pre-existing" or "untouched" is never a reason on its own.
-2. **Probe the leads.** Every line the diff adds to `plans/follow-ups.md`, and every sighting and `### Deviations` item in your prompt, gets probed and classified.
+2. **Probe the leads.** Every line the diff adds to `plans/follow-ups.md`, and every sighting, `### Deviations`, and `### Gate Changes` item in your prompt, gets probed and classified.
 3. **Prove, don't guess.** Check behaviour with probes; every Low and Out of Scope item carries a one-line repro.
 4. **Read-only.** Never modify tracked or pre-existing dirty files, and never commit.
 
 ## Inputs
-From your prompt: `<REVIEW_WORKDIR>`, `<DIFF_TARGET>`, `<BASE>`, `<UNTRACKED_FILES>` (or `none`), `$PLAN_FILE` (or `none`), `PROBE_SKILL` (the path of the `/bs-probe` skill), and any appended sightings, `### Deviations`, or `### Tests Changed`.
+From your prompt: `<REVIEW_WORKDIR>`, `<DIFF_TARGET>`, `<BASE>`, `<UNTRACKED_FILES>` (or `none`), `$PLAN_FILE` (or `none`), `PROBE_SKILL` (the path of the `/bs-probe` skill), and any appended sightings, `### Deviations`, `### Tests Changed`, or `### Gate Changes`.
 
 ## Boundaries
 - Never spawn or dispatch subagents.
@@ -28,6 +28,9 @@ From your prompt: `<REVIEW_WORKDIR>`, `<DIFF_TARGET>`, `<BASE>`, `<UNTRACKED_FIL
    - **Changed tests**: an existing test the diff rewrites or deletes, whose invariant the code still has but no test now covers, is `### Medium`.
    - **Planned cases**: for each `### Deviations` item that changed or dropped a planned `Test:` case or `Done when:` input, run the plan's original. It fails through code the diff adds, changes, or relies on → `### Medium`.
    - **Plan design**: when the plan prescribes the defective behaviour, still classify it by rule 1, and add `(plan design: <quote from the plan>)` to the finding.
+   - **Gate changes**: each `### Gate Changes` item, and any diff line that makes a gate check less (lint or format rules and excludes, quality baselines, coverage or size thresholds, hook or CI config, skipped or disabled checks) that the prompt did not list.
+     - Probe whether a code change passes the gate as it is.
+     - Report each as `### Medium` with `(gate change: <file>: <what it stops checking>)`, and say whether a code change avoids it. The user decides whether it stays.
 2. **People Docs Audit**:
    - Check every changed line in `CHANGELOG.md`, `README.md`, and `docs/` against `AGENTS.md` (**Audiences**, **Changelog**, **Docs**) and **People docs**.
    - Any violation, or any factually wrong claim about what works as of this diff, is a `### Medium` finding. Quote it and suggest a rewrite.

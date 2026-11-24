@@ -16,7 +16,9 @@ Watches the checks of <branch>'s PR (gh pr checks --watch --fail-fast) and print
                         (GitHub runs no pull_request workflows for an unmergeable PR)
   none-configured       GitHub reports no checks; when .github/workflows/ exists, only after
                         BS_PR_CI_POLL_LIMIT (3) retries BS_PR_CI_POLL_INTERVAL (10) seconds apart
-Exit: 0 ok, 2 usage or not a repo, 3 gh failed (e.g. no PR for <branch>).
+Any other gh failure (e.g. a transient GraphQL, HTTP, or network error) is retried the same
+way; "no pull requests found" is not.
+Exit: 0 ok, 2 usage or not a repo, 3 gh failed after its retries (e.g. no PR for <branch>).
 On a non-zero exit, the last stderr line is "next: <action>" for the caller.
 EOF
   exit 2
@@ -35,7 +37,7 @@ has_workflows=false
 # checks_list: "<bucket>\t<name>" per check (empty if gh cannot list them).
 checks_list() { gh pr checks "$branch" --json name,bucket --jq '.[] | "\(.bucket)\t\(.name)"' 2>/dev/null || true; }
 
-retries=0
+retries=0 gh_retries=0
 while :; do
   rc=0
   out="$(gh pr checks "$branch" --watch --fail-fast 2>&1)" || rc=$?
@@ -60,10 +62,19 @@ while :; do
       echo none-configured
       exit 0 ;;
   esac
-  break
+  list="$(checks_list)"
+  failed="$(printf '%s\n' "$list" | awk -F '\t' '$1 == "fail" || $1 == "cancel" { print $2 }' | paste -sd, -)"
+  if [ -n "$failed" ]; then echo "fail $failed"; exit 0; fi
+  # gh itself failed. A missing PR stays missing; anything else may be transient.
+  case "$out" in
+    *"no pull requests found"*) ;;
+    *)
+      if [ "$gh_retries" -lt "$limit" ]; then
+        gh_retries=$((gh_retries + 1))
+        sleep "$interval"
+        continue
+      fi ;;
+  esac
+  printf '%s\n' "$out" >&2
+  exit 3
 done
-
-list="$(checks_list)"
-failed="$(printf '%s\n' "$list" | awk -F '\t' '$1 == "fail" || $1 == "cancel" { print $2 }' | paste -sd, -)"
-[ -n "$failed" ] || { printf '%s\n' "$out" >&2; exit 3; }
-echo "fail $failed"

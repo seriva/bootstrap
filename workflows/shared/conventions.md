@@ -80,7 +80,7 @@ How a task is implemented (`/bs-task`, `Implementer`, `Defect Fixer`):
 **Full gate**: the `AGENTS.md` **Format**, **Lint**, and **Test** commands as written (none listed: **Pre-commit gate**).
 
 1. **Run**:
-   - Run each command on its own, never `&&`-chained into one.
+   - Run each command on its own, never `&&`-chained into one or run from a shell loop.
    - Form: `log="$(mktemp)"; s=$(date +%s); <cmd> >"$log" 2>&1; rc=$?; echo "exit=$rc secs=$(($(date +%s) - s))" >>"$log"`.
    - Run it in the foreground with the host's longest timeout (Claude Code: 10 min).
    - Only a single command that can outlast that timeout goes to the background. Then stay in your turn with one blocking wait (Claude Code: Monitor running `until grep -q '^exit=' "$log"; do sleep 10; done`).
@@ -89,7 +89,11 @@ How a task is implemented (`/bs-task`, `Implementer`, `Defect Fixer`):
 2. **Result**:
    - `exit=0` is green. Anything else is red, timeouts and "host load" included.
    - Warnings your diff causes are yours to fix, also off its lines (e.g. an import it left unused).
-   - Only warnings already on the base are pre-existing.
+   - Only warnings already on the base are pre-existing. Leave them, and never report them as sightings or follow-ups.
+   - **Gate changes**: making a gate check less is never a silent way to green. That covers lint or format rules and excludes, quality baselines (e.g. a re-saved `sentrux gate`), coverage or size thresholds, hook or CI config, and skipped or disabled checks.
+     - First look for a code change that passes the gate as it is.
+     - None → make the narrowest change, and list it under `### Gate Changes` in your reply: the file, what it stops checking, the failing output that forced it, and why no code change avoids it.
+     - The user decides whether it stays (`/bs-loop` **Gate change**).
 3. **Report**: implementers and `Defect Fixer` end their reply with `Full gate: exit <N> @ <short-sha> (<S>s)`.
    - It covers every Full-gate command, each sub-command included (e.g. both halves of `npm test && npm run test:e2e`).
    - A command you could not run (missing browser, service, or tool) → `Full gate: incomplete (<command>: <reason>) @ <short-sha>`, never `exit 0`.

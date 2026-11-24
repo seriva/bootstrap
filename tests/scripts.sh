@@ -945,8 +945,20 @@ pr_ci feat/x
 expect_eq "no checks, mergeability unknown: none-configured after retries" "$OUT" "none-configured"
 fake_gh_reset; echo "no pull requests found for branch \"feat/x\"" > "$FAKE_GH/pr-checks.out"; echo 1 > "$FAKE_GH/pr-checks.rc"
 pr_ci feat/x
-expect_code "other gh failure: exit 3" 3
-expect_next "other gh failure: next action is BLOCKED_BY_CI" "BLOCKED_BY_CI"
+expect_code "no PR: exit 3" 3
+expect_next "no PR: next action is BLOCKED_BY_CI" "BLOCKED_BY_CI"
+expect_eq "no PR: no retries" "$(gh_calls 'pr checks feat/x --watch')" "1"
+fake_gh_reset; echo "GraphQL: Something went wrong while executing your query." > "$FAKE_GH/pr-checks.1.out"
+echo 1 > "$FAKE_GH/pr-checks.1.rc"
+pr_ci feat/x
+expect_eq "transient gh error, then checks pass: pass" "$OUT" "pass"
+expect_eq "transient gh error: retried once" "$(gh_calls 'pr checks feat/x --watch')" "2"
+fake_gh_reset; echo "HTTP 502: bad gateway" > "$FAKE_GH/pr-checks.out"; echo 1 > "$FAKE_GH/pr-checks.rc"
+pr_ci feat/x
+expect_code "persistent gh error: exit 3" 3
+expect_next "persistent gh error: next action is BLOCKED_BY_CI" "BLOCKED_BY_CI"
+expect_eq "persistent gh error: 1 call + BS_PR_CI_POLL_LIMIT retries" "$(gh_calls 'pr checks feat/x --watch')" "4"
+check "persistent gh error: gh's error is passed through" grep -q "HTTP 502" "$SANDBOX/stderr"
 r="$(new_repo)"
 fake_gh_reset; no_checks pr-checks
 pr_ci feat/x
