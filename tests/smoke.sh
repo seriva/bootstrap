@@ -216,7 +216,8 @@ check "conventions explain a branch held by another worktree" \
 for pair in conventions.md:bs-plan-state skills/bs-exec/SKILL.md:bs-plan-state skills/bs-exec/SKILL.md:bs-plan-branch \
   conventions.md:bs-review-state skills/bs-loop/SKILL.md:bs-review-state skills/bs-exec/SKILL.md:bs-review-state \
   skills/bs-review/SKILL.md:bs-diff-target dispatch.md:bs-pr-ci \
-  skills/bs-probe/SKILL.md:bs-worktree role-reviewer.md:bs-worktree; do
+  skills/bs-probe/SKILL.md:bs-worktree role-reviewer.md:bs-worktree role-defect-fixer.md:bs-worktree \
+  conventions.md:bs-worktree; do
   doc="${pair%%:*}" script="${pair##*:}"
   case "$doc" in skills/*) path="$home/.claude/$doc" ;; *) path="$home/.local/share/bootstrap/$doc" ;; esac
   check "$doc calls $script" grep -qF "$home/.local/share/bootstrap/scripts/$script" "$path"

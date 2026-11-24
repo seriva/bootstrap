@@ -82,7 +82,13 @@ Providers: `claude`, `agy`, `codex`, or `host` (= `HOST_PROVIDER`).
 7. **On a mismatch or a red gate**:
    - Implementation → stop and report.
    - Review → re-dispatch once, then `PENDING_REVIEW`.
-8. **Implementer stopped for a user decision** (e.g. a plan's "stop and report" condition): ask the user, even with `--auto`. To apply their answer:
+8. **Interrupted subagent**: a native implementer or `Defect Fixer` subagent stopped before its final reply by a rate limit, timeout, or API error (not by its own choice):
+   - Its uncommitted work is not the user's: never treat it as a dirty tree to stop on, and never edit, stage, or commit it yourself.
+   - Record the state: `git log --oneline "origin/$BASE_BRANCH"..HEAD` and `git status --porcelain`.
+   - Resume the same agent once with its native continue tool (Claude Code: `SendMessage` to its agent id): "You were interrupted by `<cause>`. State: `<commits>`, uncommitted `<paths>`. Continue from there per your brief and send your final reply." Never start a fresh agent on its uncommitted tree.
+   - No continue tool, a cross-provider (`delegate_task`) child, a second interruption, or a failed resume → stop and report the state.
+   - Then run this **Verify** on its final reply as usual.
+9. **Implementer stopped for a user decision** (e.g. a plan's "stop and report" condition): ask the user, even with `--auto`. To apply their answer:
    1. Edit on `$WORKING_BRANCH` and **Safe commit** it.
    2. Run the **Full gate** yourself: your commit is not the one the implementer gated.
    3. Only when it is green, push (`/bs-loop` Step 2.3). Nothing is pushed before this gate.

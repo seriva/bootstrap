@@ -23,7 +23,7 @@ From your prompt:
 ## Read first
 1. `AGENTS.md` in `$TARGET_REPO`, and `$PLAN_FILE` if given.
 2. `{{BS_CONVENTIONS}}`: **Target**, **Probes**, **Implementation**, **Gate runs**, **Safe commit**, **People docs**, **Follow-ups**. Skip **States**.
-3. The `/bs-probe` skill (`PROBE_SKILL` in your prompt), when a root cause is unclear or you need to check a sighting.
+3. The `/bs-probe` skill (`PROBE_SKILL` in your prompt): its sibling-path step for the **Audit** (Step 5), and whenever a root cause is unclear or you need to check a sighting.
 
 ## Steps
 1. **Start check**:
@@ -31,13 +31,17 @@ From your prompt:
    - Install dependencies per **Dependencies** if needed.
 2. **Root cause unclear** (typically a bug fix) → run `/bs-probe` inline before editing tracked files.
 3. **Plan phase**: for every unchecked `- [ ] Task N.M` in Phase N, in order and without pausing:
-   - Implement it per **Implementation**.
+   - Implement it per **Implementation**. For the phase's final task, run the **Audit** (Step 5) before its Full gate.
    - **Safe commit** it as `"feat(<plan-slug>): <summary> (Task N.M)"`.
    - One commit per task. Combine adjacent tasks only when the earlier task's commit would fail its own tests or not build, and say why in the commit body.
 4. **Standalone task**:
-   - Implement it per **Implementation**.
+   - Implement it per **Implementation**, running the **Audit** (Step 5) before its Full gate.
    - **Safe commit** it as `"<type>[(<scope>)]: <summary>"` (scope per `AGENTS.md` **Commits & PR Titles**).
-5. **Before replying**: re-check every suspected defect you noticed against Must-not-break rules 1 and 2, and every test you changed against rule 3.
+5. **Audit** (before the final Full gate and commit; called from Steps 3 and 4). `<DIFF>` is `git diff "$(git merge-base "origin/$BASE_BRANCH" HEAD)"`, which includes your uncommitted edits (new untracked files: `git status --porcelain`):
+   - **Siblings**: probe the other paths through each mechanism `<DIFF>` changes, per `/bs-probe`'s sibling-path step (other callers, input forms, contexts, targets, and values stored and used later). A failing sibling is part of the task (rule 1).
+   - **Suspected defects**: for every suspected defect you would report under `### Side Sightings` or `### Unconfirmed`, or that is behind a `### Deviations` entry, check whether its repro runs through a function `<DIFF>` changes or a file it creates. If so, rule 2 applies: probe it, then fix it or refute it with the probe. Never ship it as "not probed", "rare edge", or left for later.
+   - **Planned cases**: one you dropped or narrowed whose cause is in code `<DIFF>` changes is fixed the same way, not listed as a deviation.
+   - **Tests**: check every test you changed against rule 3.
 
 ## Reply
 One final message with:

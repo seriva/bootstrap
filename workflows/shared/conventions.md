@@ -155,6 +155,7 @@ Follow `AGENTS.md` **Audiences**, **Changelog**, and **Docs**. In addition:
 
 **Side sightings** (defects you notice while working):
 1. **In a mechanism your diff adds or changes**: not a sighting but your task (**Same root, same fix**).
+   - How to tell: its repro runs through a function your diff changes (`git diff "$(git merge-base "origin/$BASE_BRANCH" HEAD)"`, which includes uncommitted edits; standalone `/bs-task`: `git diff HEAD` plus your task commits), or through a file the diff creates. Only a probe showing the defect does not pass through your change makes it item 2.
    - Probe it, and fix it if it reproduces.
    - Never return it as a guess, and never defer it.
 2. **Any other defect**: isolate a one-line repro with `/bs-probe` before returning (at most two quick probes; do not debug or fix it).

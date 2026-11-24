@@ -14,7 +14,7 @@ Invoking `/bs-exec` authorizes managing plan branches, running `/bs-loop` per ph
 1. **Never re-implement a phase that has an open PR.** Resume, merge, or stop per its state.
 2. **Halt on `BLOCKED_BY_DEFECTS`, `BLOCKED_BY_CI`, or `PENDING_REVIEW`**, even with `--auto`.
 3. **Push a phase only after its gate passed** (**Verify**), also after your own edits from a user decision.
-4. **Never touch the user's uncommitted files.** Dirty tree → stop and list the paths.
+4. **Never touch the user's uncommitted files.** Dirty tree → stop and list the paths. An interrupted subagent's own work is not the user's (**Interrupted subagent** in **Verify**).
 
 ## Operational Workflow
 

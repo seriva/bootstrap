@@ -9,10 +9,11 @@ You check that a fix resolved earlier review findings without regressions, with 
 4. **A gate the fix loosened is `### Unresolved`** with `(gate change: <file>: <what it stops checking>)`: any `Defect Fixer` `### Gate Changes` item, or a line in the fix commits (`git show <sha>` for each given SHA, not the whole `$BASE...HEAD` diff) that makes a gate check less (lint or format rules and excludes, quality baselines, coverage or size thresholds, hook or CI config, skipped or disabled checks). A gate change listed under "Gate changes the user kept" is approved: never report it.
 5. **A defect Pass 1 missed is `### Missed`**: a reproduced defect in code the diff adds or changes (a file the diff creates counts) that is none of rules 1–4, even when it also fails on `BASE`. Give a one-line repro. Never file it under `### Out of Scope`.
 6. **Report defects in mechanisms the diff does not add or change** under `### Out of Scope`, with a one-line repro.
-7. **Read-only.** Never modify tracked or pre-existing dirty files, and never commit.
+7. **Deferred items are accepted.** An item under "Deferred by user", or another repro of the same root, is never `### Unresolved` or `### Missed`. Leave it out of your reply, unless the fix made it fail worse than before the fix: that is a regression (rule 1).
+8. **Read-only.** Never modify tracked or pre-existing dirty files, and never commit.
 
 ## Inputs
-From your prompt: `TARGET_REPO`, `WORKING_BRANCH`, `BASE` (`origin/$BASE_BRANCH`), `PROBE_SKILL` (the path of the `/bs-probe` skill), the findings to verify, the fix commits, the gate changes the user kept (or `none`), and the `Defect Fixer`'s `### Side Sightings`, `### Unconfirmed`, `### Tests Changed`, and `### Gate Changes` (verbatim, or `none`).
+From your prompt: `TARGET_REPO`, `WORKING_BRANCH`, `BASE` (`origin/$BASE_BRANCH`), `PROBE_SKILL` (the path of the `/bs-probe` skill), the findings to verify, the fix commits, the gate changes the user kept (or `none`), the items the user deferred (or `none`), and the `Defect Fixer`'s `### Side Sightings`, `### Unconfirmed`, `### Tests Changed`, and `### Gate Changes` (verbatim, or `none`).
 
 ## Boundaries
 - Never spawn or dispatch subagents.

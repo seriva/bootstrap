@@ -3,10 +3,11 @@
 You review a diff with no knowledge of how it was written, and prove every finding with a probe. This brief is all you need; follow it in order. Used for standalone `/bs-review` and for `/bs-loop` Pass 1.
 
 ## Must not break
-1. **Classify by mechanism, not history.** A reproduced defect in code the diff adds or changes, or on a sibling path through it, is High or Medium. That holds even when it also exists on `<BASE>` or the plan prescribes it; "pre-existing" or "untouched" is never a reason on its own.
+1. **Classify by mechanism, not history.** A reproduced defect in code the diff adds or changes, or on a sibling path through it, is High or Medium, never Low. That holds even when it also exists on `<BASE>` or the plan prescribes it; "pre-existing" or "untouched" is never a reason on its own. Mark one `(pre-existing)` only when it fails the same way on `<BASE>` and lies outside the bug or feature the task or plan targets (Rubric item 3); the orchestrator asks the user whether to fix it. An incomplete sibling of the bug the diff fixes, or of the feature it adds, is plain High/Medium.
 2. **Probe the leads.** Every line the diff adds to `plans/follow-ups.md`, and every sighting, `### Deviations`, and `### Gate Changes` item in your prompt, gets probed and classified.
-3. **Prove, don't guess.** Check behaviour with probes; every Low and Out of Scope item carries a one-line repro.
-4. **Read-only.** Never modify tracked or pre-existing dirty files, and never commit.
+3. **Prove, don't guess.** Check behaviour with probes; every Out of Scope item carries a one-line repro.
+4. **Low is for nits only.** `### Low` holds non-behavioural items (naming, comments, dead code, style). A wrong output, crash, broken build, valid input rejected, or invalid input accepted is never Low: it is High/Medium (rule 1) or Out of Scope.
+5. **Read-only.** Never modify tracked or pre-existing dirty files, and never commit.
 
 ## Inputs
 From your prompt: `<REVIEW_WORKDIR>`, `<DIFF_TARGET>`, `<BASE>`, `<UNTRACKED_FILES>` (or `none`), `$PLAN_FILE` (or `none`), `PROBE_SKILL` (the path of the `/bs-probe` skill), and any appended sightings, `### Deviations`, `### Tests Changed`, or `### Gate Changes`.
@@ -42,9 +43,12 @@ From your prompt: `<REVIEW_WORKDIR>`, `<DIFF_TARGET>`, `<BASE>`, `<UNTRACKED_FIL
    - **Siblings**: for each defect this diff fixes or mechanism it changes, probe the other paths through it (other callers, input forms, contexts, targets) per **Same root, same fix**.
    - **Leads**: Must-not-break rule 2.
    - **Out of Scope**: only a defect in a different mechanism goes under `### Out of Scope` (not High/Medium/Low), and only when it also exists on `<BASE>` or lies outside the diff's scope.
+   - **Pre-existing check** (when `<BASE>` is a commit or branch): for a High/Medium finding outside the bug or feature the task or plan targets that plausibly predates the diff, run its own repro on `<BASE>`. The same failure there → append `(pre-existing)` to the finding.
+     - Skip the check for a finding inside that scope (an incomplete sibling of the bug or feature) and for one the diff plainly introduced (new code, a new error, a new crash).
+     - Fails only on the diff, or worse than on `<BASE>` → no mark.
    - **Checking `<BASE>`** when it is a commit or branch: probe in `"{{BS_WORKTREE}}" add <BASE> base` (it prints its dir), then `"{{BS_WORKTREE}}" remove <dir>`. Install its dependencies per **Dependencies** in `{{BS_CONVENTIONS}}` if the probe needs them.
    - **Test scope**: run the **Lint** command, the changed test files and those covering the changed code, and your probes. Delete `.probes/` before running lint.
 4. **Required Reply Format**:
    - Sections: `### High`, `### Medium`, `### Low`, `### Out of Scope`, and `### Verification Probes Run` (command + observed result).
-   - Every behavioural Low and Out of Scope item includes a one-line repro (snippet or command, actual, expected).
+   - Every Out of Scope item includes a one-line repro (snippet or command, actual, expected). Every Low item is a non-behavioural nit (Must-not-break rule 4).
    - High and Medium empty → end with the single token `LGTM`.
