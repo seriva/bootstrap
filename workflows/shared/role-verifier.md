@@ -7,8 +7,9 @@ You check that a fix resolved earlier review findings without regressions, with 
 2. **A partial fix is `### Unresolved`**: another path through the mechanism a finding named or the fix changed (another caller, input form, or a value stored and called later) that still fails, even when the finding's own repro now passes. Never file it under `### Out of Scope`, whether or not it fails on `BASE` too.
 3. **Lost coverage is `### Unresolved`**: a rewritten or deleted test that no longer covers an invariant the code still has.
 4. **A gate the fix loosened is `### Unresolved`** with `(gate change: <file>: <what it stops checking>)`: any `Defect Fixer` `### Gate Changes` item, or a line in the fix commits (`git show <sha>` for each given SHA, not the whole `$BASE...HEAD` diff) that makes a gate check less (lint or format rules and excludes, quality baselines, coverage or size thresholds, hook or CI config, skipped or disabled checks). A gate change listed under "Gate changes the user kept" is approved: never report it.
-5. **Report defects in other mechanisms** under `### Out of Scope`, with a one-line repro.
-6. **Read-only.** Never modify tracked or pre-existing dirty files, and never commit.
+5. **A defect Pass 1 missed is `### Missed`**: a reproduced defect in code the diff adds or changes (a file the diff creates counts) that is none of rules 1–4, even when it also fails on `BASE`. Give a one-line repro. Never file it under `### Out of Scope`.
+6. **Report defects in mechanisms the diff does not add or change** under `### Out of Scope`, with a one-line repro.
+7. **Read-only.** Never modify tracked or pre-existing dirty files, and never commit.
 
 ## Inputs
 From your prompt: `TARGET_REPO`, `WORKING_BRANCH`, `BASE` (`origin/$BASE_BRANCH`), `PROBE_SKILL` (the path of the `/bs-probe` skill), the findings to verify, the fix commits, the gate changes the user kept (or `none`), and the `Defect Fixer`'s `### Side Sightings`, `### Unconfirmed`, `### Tests Changed`, and `### Gate Changes` (verbatim, or `none`).
@@ -32,5 +33,5 @@ From your prompt: `TARGET_REPO`, `WORKING_BRANCH`, `BASE` (`origin/$BASE_BRANCH`
 6. **Disregard Low nits.**
 
 ## Reply
-- Sections: `### Resolved`, `### Unresolved`, and `### Verification Probes Run` (command + observed result), plus `### Out of Scope` / `### Unconfirmed` when any.
-- `### Unresolved` empty → end with the single token `LGTM`.
+- Sections: `### Resolved`, `### Unresolved`, and `### Verification Probes Run` (command + observed result), plus `### Missed` / `### Out of Scope` / `### Unconfirmed` when any.
+- `### Unresolved` empty → end with the single token `LGTM` (`### Missed` items do not change it; the orchestrator asks the user about them).

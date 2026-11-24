@@ -96,19 +96,27 @@ Review `$WORKING_BRANCH` against `origin/$BASE_BRANCH` (fetched; the local base 
   - It commits the fix as `"fix(<scope>): address review feedback"`. Verify it per **Verify**, then `git push` → Pass 2.
   - Red gate → still push (the PR must show the spent Fix Turn for **States**), then `BLOCKED_BY_DEFECTS` (Step 4).
 - **Pass 2** (terminal; a new `Code Reviewer (Pass 2)` on `REVIEWER`, zero history):
-  - `LGTM` → `PASSED`, unless its own probe results show the fix regressed something against `<BASE>`. Then `BLOCKED_BY_DEFECTS`, and say so in chat.
-  - An `### Out of Scope` item whose repro runs through a verified finding's mechanism or code the fix changed is a partial fix: treat it as `### Unresolved`, and say so in chat.
-  - Anything unresolved → `BLOCKED_BY_DEFECTS` (stop).
+  1. **Classify first** (its `LGTM` token alone never decides the outcome); say each move in chat:
+     - Its own probe results show the fix regressed something against `<BASE>` → `### Unresolved`.
+     - An `### Out of Scope` item whose repro runs through a verified finding's mechanism or code the fix changed is a partial fix → `### Unresolved`.
+     - Any other `### Out of Scope` item or `Defect Fixer` sighting whose repro runs through a mechanism the diff adds or changes (**Same-root check** test 2) was missed by Pass 1 → `### Missed`.
+  2. **Then the outcome**, first that applies:
+     - Anything in `### Unresolved` → `BLOCKED_BY_DEFECTS` (stop). List any `### Missed` items with the unresolved ones.
+     - `### Missed` items → ask the user, even under `/bs-exec --auto` (once per root per run): fix now, or record in `plans/follow-ups.md`.
+       - Fix now → their answer grants the **User-granted Fix Turn** on those items.
+       - Record → `PASSED`; Step 4.1 records them.
+     - Otherwise → `PASSED`.
 - **Resumed run** in state `fix-used` (**States**): the Fix Turn is spent, so Pass 1 is terminal.
-  - `LGTM` → `PASSED`.
+  - Run the **Same-root check** on its verdict first, as for any Pass 1; a promoted item counts as High/Medium.
+  - `LGTM` (no High/Medium left) → `PASSED`.
   - High/Medium → `BLOCKED_BY_DEFECTS`.
 - **User-granted Fix Turn**:
-  - When: the PR is `BLOCKED_BY_DEFECTS` and the user explicitly asks to fix it on its branch. One per request; never grant one yourself.
+  - When: the PR is `BLOCKED_BY_DEFECTS` and the user explicitly asks to fix it on its branch, or the user chose "fix now" for a terminal pass's `### Missed` items. One per request; never grant one yourself.
   - Clean tree first (`git status --porcelain`). Dirty → stop and list the paths.
-  - Run a Fix Turn on the latest `### Unresolved` items. In a new session, take them (and the `Gate changes kept:` line) from the latest **Findings** in the PR body or its comments.
+  - Run a Fix Turn on the latest `### Unresolved` and `### Missed` items. In a new session, take them (and the `Gate changes kept:` line) from the latest **Findings** in the PR body or its comments.
   - Then a new `Code Reviewer (Pass <N+1>)` with the Pass 2 prompt (given those items); it is terminal like Pass 2.
   - Step 4: name every pass in `<passes run>`.
-  - `set` refuses a report once a Gate line exists: post the report with `gh pr comment "$WORKING_BRANCH" --body-file <report.md>`, then `set` without `<report.md>`.
+  - Step 4.2 when the PR body already has a Gate line (it was gated `BLOCKED_BY_DEFECTS`): `set` refuses a report then, so post the report with `gh pr comment "$WORKING_BRANCH" --body-file <report.md>`, then `set` without `<report.md>`. Still the placeholder (a Fix Turn granted for `### Missed` items) → run Step 4.2 as written.
 
 **Subagent dispatch** (route per **Dispatch**):
 
@@ -137,13 +145,13 @@ Review `$WORKING_BRANCH` against `origin/$BASE_BRANCH` (fetched; the local base 
 ### Step 4: Finalize PR & CI Gate
 1. **Record Follow-ups** (skip on `PENDING_REVIEW`):
    - Append to `plans/follow-ups.md` per **Follow-ups** (skip duplicates):
-     - every pass's `### Out of Scope` items;
-     - unfixed behavioural `### Low` items, and **Plan design** findings the user chose to record;
+     - every pass's unpromoted `### Out of Scope` items (not those moved to Medium, `### Unresolved`, or `### Missed`);
+     - unfixed behavioural `### Low` items, and **Plan design** findings and `### Missed` items the user chose to record;
      - confirmed `### Side Sightings` that were neither fixed nor refuted.
    - File modified → `git add -- plans/follow-ups.md`, then **Safe commit** `"docs(<scope>): record review follow-ups"` on `$WORKING_BRANCH` (`--` `plans/follow-ups.md`), and push.
 2. **Update PR Body**:
    - With the host's file-write tool, write a report to a new temp file outside the repo: the host's scratch dir, else the literal path `mktemp` prints. Never a fixed name, as runs can overlap. The report holds:
-     - **Findings**: `High`/`Medium`/`Low`/`Out of Scope`, any `### Unresolved` and `### Unconfirmed`, the fix commit hash or `None required`, `Gate changes kept: <file: what it stops checking>` or `None`, and `Follow-ups: <N> recorded in plans/follow-ups.md` or `None`;
+     - **Findings**: `High`/`Medium`/`Low`/`Out of Scope`, any `### Unresolved`, `### Missed`, and `### Unconfirmed`, the fix commit hash or `None required`, `Gate changes kept: <file: what it stops checking>` or `None`, and `Follow-ups: <N> recorded in plans/follow-ups.md` or `None`;
      - a collapsed `<details>` block containing `### Verification Probes Run`.
    - Run `"{{BS_REVIEW_STATE}}" set "$WORKING_BRANCH" <PASSED | BLOCKED_BY_DEFECTS> "<passes run>" <report.md>`. It replaces the Step 2.3 placeholder with the Gate line and the report, and prints the state it reads back.
    - Remove the temp file.

@@ -97,6 +97,18 @@ check "sync accepts a managed block at EOF without a newline" "$SYNC" "$target"
 check "managed block is not duplicated" test "$(grep -c '^# >>> bootstrap-managed$' "$target/.gitignore")" = 1
 check "--check passes after the EOF fix" "$SYNC" --check "$target"
 
+# A legacy CI `if:` that skips phase PRs is reported, never rewritten.
+ci="$target/.github/workflows/ci.yml"
+cp "$ci" "$ci.orig"
+sed -i "/^jobs:/{n;a\\    if: \"!contains(github.head_ref, 'phase')\"
+}" "$ci"
+check "test setup adds the legacy phase-skip line" grep -q "head_ref, 'phase'" "$ci"
+check_not "--check fails on a CI if: that skips phase PRs" "$SYNC" --check "$target"
+"$SYNC" "$target" >/dev/null 2>&1 || true
+check "sync leaves the workflow alone" grep -q "head_ref, 'phase'" "$ci"
+mv "$ci.orig" "$ci"
+check "--check passes once the line is gone" "$SYNC" --check "$target"
+
 # .gitignore without a managed block: block appended once, legacy broad ignores dropped, own lines kept.
 printf 'my-local-dir/\n.claude/\n.codex/\n' > "$target/.gitignore"
 check "sync adds the managed block" "$SYNC" "$target"

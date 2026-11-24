@@ -102,6 +102,9 @@ GITIGNORE_BLOCK_RE = re.compile(r"# >>> bootstrap-managed\n[\s\S]*?# <<< bootstr
 # Top-level `extends:` key in lefthook.yml, block list or inline list form.
 LEFTHOOK_EXTENDS_RE = re.compile(r"^extends:.*(?:\n[ \t]+-.*)*", re.MULTILINE)
 SHARED_HOOKS_REL = "lefthook-bootstrap.yml"
+# Legacy job condition that kept CI off phase PRs, e.g.
+# if: "!contains(github.head_ref, 'phase')".
+LEGACY_PHASE_SKIP_RE = re.compile(r"^\s*if:.*github\.head_ref.*phase")
 LEGACY_BROAD_IGNORES = {".claude/", ".agents/", ".gemini/", ".codex/"}
 
 
@@ -184,6 +187,24 @@ def check_lefthook(target_dir):
     if not os.path.isfile(os.path.join(hooks_dir, "commit-msg")):
         print("    warning: commit-msg hook not installed; run `lefthook install` in this repo")
     return False
+
+
+def check_ci_phase_skip(target_dir):
+    """Scaffolds before phase PRs got CI skipped `-phase-` heads with a job `if:`; returns True on drift.
+    Workflows are project-owned, so they are never rewritten."""
+    workflows_dir = os.path.join(target_dir, ".github", "workflows")
+    if not os.path.isdir(workflows_dir):
+        return False
+    drift = False
+    for name in sorted(os.listdir(workflows_dir)):
+        path = os.path.join(workflows_dir, name)
+        if not name.endswith((".yml", ".yaml")) or not os.path.isfile(path):
+            continue
+        for lineno, line in enumerate(read_text(path).splitlines(), 1):
+            if LEGACY_PHASE_SKIP_RE.search(line):
+                print(f"  - .github/workflows/{name}:{lineno}: [DRIFT] `if:` skips phase PRs; delete it, phase PRs wait for CI; fix manually")
+                drift = True
+    return drift
 
 
 # Managed .gitignore block: everything between the markers (inclusive) in scaffold/.gitignore
@@ -285,6 +306,9 @@ for target_dir in targets:
             has_drift = True
         if check_lefthook(target_dir):
             has_drift = True
+
+    if check_ci_phase_skip(target_dir):
+        has_drift = True
 
     # Plan template lives in plans/ (everything the skills read and write); docs/ is for people.
     template_rel_path = os.path.join("plans", "template.md")
