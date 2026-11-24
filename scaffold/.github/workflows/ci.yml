@@ -59,10 +59,27 @@ jobs:
       - name: Fail on unformatted files
         run: git diff --exit-code HEAD  # HEAD: stage_fixed may have staged the fixes
 
-  # Uncomment for GitHub Pages deployment:
-  # deploy:
+  # Uncomment for GitHub Pages deployment (keep build and deploy in separate jobs
+  # to avoid the deploy-pages artifact-indexing race and allow re-running deploys):
+  # build:
   #   needs: test
   #   if: github.event_name == 'push'
+  #   runs-on: ubuntu-latest
+  #   permissions:
+  #     contents: read
+  #   steps:
+  #     - uses: actions/checkout@v5
+  #     - name: Build
+  #       run: "[BUILD_COMMAND]"
+  #     - uses: actions/upload-pages-artifact@v4
+  #       with:
+  #         path: "./public"
+  #
+  # deploy:
+  #   needs: build
+  #   concurrency:
+  #     group: "pages"
+  #     cancel-in-progress: false
   #   runs-on: ubuntu-latest
   #   permissions:
   #     pages: write
@@ -71,12 +88,6 @@ jobs:
   #     name: github-pages
   #     url: ${{ steps.deployment.outputs.page_url }}
   #   steps:
-  #     - uses: actions/checkout@v5
-  #     - name: Build
-  #       run: "[BUILD_COMMAND]"
-  #     - uses: actions/upload-pages-artifact@v4
-  #       with:
-  #         path: "./public"
   #     - uses: actions/deploy-pages@v4
   #       id: deployment
 
