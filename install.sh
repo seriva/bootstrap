@@ -74,6 +74,9 @@ SHARED_SED_ARGS=(
   -e "s|{{BS_MODEL_CLAUDE}}|$(sed_escape "$BS_MODEL_CLAUDE")|g"
   -e "s|{{BS_MODEL_AGY}}|$(sed_escape "$BS_MODEL_AGY")|g"
   -e "s|{{BS_MODEL_CODEX}}|$(sed_escape "$BS_MODEL_CODEX")|g"
+  -e "s|{{BS_FIX_MODEL_CLAUDE}}|$(sed_escape "${BS_FIX_MODEL_CLAUDE:-none}")|g"
+  -e "s|{{BS_FIX_MODEL_AGY}}|$(sed_escape "${BS_FIX_MODEL_AGY:-none}")|g"
+  -e "s|{{BS_FIX_MODEL_CODEX}}|$(sed_escape "${BS_FIX_MODEL_CODEX:-none}")|g"
 )
 # Shared docs are referenced as {{BS_<NAME_UPPER>}} (conventions.md -> {{BS_CONVENTIONS}},
 # role-implementer.md -> {{BS_ROLE_IMPLEMENTER}}), so every doc can cite every other.
@@ -114,6 +117,7 @@ for installed_path in "$BOOTSTRAP_SHARE_DIR"/scripts/* "$BOOTSTRAP_SHARE_DIR"/*.
 done
 echo "Installed shared docs and helper scripts to $BOOTSTRAP_SHARE_DIR"
 echo "  Models: claude=$BS_MODEL_CLAUDE, agy=$BS_MODEL_AGY, codex=$BS_MODEL_CODEX"
+echo "  Fix models: claude=${BS_FIX_MODEL_CLAUDE:-none}, agy=${BS_FIX_MODEL_AGY:-none}, codex=${BS_FIX_MODEL_CODEX:-none}"
 
 # Skill names and their placeholder keys, computed once (only the path pattern varies per render).
 SKILL_NAMES=()

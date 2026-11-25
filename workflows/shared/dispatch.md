@@ -23,29 +23,34 @@ Providers: `claude`, `agy`, `codex`, or `host` (= `HOST_PROVIDER`).
   - Example: `--pairing` in Claude Code inside T3 Code → `claude` implements, `agy` reviews.
 
 #### Model Selection & Inheritance
+- **Default paired models**: `claude` → `{{BS_MODEL_CLAUDE}}`, `agy` → `{{BS_MODEL_AGY}}`, `codex` → `{{BS_MODEL_CODEX}}`.
+- **Fix escalation models** (`Defect Fixer` when no `--implementer-model` is given; `none` disables fix-turn escalation): `claude` → `{{BS_FIX_MODEL_CLAUDE}}`, `agy` → `{{BS_FIX_MODEL_AGY}}`, `codex` → `{{BS_FIX_MODEL_CODEX}}`.
+
 1. **Host role**:
-   - Inherits the session's model (pass none) unless `--implementer-model` / `--reviewer-model` is given.
+   - Inherits the session's model (pass none) unless `--implementer-model` / `--reviewer-model` is given, or `Defect Fixer` escalates below.
    - Flag given → pass it to the native subagent tool. Claude Code's `Agent` takes only the tiers `sonnet`, `opus`, `haiku`, never full model strings.
-   - The native tool cannot select that model → dispatch through `delegate_task` instead.
-   - `Defect Fixer` with no `--implementer-model`, when the session runs a lighter Claude tier than Opus (e.g. Sonnet): pass `opus` and say so in chat. A partial fix against a high-effort reviewer costs a full extra review cycle.
+   - The native tool cannot select an explicit flag's model → dispatch through `delegate_task` instead.
+   - `Defect Fixer` with no `--implementer-model`, when the host provider's fix escalation model is not `none` and the session is not already running it (on Claude, its matching tier or higher: `haiku` < `sonnet` < `opus`): use that fix model and say so in chat. A partial fix against a high-effort reviewer costs a full extra review cycle.
+     - Claude Code's native `Agent`: pass its matching tier (`opus`, `sonnet`, or `haiku`).
+     - Native tool cannot select that model (e.g. `agy`'s `invoke_subagent`): dispatch through `delegate_task` if available; without `delegate_task`, inherit the session's model and note it in chat.
    - Review passes and `Defect Fixer`: set `high` reasoning/effort when the native tool takes one (Claude Code's `Agent`: `effort: "high"`); otherwise they run at the session's setting.
    - Inline work runs on the session's model. If `--implementer-model` is set and `/bs-loop` Step 2.2 runs inline, say in chat that it applies only to `Defect Fixer`.
 2. **Other-provider role** (`delegate_task`):
-   - Its model flag, else the provider's default paired model: `claude` → `{{BS_MODEL_CLAUDE}}`, `agy` → `{{BS_MODEL_AGY}}`, `codex` → `{{BS_MODEL_CODEX}}`.
+   - Its model flag, else for `Defect Fixer` the provider's fix escalation model (if not `none`), else the provider's default paired model.
    - Reasoning/effort, when supported: `high` for review passes (`Code Reviewer (Pass <N>)`) and `Defect Fixer`, `medium` for implementation.
    - A model flag never selects a provider; it applies to the provider its role resolved to.
 3. **Rejected Model**: never substitute silently.
-   - A native tool or `delegate_task` rejects a model (requested or default) → say so in chat and stop that role.
-   - Implementation or fix → stop and report. Review → `PENDING_REVIEW`.
+   - An automatic fix escalation model (no `--implementer-model`) is rejected or unavailable → say so in chat and fall back to the normal model (host: inherit the session's model via the native tool; other-provider: the provider's default paired model).
+   - Any other model (explicit flag or default paired model) is rejected by a native tool or `delegate_task` → say so in chat and stop that role: implementation or fix → stop and report; review → `PENDING_REVIEW`.
 
 ### Routing
-1. **Same provider** (`role's provider == HOST_PROVIDER`, with no model flag the native tool cannot select):
+1. **Same provider** (`role's provider == HOST_PROVIDER`, with no resolved model the native tool cannot select):
    - `/bs-loop` Step 2.2 runs inline (never a nested subagent).
    - `Defect Fixer` uses the native subagent tool, else runs inline (Pass 2 still reviews independently).
    - Reviews always use the native subagent tool in a fresh context, never inline.
    - No subagent tool and no `delegate_task` → `PENDING_REVIEW` (`/bs-loop` Step 3).
-2. **Cross-provider, or an explicit model the native tool cannot select** (`delegate_task`):
-   - **Requires `delegate_task`** (e.g. T3 Code). Absent while a cross-provider role was requested explicitly (`--implementer` / `--reviewer`) → stop and report that cross-provider dispatch requires an orchestrator tool (`delegate_task`). Never substitute another provider silently.
+2. **Cross-provider, or a resolved model the native tool cannot select** (`delegate_task`):
+   - **Requires `delegate_task`** (e.g. T3 Code). Absent while a cross-provider role or explicit model flag was requested → stop and report that dispatch requires an orchestrator tool (`delegate_task`). Never substitute another provider silently. (For an automatic host `Defect Fixer` escalation with no `delegate_task`, fall back to the native tool inheriting the session's model as above.)
    - **Dispatch**: check availability with `orchestrator_capabilities`, print the **Verify** → Notify line, then dispatch a fresh child per the orchestrator's `delegate_task` instructions:
      - in the parent checkout: `isolation="shared"`, never `isolation="worktree"`;
      - `mode="wait"`;
@@ -53,7 +58,7 @@ Providers: `claude`, `agy`, `codex`, or `host` (= `HOST_PROVIDER`).
    - **Waiting**: `mode="wait"` returning on its own timeout (T3 Code: about 45 s) while the child keeps running is normal, not a failure. Wait for the child's completion notification.
      - Never re-dispatch or poll.
      - Never pass a delegate or `Agent` id to a background-wait tool (it rejects them).
-   - **Unavailable** provider or model → say so and stop that role as in **Rejected Model**. Never switch provider or model, or fall back to native tools.
+   - **Unavailable** provider or model → follow **Rejected Model** (an automatic fix escalation announces the fallback to the normal model; otherwise stop that role without switching provider/model or falling back to native tools).
 
 | Provider | Native subagent tool |
 |---|---|

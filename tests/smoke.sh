@@ -132,9 +132,13 @@ home="$SANDBOX/home"
 # Create every host's config dir so all install targets are exercised.
 mkdir -p "$home/.gemini" "$home/.claude" "$home/.codex" "$home/.config/Code/User"
 install_env=(env HOME="$home" XDG_CONFIG_HOME="$home/.config" XDG_DATA_HOME="$home/.local/share")
-# Local model override replaces one default and leaves the others alone.
+# Local model override replaces chosen defaults and leaves the others alone (empty disables fix escalation).
 mkdir -p "$home/.config/bootstrap"
-echo 'BS_MODEL_CODEX="smoke-override-model"' > "$home/.config/bootstrap/models.env"
+cat > "$home/.config/bootstrap/models.env" <<'EOF'
+BS_MODEL_CODEX="smoke-override-model"
+BS_FIX_MODEL_AGY="smoke-fix-model"
+BS_FIX_MODEL_CODEX=""
+EOF
 # Leftovers of an earlier install (a dropped skill, a pre-rename skill, a dropped script) next to the user's own files.
 mkdir -p "$home/.claude/skills/bs-dropped" "$home/.claude/skills/dev-loop" "$home/.claude/skills/own-skill" \
   "$home/.claude/commands" "$home/.config/Code/User/prompts" "$home/.local/share/bootstrap/scripts"
@@ -150,8 +154,12 @@ for own in .claude/skills/own-skill .claude/commands/own-command.md .config/Code
   check "install keeps the user's $own" test -e "$home/$own"
 done
 check "models.env override is rendered" grep -q 'smoke-override-model' "$home/.local/share/bootstrap/dispatch.md"
+check "models.env fix override is rendered" grep -q 'smoke-fix-model' "$home/.local/share/bootstrap/dispatch.md"
+check "empty BS_FIX_MODEL_* renders as none" grep -q '`codex` → `none`' "$home/.local/share/bootstrap/dispatch.md"
 default_claude="$(sed -n 's/^BS_MODEL_CLAUDE="\(.*\)"$/\1/p' "$REPO_DIR/workflows/shared/models.env")"
+default_fix_claude="$(sed -n 's/^BS_FIX_MODEL_CLAUDE="\(.*\)"$/\1/p' "$REPO_DIR/workflows/shared/models.env")"
 check "non-overridden models keep their defaults" grep -qF "$default_claude" "$home/.local/share/bootstrap/dispatch.md"
+check "non-overridden fix models keep their defaults" grep -qF "$default_fix_claude" "$home/.local/share/bootstrap/dispatch.md"
 check "second install succeeds" "${install_env[@]}" "$INSTALL"
 
 skills=()

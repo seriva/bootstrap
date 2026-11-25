@@ -71,7 +71,7 @@ Review `$WORKING_BRANCH` against `origin/$BASE_BRANCH` (fetched; the local base 
 
 - **Pass 1** (`Code Reviewer (Pass 1)` on `REVIEWER`, zero history, `git diff origin/$BASE_BRANCH...HEAD`):
   - `LGTM` (no High/Medium) → `REVIEW_STATUS=PASSED`, Step 4, after the **Same-root check** and **User decisions** below.
-  - High/Medium → Fix Turn, after the same two steps.
+  - High/Medium → Docs-only fast path or Fix Turn, after the same two steps.
 - **Same-root check** (before acting on a Pass 1 verdict):
   - Candidates:
     - each behavioural `### Low` item (wrong output, crash, broken build, valid input rejected, invalid input accepted; never a style nit; the reviewer brief keeps these out of Low, so one here was misfiled) and each `### Out of Scope` item;
@@ -97,6 +97,9 @@ Review `$WORKING_BRANCH` against `origin/$BASE_BRANCH` (fetched; the local base 
     - Ask: fix it now (promote it to Medium), or keep it in `plans/follow-ups.md`. Name the later task or dropped test it affects. Ask once per root per run.
   - Every finding the user chooses to record here is deferred by the user (**Deferred items**): it goes on the `Deferred by user:` line of every later pass.
   - No High/Medium finding left → `REVIEW_STATUS=PASSED`, Step 4 (no Fix Turn).
+- **Docs-only fast path** (Pass 1 only, after the same-root check and user decisions): every remaining High/Medium finding is strictly a **People docs** wording or accuracy edit to `CHANGELOG.md`, `README.md`, or `docs/` with a suggested rewrite (no code, test, or missing-remedy breaking-change findings):
+  - Apply the rewrite(s) inline on `$WORKING_BRANCH`, run the **Docs gate** (**Gate runs**), **Safe commit** `"docs(<scope>): address review docs feedback"` (`--` only those docs paths), and `git push`.
+  - Gate green → `REVIEW_STATUS=PASSED`, Step 4 (no `Defect Fixer`, no Pass 2; record the commit hash in Step 4.2). Red → stop and report.
 - **Fix Turn** (max 1): `Defect Fixer` on `IMPLEMENTER`, given the Pass 1 High/Medium findings, promoted ones included, minus those the user chose to record.
   - It commits the fix as `"fix(<scope>): address review feedback"`. Verify it per **Verify**, then `git push` → Pass 2.
   - Red gate → still push (the PR must show the spent Fix Turn for **States**), then `BLOCKED_BY_DEFECTS` (Step 4).

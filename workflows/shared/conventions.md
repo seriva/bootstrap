@@ -78,7 +78,7 @@ How a task is implemented (`/bs-task`, `Implementer`, `Defect Fixer`):
 
 ## Gate runs
 **Full gate**: the `AGENTS.md` **Format**, **Lint**, and **Test** commands as written (none listed: **Pre-commit gate**).
-**Docs gate**: the **Format** and **Lint** commands only, for a `Defect Fixer` fix whose every changed file is `CHANGELOG.md`, `README.md`, or under `docs/` (no code, tests, or config).
+**Docs gate**: the **Format** and **Lint** commands only, for a docs-only review fix whose every changed file is `CHANGELOG.md`, `README.md`, or under `docs/` (no code, tests, or config).
 
 1. **Run**:
    - Run each command on its own, never `&&`-chained into one or run from a shell loop.
@@ -114,7 +114,7 @@ How a task is implemented (`/bs-task`, `Implementer`, `Defect Fixer`):
    - Otherwise → `git add -- <task-files>`.
 2. **Gate**:
    - Intermediate tasks (`Task N.1 .. N.(M-1)`): the task's `Test:` files. The commit hook lints; without `lefthook.yml`, also run format and lint.
-   - `Task N.M`, a standalone task, or `Defect Fixer`: the **Full gate** (a docs-only `Defect Fixer` fix: the **Docs gate**).
+   - `Task N.M`, a standalone task, or `Defect Fixer`: the **Full gate** (a docs-only review fix: the **Docs gate**).
    - Docs-only commits (follow-ups, release notes): the commit hook alone (without `lefthook.yml`: format and lint).
 3. **Commit**: `"{{BS_COMMIT}}" [--only] --exclude-hook <suite> -m "<subject>" [-m "<body>"] -- <allowed>...`, paths repo-root-relative. `<allowed>` is:
    - `PRE_DIRTY` not empty: pass `--only`, and only the task's files.
@@ -130,7 +130,7 @@ How a task is implemented (`/bs-task`, `Implementer`, `Defect Fixer`):
 Follow `AGENTS.md` **Audiences**, **Changelog**, and **Docs**. In addition:
 1. **Start the `CHANGELOG.md` entry** from the plan's **Release note:** header line when it has one. Otherwise write it from the user's perspective before rereading the commits or the plan.
 2. **One `## [Unreleased]` entry per plan**:
-   - Once a phase changes user-facing behaviour (or on the final phase), write or rewrite that entry so it says what works as of this phase, in 1–2 sentences.
+   - Once a phase changes user-facing behaviour (or on the final phase), write or rewrite that entry so it says what works as of this phase, in 1–2 sentences. Never claim something is already documented or works on targets that a later phase handles.
    - Purely internal foundational phases skip `CHANGELOG.md` until a user-facing phase lands.
    - Split it only for a separate user-facing feature or a `**Breaking:**` entry under `### Changed`.
 3. **Update `README.md` and `docs/`** when behaviour changed. In a multi-phase plan, do it in the phase that schedules the docs update (normally the last phase that changes behaviour).
