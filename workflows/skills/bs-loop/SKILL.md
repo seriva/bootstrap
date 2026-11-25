@@ -79,7 +79,7 @@ Review `$WORKING_BRANCH` against `origin/$BASE_BRANCH` (fetched; the local base 
     - each line the diff adds to `plans/follow-ups.md`.
   - Check both tests for every candidate, even when Pass 1 has no High/Medium findings. Its own repro runs through:
     1. the mechanism of a High/Medium finding, or
-    2. a mechanism the diff adds or changes (code in a file the diff creates counts).
+    2. a mechanism the diff adds or changes (newly written code in a file the diff creates counts; a function moved from another file with no line edited does not).
   - Either one holds → a failing sibling (**Review Rubric** item 3 in `{{BS_ROLE_REVIEWER}}`), even if the reviewer found it on `<BASE>` too or the plan prescribes it.
   - Promote it to Medium, say so in chat, and treat it as a Medium finding from then on. An `LGTM` with a promoted item goes to the Fix Turn.
   - **Exception, pre-existing**: the item says it fails the same way on `<BASE>`, it lies outside the bug or feature the task or plan targets, and its repro does not run through the mechanism of an unmarked High/Medium finding (a defect the diff introduced) → do not promote it. Mark it `(pre-existing)`, say so in chat, and leave it to **User decisions**.
@@ -104,10 +104,10 @@ Review `$WORKING_BRANCH` against `origin/$BASE_BRANCH` (fetched; the local base 
   1. **Classify first** (its `LGTM` token alone never decides the outcome); say each move in chat:
      - Its own probe results show the fix regressed something against `<BASE>` → `### Unresolved`.
      - An `### Out of Scope` item whose repro runs through a verified finding's mechanism or code the fix changed is a partial fix → `### Unresolved`.
-     - Any other `### Out of Scope` item or `Defect Fixer` sighting whose repro runs through a mechanism the diff adds or changes (**Same-root check** test 2) was missed by Pass 1 → `### Missed`.
+     - Any other `### Out of Scope` item or `Defect Fixer` sighting whose repro runs through a mechanism the diff adds or changes (**Same-root check** test 2) was missed by Pass 1 → `### Missed` (mark `(pre-existing)` if it fails the same way on `origin/$BASE_BRANCH` outside the task or plan's target).
   2. **Then the outcome**, first that applies:
      - Anything in `### Unresolved` → `BLOCKED_BY_DEFECTS` (stop). List any `### Missed` items with the unresolved ones.
-     - `### Missed` items → ask the user, even under `/bs-exec --auto` (once per root per run): fix now, or record in `plans/follow-ups.md`.
+     - `### Missed` items → ask the user, even under `/bs-exec --auto` (once per root per run): fix now, or record in `plans/follow-ups.md`. Clearly label any `(pre-existing)` item as failing the same way on `BASE` outside this phase's target and recommend recording it in `plans/follow-ups.md` rather than widening the PR.
        - Fix now → their answer grants the **User-granted Fix Turn** on those items.
        - Record → `PASSED`; Step 4.1 records them.
      - Otherwise → `PASSED`.

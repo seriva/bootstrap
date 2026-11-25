@@ -77,7 +77,7 @@ Invoking `/bs-exec` authorizes managing plan branches, running `/bs-loop` per ph
    - Bring in base-branch work that landed meanwhile (e.g. another plan): `git merge --no-edit "origin/$BASE_BRANCH"`.
    - Conflicts only in `plans/follow-ups.md`, `plans/roadmap.md`, or `CHANGELOG.md` (several plans appending entries) → keep every entry from both sides, `git add` those files, and `git commit --no-edit`.
    - Any other conflict → `git merge --abort`, stop, and report the files.
-   - Run the **Full gate** (**Gate runs**) before pushing anything. Red → stop and report, leaving the merge local (step 2's push sends it with the completion commit).
+   - Run each **Full gate** command on its own (**Gate runs**, never in a shell loop) before pushing anything. Red → stop and report, leaving the merge local (step 2's push sends it with the completion commit).
 2. **Complete & Open PR**:
    - Set `**Status:** Completed (YYYY-MM-DD)` in `$PLAN_FILE`.
    - **Versioned (`plans/v*/`)**: set its `Status` column in `plans/roadmap.md` to `Completed (YYYY-MM-DD)`, and `git add "$PLAN_FILE" plans/roadmap.md`.

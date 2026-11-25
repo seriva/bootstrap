@@ -141,7 +141,7 @@ Pair different model families so the reviewer doesn't share the implementer's bl
   The defaults are deliberately mid-tier models rather than each provider's most capable one: plans split the work into small phases, so each diff is small enough for them to handle well, which keeps paired runs fast and cheap. They apply only to the paired tool; the tool you are in keeps your session's model. Pass a model flag for a stronger model on large or risky changes.
 - If no cross-provider orchestrator (`delegate_task`, such as in T3 Code) is available, `--pairing` warns and reviews with the host tool's native subagent instead.
 - A model is never swapped silently: if the one you asked for, or a default, is unavailable, that role stops and tells you.
-- When the tool you are in implements, it writes the code on your session's model; `--implementer-model` then applies only to the fix turn after review.
+- When the tool you are in implements, it writes the code on your session's model; `--implementer-model` then applies only to the fix turn after review (in Claude Code, a fix turn runs on `opus` when the session uses a lighter model and `--implementer-model` is not set).
 - Cross-provider pairing requires an orchestrator with `delegate_task` (such as T3 Code inside the Docker agent server below), where paired roles run as live threads.
 
 ---

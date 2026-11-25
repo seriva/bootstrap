@@ -78,13 +78,14 @@ How a task is implemented (`/bs-task`, `Implementer`, `Defect Fixer`):
 
 ## Gate runs
 **Full gate**: the `AGENTS.md` **Format**, **Lint**, and **Test** commands as written (none listed: **Pre-commit gate**).
+**Docs gate**: the **Format** and **Lint** commands only, for a `Defect Fixer` fix whose every changed file is `CHANGELOG.md`, `README.md`, or under `docs/` (no code, tests, or config).
 
 1. **Run**:
    - Run each command on its own, never `&&`-chained into one or run from a shell loop.
    - Form: `log="$(mktemp)"; s=$(date +%s); <cmd> >"$log" 2>&1; rc=$?; echo "exit=$rc secs=$(($(date +%s) - s))" >>"$log"`.
-   - Run it in the foreground with the host's longest timeout (Claude Code: 10 min).
+   - Run it in the foreground with the host's longest timeout, set explicitly (Claude Code: Bash `timeout: 600000`; the 2-min default is too short for most suites). Never background a command that fits within that timeout.
    - Only a single command that can outlast that timeout goes to the background. Then stay in your turn with one blocking wait (Claude Code: Monitor running `until grep -q '^exit=' "$log"; do sleep 10; done`).
-   - Why stay in your turn: ending it kills a subagent's background job, and `t3_background_wait` returns at once for shell jobs.
+   - Why stay in your turn: ending it kills a subagent's background job (never end your turn to "wait" for a shell job), and `t3_background_wait` returns at once for shell jobs.
    - Never poll across tool calls or turns, reuse a fixed log name, or pipe a gate through `tail`/`grep`/`tee`.
 2. **Result**:
    - `exit=0` is green. Anything else is red, timeouts and "host load" included.
@@ -94,8 +95,8 @@ How a task is implemented (`/bs-task`, `Implementer`, `Defect Fixer`):
      - First look for a code change that passes the gate as it is.
      - None → make the narrowest change, and list it under `### Gate Changes` in your reply: the file, what it stops checking, the failing output that forced it, and why no code change avoids it.
      - The user decides whether it stays (`/bs-loop` **Gate change**).
-3. **Report**: implementers and `Defect Fixer` end their reply with `Full gate: exit <N> @ <short-sha> (<S>s)`.
-   - It covers every Full-gate command, each sub-command included (e.g. both halves of `npm test && npm run test:e2e`).
+3. **Report**: implementers and `Defect Fixer` end their reply with `Full gate: exit <N> @ <short-sha> (<S>s)` (a `Defect Fixer` on the **Docs gate**: `Docs gate: exit <N> @ <short-sha> (<S>s)`).
+   - It covers every command of that gate, each sub-command included (e.g. both halves of `npm test && npm run test:e2e`).
    - A command you could not run (missing browser, service, or tool) → `Full gate: incomplete (<command>: <reason>) @ <short-sha>`, never `exit 0`.
    - `<S>`: the summed `secs` of the gate's commands.
    - `<short-sha>`: HEAD right after committing the gated tree.
@@ -113,7 +114,7 @@ How a task is implemented (`/bs-task`, `Implementer`, `Defect Fixer`):
    - Otherwise → `git add -- <task-files>`.
 2. **Gate**:
    - Intermediate tasks (`Task N.1 .. N.(M-1)`): the task's `Test:` files. The commit hook lints; without `lefthook.yml`, also run format and lint.
-   - `Task N.M`, a standalone task, or `Defect Fixer`: the **Full gate**.
+   - `Task N.M`, a standalone task, or `Defect Fixer`: the **Full gate** (a docs-only `Defect Fixer` fix: the **Docs gate**).
    - Docs-only commits (follow-ups, release notes): the commit hook alone (without `lefthook.yml`: format and lint).
 3. **Commit**: `"{{BS_COMMIT}}" [--only] --exclude-hook <suite> -m "<subject>" [-m "<body>"] -- <allowed>...`, paths repo-root-relative. `<allowed>` is:
    - `PRE_DIRTY` not empty: pass `--only`, and only the task's files.
@@ -155,7 +156,7 @@ Follow `AGENTS.md` **Audiences**, **Changelog**, and **Docs**. In addition:
 
 **Side sightings** (defects you notice while working):
 1. **In a mechanism your diff adds or changes**: not a sighting but your task (**Same root, same fix**).
-   - How to tell: its repro runs through a function your diff changes (`git diff "$(git merge-base "origin/$BASE_BRANCH" HEAD)"`, which includes uncommitted edits; standalone `/bs-task`: `git diff HEAD` plus your task commits), or through a file the diff creates. Only a probe showing the defect does not pass through your change makes it item 2.
+   - How to tell: its repro runs through a function your diff changes (`git diff "$(git merge-base "origin/$BASE_BRANCH" HEAD)"`, which includes uncommitted edits; standalone `/bs-task`: `git diff HEAD` plus your task commits), or through newly written code in a file the diff creates (a function moved from another file with no line edited does not count). Only a probe showing the defect does not pass through your change makes it item 2.
    - Probe it, and fix it if it reproduces.
    - Never return it as a guess, and never defer it.
 2. **Any other defect**: isolate a one-line repro with `/bs-probe` before returning (at most two quick probes; do not debug or fix it).

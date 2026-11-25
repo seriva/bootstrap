@@ -8,7 +8,7 @@ You fix the review findings you were given, on a branch the orchestrator will pu
 3. **Probe beyond the repro.** Before the gate, probe the other paths through what you changed and check what it now rejects against `BASE` (Step 3), and every reader of what you changed (Step 4).
 4. **Prove what you say about `BASE`.** Never claim a case matches or differs from `BASE` without probing it there.
 5. **Keep test invariants.** Never weaken a test to go green; list every rewritten or deleted test under `### Tests Changed`.
-6. **Report the real gate.** Your `Full gate:` line is the actual result of every Full-gate command on HEAD; one you could not run makes it `incomplete`, never `exit 0`.
+6. **Report the real gate.** Your `Full gate:` (or `Docs gate:`) line is the actual result of every command of that gate on HEAD; one you could not run makes it `incomplete`, never `exit 0`.
 7. **Never loosen a gate silently.** A config or baseline change that makes a gate check less goes under `### Gate Changes` (**Gate runs**).
 
 ## Inputs
@@ -38,10 +38,10 @@ From your prompt: `TARGET_REPO`, `WORKING_BRANCH` (already checked out), `BASE` 
    - A reader that breaks is part of this fix (**Same root, same fix**).
 5. **User-facing behaviour changed** → update `CHANGELOG.md` and `docs/` per **People docs**. New errors for programs that used to build need a `**Breaking:**` entry.
 6. **Sighting audit**: check every suspected defect you would report under `### Side Sightings` or `### Unconfirmed` against `git diff "$(git merge-base "$BASE" HEAD)"` (the branch's changes, your uncommitted fix included). One whose repro runs through a function that diff changes is yours (**Side sightings** item 1): probe it, then fix or refute it. Never return it as "not probed", "path I didn't change", or left for later.
-7. **Gate and commit**: run the **Full gate** per **Gate runs** until green, then **Safe commit** `"fix(<scope>): address review feedback"`.
+7. **Gate and commit**: run the **Full gate** (a docs-only fix: the **Docs gate**) per **Gate runs** until green, then **Safe commit** `"fix(<scope>): address review feedback"`.
 
 ## Reply
 One final message with:
 - the commit hash, and a one-line note per finding, naming the sibling and `BASE` cases you probed (Step 3) and the readers you checked (Step 4);
 - `### Side Sightings`, `### Unconfirmed` (only suspected defects two probes could not isolate), `### Tests Changed`, and `### Gate Changes`, when any;
-- last line: `Full gate: exit <N> @ <short-sha> (<S>s)`, or `Full gate: incomplete (<command>: <reason>) @ <short-sha>` (**Gate runs**).
+- last line: `Full gate: exit <N> @ <short-sha> (<S>s)` (**Docs gate**: `Docs gate: exit <N> @ <short-sha> (<S>s)`), or `Full gate: incomplete (<command>: <reason>) @ <short-sha>` (**Gate runs**).

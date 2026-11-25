@@ -27,11 +27,12 @@ Providers: `claude`, `agy`, `codex`, or `host` (= `HOST_PROVIDER`).
    - Inherits the session's model (pass none) unless `--implementer-model` / `--reviewer-model` is given.
    - Flag given → pass it to the native subagent tool. Claude Code's `Agent` takes only the tiers `sonnet`, `opus`, `haiku`, never full model strings.
    - The native tool cannot select that model → dispatch through `delegate_task` instead.
-   - Review passes: set `high` reasoning/effort when the native tool takes one (Claude Code's `Agent`: `effort: "high"`); otherwise they run at the session's setting.
+   - `Defect Fixer` with no `--implementer-model`, when the session runs a lighter Claude tier than Opus (e.g. Sonnet): pass `opus` and say so in chat. A partial fix against a high-effort reviewer costs a full extra review cycle.
+   - Review passes and `Defect Fixer`: set `high` reasoning/effort when the native tool takes one (Claude Code's `Agent`: `effort: "high"`); otherwise they run at the session's setting.
    - Inline work runs on the session's model. If `--implementer-model` is set and `/bs-loop` Step 2.2 runs inline, say in chat that it applies only to `Defect Fixer`.
 2. **Other-provider role** (`delegate_task`):
    - Its model flag, else the provider's default paired model: `claude` → `{{BS_MODEL_CLAUDE}}`, `agy` → `{{BS_MODEL_AGY}}`, `codex` → `{{BS_MODEL_CODEX}}`.
-   - Reasoning/effort, when supported: `high` for review passes (`Code Reviewer (Pass <N>)`), `medium` for implementation and fixes.
+   - Reasoning/effort, when supported: `high` for review passes (`Code Reviewer (Pass <N>)`) and `Defect Fixer`, `medium` for implementation.
    - A model flag never selects a provider; it applies to the provider its role resolved to.
 3. **Rejected Model**: never substitute silently.
    - A native tool or `delegate_task` rejects a model (requested or default) → say so in chat and stop that role.
@@ -71,6 +72,7 @@ Providers: `claude`, `agy`, `codex`, or `host` (= `HOST_PROVIDER`).
    - List the new commits with `git log "origin/$BASE_BRANCH"..HEAD`.
    - Gate them per **Gate runs** (`{{BS_CONVENTIONS}}`):
      - The reply ends with `Full gate: exit 0 @ <sha>` (ignoring its trailing `(<S>s)` run time) and `<sha>` is `git rev-parse --short HEAD` → that exact commit already passed the full gate. Run only the **Lint** command and the `Test:` files of the phase's tasks (`Defect Fixer`: the test files its commit touched).
+     - `Defect Fixer` reply ends with `Docs gate: exit 0 @ <sha>`, `<sha>` is `HEAD`, and every commit it made touches only `CHANGELOG.md`, `README.md`, or `docs/` (`git show --name-only --format= <sha>` per commit) → run only the **Lint** command (an earlier Verify already gated the code).
      - Otherwise (line missing, `incomplete`, non-zero exit including timeouts, or another commit) → run the **Full gate** yourself.
      - The reply elsewhere says a Full-gate command did not run (e.g. under `### Unconfirmed`) → treat the line as `incomplete`.
      - You cannot run a command either (e.g. no browsers) → stop and report it; never merge or mark a PR ready on a partial gate.
@@ -82,10 +84,10 @@ Providers: `claude`, `agy`, `codex`, or `host` (= `HOST_PROVIDER`).
 7. **On a mismatch or a red gate**:
    - Implementation → stop and report.
    - Review → re-dispatch once, then `PENDING_REVIEW`.
-8. **Interrupted subagent**: a native implementer or `Defect Fixer` subagent stopped before its final reply by a rate limit, timeout, or API error (not by its own choice):
+8. **Interrupted subagent**: a native implementer or `Defect Fixer` subagent stopped before its final reply — by a rate limit, timeout, or API error, or by yielding its turn early while waiting on a backgrounded command with uncommitted changes (not a deliberate stop-and-report for a blocker):
    - Its uncommitted work is not the user's: never treat it as a dirty tree to stop on, and never edit, stage, or commit it yourself.
    - Record the state: `git log --oneline "origin/$BASE_BRANCH"..HEAD` and `git status --porcelain`.
-   - Resume the same agent once with its native continue tool (Claude Code: `SendMessage` to its agent id): "You were interrupted by `<cause>`. State: `<commits>`, uncommitted `<paths>`. Continue from there per your brief and send your final reply." Never start a fresh agent on its uncommitted tree.
+   - Resume the same agent once with its native continue tool (Claude Code: `SendMessage` to its agent id): "You stopped before finishing (`<cause>`). State: `<commits>`, uncommitted `<paths>`. Finish your work per your brief (run gate commands in the foreground, commit) and send your final reply." Never start a fresh agent on its uncommitted tree.
    - No continue tool, a cross-provider (`delegate_task`) child, a second interruption, or a failed resume → stop and report the state.
    - Then run this **Verify** on its final reply as usual.
 9. **Implementer stopped for a user decision** (e.g. a plan's "stop and report" condition): ask the user, even with `--auto`. To apply their answer:

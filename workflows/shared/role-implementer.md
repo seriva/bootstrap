@@ -39,7 +39,7 @@ From your prompt:
    - **Safe commit** it as `"<type>[(<scope>)]: <summary>"` (scope per `AGENTS.md` **Commits & PR Titles**).
 5. **Audit** (before the final Full gate and commit; called from Steps 3 and 4). `<DIFF>` is `git diff "$(git merge-base "origin/$BASE_BRANCH" HEAD)"`, which includes your uncommitted edits (new untracked files: `git status --porcelain`):
    - **Siblings**: probe the other paths through each mechanism `<DIFF>` changes, per `/bs-probe`'s sibling-path step (other callers, input forms, contexts, targets, and values stored and used later). A failing sibling is part of the task (rule 1).
-   - **Suspected defects**: for every suspected defect you would report under `### Side Sightings` or `### Unconfirmed`, or that is behind a `### Deviations` entry, check whether its repro runs through a function `<DIFF>` changes or a file it creates. If so, rule 2 applies: probe it, then fix it or refute it with the probe. Never ship it as "not probed", "rare edge", or left for later.
+   - **Suspected defects**: for every suspected defect you would report under `### Side Sightings` or `### Unconfirmed`, or that is behind a `### Deviations` entry, check whether its repro runs through a function `<DIFF>` changes or newly written code in a file it creates (a function moved from another file with no line edited does not count). If so, rule 2 applies: probe it, then fix it or refute it with the probe. Never ship it as "not probed", "rare edge", or left for later.
    - **Planned cases**: one you dropped or narrowed whose cause is in code `<DIFF>` changes is fixed the same way, not listed as a deviation.
    - **Tests**: check every test you changed against rule 3.
 
