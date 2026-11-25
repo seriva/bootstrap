@@ -6,12 +6,16 @@ set -euo pipefail
 
 usage() {
   cat >&2 <<'EOF'
-Usage: bs-plan-state active | <plan-file>
-  active        Active plans (Status Draft or In Progress) under plans/ and plans/v*/,
-                one path per line, sorted; prints nothing when there are none
-  <plan-file>   One line: "closed" (Status Completed, or under plans/archive/),
-                "open <N> <checked>/<total>" (N = first phase with an unchecked task), or
-                "finishing <total>/<total>" (every task checked)
+Usage: bs-plan-state active | <plan-file> | drift <plan-file> <base-branch>
+  active                          Active plans (Status Draft or In Progress) under plans/ and
+                                  plans/v*/, one path per line, sorted; prints nothing when none
+  <plan-file>                     One line: "closed" (Status Completed, or under plans/archive/),
+                                  "open <N> <checked>/<total>" (N = first phase with an unchecked
+                                  task), or "finishing <total>/<total>" (every task checked)
+  drift <plan-file> <base-branch> Plans named in <plan-file>'s **Related:** line that show
+                                  Completed (YYYY-MM-DD) in origin/<base-branch>:plans/roadmap.md
+                                  with a date after <plan-file> last changed on origin/<base-branch>;
+                                  prints "<slug> <YYYY-MM-DD>" per drifted plan, or nothing
 Tasks are the "- [ ] Task" / "- [x] Task" lines under "## Implementation Tasks", up to the
 next "## " heading, outside fenced code blocks.
 Exit: 0 ok, 2 usage, missing file, no **Status:** line, or no task boxes
@@ -19,7 +23,7 @@ EOF
   exit 2
 }
 
-[ $# -eq 1 ] || usage
+[ $# -ge 1 ] || usage
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "bs-plan-state: not inside a git work tree" >&2; exit 2; }
 cd "$(git rev-parse --show-toplevel)"
 
@@ -27,6 +31,79 @@ cd "$(git rev-parse --show-toplevel)"
 status_of() {
   sed -n 's/^\*\*Status:\*\*[[:space:]]*//p' "$1" | head -n 1 | sed 's/[[:space:]]*$//'
 }
+
+if [ "$1" = drift ]; then
+  [ $# -eq 3 ] || usage
+  f="${2#./}"
+  base="$3"
+  [ -f "$f" ] || { echo "bs-plan-state: no such plan file: $2" >&2; exit 2; }
+  if git rev-parse -q --verify "origin/${base}^{commit}" >/dev/null 2>&1; then
+    base_ref="origin/$base"
+  elif git rev-parse -q --verify "${base}^{commit}" >/dev/null 2>&1; then
+    base_ref="$base"
+  else
+    echo "bs-plan-state: unknown base ref: $base" >&2
+    exit 2
+  fi
+  related="$(sed -n 's/^\*\*Related:\*\*[[:space:]]*//p' "$f" | head -n 1)"
+  [ -n "$related" ] || exit 0
+  plan_date="$(git log -1 --format=%cs "$base_ref" -- "$f")"
+  [ -n "$plan_date" ] || exit 0
+  roadmap="$(git show "$base_ref:plans/roadmap.md" 2>/dev/null || true)"
+  [ -n "$roadmap" ] || exit 0
+  own_slug="${f##*/}"
+  own_slug="${own_slug%.md}"
+  own_slug="${own_slug%-plan}"
+  printf '%s\n' "$roadmap" | RELATED="$related" PLAN_DATE="$plan_date" OWN_SLUG="$own_slug" awk '
+    function is_ident(ch) { return ch ~ /^[A-Za-z0-9_-]$/ }
+    function mentions(hay, slug,    rest, pos, pre, after) {
+      rest = hay
+      while ((pos = index(rest, slug)) > 0) {
+        pre = (pos == 1) ? "" : substr(rest, pos - 1, 1)
+        after = substr(rest, pos + length(slug))
+        if (!is_ident(pre) && (after == "" || !is_ident(substr(after, 1, 1)) || substr(after, 1, 8) == "-plan.md")) {
+          return 1
+        }
+        rest = substr(rest, pos + 1)
+      }
+      return 0
+    }
+    function slug_from_link(seg,    path) {
+      path = seg
+      sub(/^.*\//, "", path)
+      sub(/\.md$/, "", path)
+      sub(/-plan$/, "", path)
+      return path
+    }
+    BEGIN { rel = ENVIRON["RELATED"]; pdate = ENVIRON["PLAN_DATE"]; own = ENVIRON["OWN_SLUG"] }
+    /^\|/ && match($0, /Completed \([0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]\)/) {
+      d = substr($0, RSTART + 11, 10)
+      if (d <= pdate) next
+      # Prefer the link in column 1 (standard roadmap); else take the last .md link in the row
+      # (e.g. "See [<plan>.md](...)" at the end of Notes), avoiding links to other plans in Notes.
+      n = split($0, cols, "|")
+      col1 = (n >= 2) ? cols[2] : ""
+      slug = ""
+      if (match(col1, /\([^()[:space:]]+\.md\)/)) {
+        slug = slug_from_link(substr(col1, RSTART + 1, RLENGTH - 2))
+      } else {
+        line = $0
+        while (match(line, /\([^()[:space:]]+\.md\)/)) {
+          slug = slug_from_link(substr(line, RSTART + 1, RLENGTH - 2))
+          line = substr(line, RSTART + RLENGTH)
+        }
+      }
+      if (slug == "" || slug == own) next
+      if (mentions(rel, slug)) {
+        key = slug " " d
+        if (!seen[key]++) print key
+      }
+    }
+  ' | LC_ALL=C sort
+  exit 0
+fi
+
+[ $# -eq 1 ] || usage
 
 if [ "$1" = active ]; then
   for f in plans/*.md plans/v*/*.md; do

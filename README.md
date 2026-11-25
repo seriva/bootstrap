@@ -222,7 +222,7 @@ bootstrap/
 │       ├── conventions.md  Shared worker conventions
 │       ├── dispatch.md     Orchestrator dispatch rules
 │       ├── role-*.md       Short briefs for each subagent role (implementer, defect fixer, reviewer, fix verifier)
-│       ├── scripts/        Helpers the skills call to check the tree, commit safely, pick the diff to review, check out temporary worktrees, set up plan branches, write the PR review gate, and read plan, PR, and CI state
+│       ├── scripts/        Helpers the skills call to check the tree, commit safely, resolve role routing/models, verify subagent commits/gates, pick the diff to review, check out temporary worktrees, set up plan branches, write the PR review gate, and read plan, drift, PR, and CI state
 │       └── models.env      Default paired and fix-escalation model names, filled in at install (override in ${XDG_CONFIG_HOME:-~/.config}/bootstrap/models.env)
 ├── install.sh          Installs skills, shared docs, and helper scripts across detected AI tools
 ├── init.sh             Scaffolds a new project (--type continuous|versioned)

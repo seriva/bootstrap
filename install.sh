@@ -99,8 +99,9 @@ done
 mkdir -p "$BOOTSTRAP_SHARE_DIR/scripts"
 for script_path in "$SHARED_SRC"/scripts/*; do
   [ -f "$script_path" ] || continue
-  cp "$script_path" "$BOOTSTRAP_SHARE_DIR/scripts/"
-  chmod 755 "$BOOTSTRAP_SHARE_DIR/scripts/$(basename "$script_path")"
+  script_name="$(basename "$script_path")"
+  sed "${SHARED_SED_ARGS[@]}" "$script_path" > "$BOOTSTRAP_SHARE_DIR/scripts/$script_name"
+  chmod 755 "$BOOTSTRAP_SHARE_DIR/scripts/$script_name"
 done
 for doc_path in "$SHARED_SRC"/*.md; do
   [ -f "$doc_path" ] || continue

@@ -1,0 +1,393 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Resolve provider, dispatch mechanism, model, effort, and unavailable-model policy for a bs-*
+# role (implementer, phase-implementer, fixer, reviewer). Never touches the repo or git state.
+
+usage() {
+  cat >&2 <<'EOF'
+Usage: bs-resolve-role --host <provider> --role <role> [options]
+  --host <provider>          Host provider: claude, agy, codex, or host
+  --host-model <model>       Active session model (optional; skips redundant fix escalation)
+  --role <role>              implementer | phase-implementer | fixer | reviewer
+  --pairing                  Enable cross-provider pairing (reviewer != implementer)
+  --implementer <provider>   Explicit implementer provider (claude|agy|codex|host)
+  --reviewer <provider>      Explicit reviewer provider (claude|agy|codex|host)
+  --implementer-model <m>    Explicit model flag for implementer / phase-implementer / fixer
+  --reviewer-model <m>       Explicit model flag for reviewer
+  --has-native-subagent      Host has a native fresh-context subagent tool (default for claude/agy/codex)
+  --no-native-subagent       Host has no native fresh-context subagent tool (default for host)
+  --has-delegate             Orchestrator delegate_task is available
+  --reachable <csv>          Cross-provider targets reachable via delegate_task (implies --has-delegate)
+Prints KEY=value lines: PROVIDER, VIA, MODEL, EFFORT, ON_UNAVAILABLE, NOTE.
+  VIA            inline | native | delegate_task | pending-review
+  ON_UNAVAILABLE stop | pending-review | fallback:native:inherit | fallback:inline:inherit |
+                 fallback:delegate_task:<model> | none
+Exit: 0 ok, 2 usage, 3 explicit cross-provider role or explicit model requires unavailable delegate_task.
+On a non-zero exit, the last stderr line is "next: <action>" for the caller.
+EOF
+  echo "next: fix the call (bs-resolve-role --host <provider> --role <role> ...), then retry" >&2
+  exit 2
+}
+
+die() {
+  local code="$1" msg="$2" next="$3"
+  echo "bs-resolve-role: $msg" >&2
+  echo "next: $next" >&2
+  exit "$code"
+}
+
+# Rendered by install.sh; when run directly from the source repo, load sibling models.env instead.
+_m_claude="{{BS_MODEL_CLAUDE}}"
+_m_agy="{{BS_MODEL_AGY}}"
+_m_codex="{{BS_MODEL_CODEX}}"
+_f_claude="{{BS_FIX_MODEL_CLAUDE}}"
+_f_agy="{{BS_FIX_MODEL_AGY}}"
+_f_codex="{{BS_FIX_MODEL_CODEX}}"
+case "$_m_claude" in
+  '{{'*)
+    _models_file="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/models.env"
+    # shellcheck disable=SC1090
+    source "$_models_file"
+    _m_claude="$BS_MODEL_CLAUDE"
+    _m_agy="$BS_MODEL_AGY"
+    _m_codex="$BS_MODEL_CODEX"
+    _f_claude="${BS_FIX_MODEL_CLAUDE:-none}"
+    _f_agy="${BS_FIX_MODEL_AGY:-none}"
+    _f_codex="${BS_FIX_MODEL_CODEX:-none}"
+    ;;
+esac
+if [ -n "${BS_MODELS_ENV:-}" ]; then
+  [ -f "$BS_MODELS_ENV" ] || die 2 "BS_MODELS_ENV not found: $BS_MODELS_ENV" "fix BS_MODELS_ENV path and retry"
+  BS_MODEL_CLAUDE="$_m_claude" BS_MODEL_AGY="$_m_agy" BS_MODEL_CODEX="$_m_codex"
+  BS_FIX_MODEL_CLAUDE="$_f_claude" BS_FIX_MODEL_AGY="$_f_agy" BS_FIX_MODEL_CODEX="$_f_codex"
+  # shellcheck disable=SC1090
+  source "$BS_MODELS_ENV"
+  _m_claude="$BS_MODEL_CLAUDE"
+  _m_agy="$BS_MODEL_AGY"
+  _m_codex="$BS_MODEL_CODEX"
+  _f_claude="${BS_FIX_MODEL_CLAUDE:-none}"
+  _f_agy="${BS_FIX_MODEL_AGY:-none}"
+  _f_codex="${BS_FIX_MODEL_CODEX:-none}"
+fi
+
+host="" host_model="" role="" pairing=false
+imp_flag="" rev_flag="" imp_model="" rev_model=""
+has_native="" has_delegate=false reachable_csv=""
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --host) [ $# -ge 2 ] || usage; host="$2"; shift 2 ;;
+    --host-model) [ $# -ge 2 ] || usage; host_model="$2"; shift 2 ;;
+    --role) [ $# -ge 2 ] || usage; role="$2"; shift 2 ;;
+    --pairing) pairing=true; shift ;;
+    --implementer) [ $# -ge 2 ] || usage; imp_flag="$2"; shift 2 ;;
+    --reviewer) [ $# -ge 2 ] || usage; rev_flag="$2"; shift 2 ;;
+    --implementer-model) [ $# -ge 2 ] || usage; imp_model="$2"; shift 2 ;;
+    --reviewer-model) [ $# -ge 2 ] || usage; rev_model="$2"; shift 2 ;;
+    --has-native-subagent) has_native=true; shift ;;
+    --no-native-subagent) has_native=false; shift ;;
+    --has-delegate) has_delegate=true; shift ;;
+    --reachable) [ $# -ge 2 ] || usage; reachable_csv="$2"; [ -z "$2" ] || has_delegate=true; shift 2 ;;
+    -h | --help) usage ;;
+    *) usage ;;
+  esac
+done
+
+valid_provider() {
+  case "$1" in claude | agy | codex | host) return 0 ;; *) return 1 ;; esac
+}
+
+[ -n "$host" ] && valid_provider "$host" || usage
+case "$role" in implementer | phase-implementer | fixer | reviewer) ;; *) usage ;; esac
+[ -z "$imp_flag" ] || valid_provider "$imp_flag" || usage
+[ -z "$rev_flag" ] || valid_provider "$rev_flag" || usage
+
+if [ -z "$has_native" ]; then
+  case "$host" in claude | agy | codex) has_native=true ;; host) has_native=false ;; esac
+fi
+
+# Resolve "host" alias in explicit provider flags to the concrete host provider.
+resolve_provider_alias() {
+  if [ "$1" = host ]; then printf '%s' "$host"; else printf '%s' "$1"; fi
+}
+
+delegate_reaches() {
+  local p="$1" item
+  [ "$has_delegate" = true ] || return 1
+  if [ -z "$reachable_csv" ]; then
+    case "$p" in claude | agy | codex) return 0 ;; *) return 1 ;; esac
+  fi
+  IFS=',' read -ra _items <<< "$reachable_csv"
+  for item in "${_items[@]}"; do
+    item="${item//[[:space:]]/}"
+    [ "$item" = "$p" ] && return 0
+  done
+  return 1
+}
+
+default_model_of() {
+  case "$1" in
+    claude) printf '%s' "$_m_claude" ;;
+    agy) printf '%s' "$_m_agy" ;;
+    codex) printf '%s' "$_m_codex" ;;
+    *) printf '%s' "none" ;;
+  esac
+}
+
+fix_model_of() {
+  case "$1" in
+    claude) printf '%s' "$_f_claude" ;;
+    agy) printf '%s' "$_f_agy" ;;
+    codex) printf '%s' "$_f_codex" ;;
+    *) printf '%s' "none" ;;
+  esac
+}
+
+claude_tier_of() {
+  local lower
+  lower="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+  case "$lower" in
+    *opus*) printf '%s' "opus" ;;
+    *sonnet*) printf '%s' "sonnet" ;;
+    *haiku*) printf '%s' "haiku" ;;
+    *) printf '%s' "" ;;
+  esac
+}
+
+claude_tier_rank() {
+  case "$1" in
+    haiku) echo 1 ;;
+    sonnet) echo 2 ;;
+    opus) echo 3 ;;
+    *) echo 0 ;;
+  esac
+}
+
+native_can_select() {
+  local p="$1" m="$2"
+  case "$p" in
+    claude) case "$m" in sonnet | opus | haiku) return 0 ;; *) return 1 ;; esac ;;
+    agy) case "$m" in flash_lite | flash | pro) return 0 ;; *) return 1 ;; esac ;;
+    *) return 1 ;;
+  esac
+}
+
+notes=()
+add_note() { [ -z "$1" ] || notes+=("$1"); }
+
+# 1. Resolve IMPLEMENTER and REVIEWER providers.
+if [ -n "$imp_flag" ]; then
+  implementer="$(resolve_provider_alias "$imp_flag")"
+else
+  implementer="$host"
+fi
+
+if [ -n "$rev_flag" ]; then
+  reviewer="$(resolve_provider_alias "$rev_flag")"
+elif [ "$pairing" = true ] || [ -n "$imp_flag" ] || [ "$has_native" = false ]; then
+  reviewer=""
+  for cand in claude agy codex; do
+    [ "$cand" != "$implementer" ] || continue
+    if [ "$cand" = "$host" ] && [ "$has_native" = true ]; then
+      reviewer="$cand"; break
+    elif delegate_reaches "$cand"; then
+      reviewer="$cand"; break
+    fi
+  done
+  if [ -z "$reviewer" ]; then
+    reviewer="$host"
+    if [ "$role" = reviewer ]; then
+      add_note "cross-provider pairing requires delegate_task; using host provider ($host)"
+    fi
+  fi
+else
+  reviewer="$host"
+fi
+
+# 2. Pick provider and explicit model flag for this role.
+case "$role" in
+  implementer | phase-implementer | fixer)
+    provider="$implementer"
+    flag_model="$imp_model"
+    explicit_provider=false
+    [ -z "$imp_flag" ] || explicit_provider=true
+    ;;
+  reviewer)
+    provider="$reviewer"
+    flag_model="$rev_model"
+    explicit_provider=false
+    [ -z "$rev_flag" ] || explicit_provider=true
+    ;;
+esac
+
+if [ "$role" = reviewer ]; then
+  fail_policy="pending-review"
+else
+  fail_policy="stop"
+fi
+
+via="" model="" effort="" on_unavailable=""
+
+# 3. Resolve routing, model, effort, and unavailable-model policy.
+if [ "$provider" = "$host" ]; then
+  if [ "$role" = implementer ]; then
+    via="inline"
+    model="inherit"
+    effort="inherit"
+    on_unavailable="none"
+    [ -z "$flag_model" ] || add_note "--implementer-model applies only to Defect Fixer when implementation runs inline"
+  elif [ -n "$flag_model" ]; then
+    if [ "$has_native" = true ] && [ "$host" = claude ] && [ -n "$(claude_tier_of "$flag_model")" ]; then
+      tier="$(claude_tier_of "$flag_model")"
+      via="native"
+      model="$tier"
+      if [ "$role" = reviewer ] || [ "$role" = fixer ]; then effort="high"; else effort="inherit"; fi
+      on_unavailable="$fail_policy"
+      [ "$flag_model" = "$tier" ] || add_note "using Claude native tier $tier for $flag_model"
+    elif [ "$has_native" = true ] && native_can_select "$host" "$flag_model"; then
+      via="native"
+      model="$flag_model"
+      effort="inherit"
+      on_unavailable="$fail_policy"
+    elif [ "$has_delegate" = true ]; then
+      via="delegate_task"
+      model="$flag_model"
+      if [ "$role" = reviewer ] || [ "$role" = fixer ]; then effort="high"; else effort="medium"; fi
+      on_unavailable="$fail_policy"
+    else
+      die 3 "selecting explicit model '$flag_model' on $host requires delegate_task" \
+        "stop and report that selecting model '$flag_model' requires an orchestrator tool (delegate_task); never substitute silently"
+    fi
+  elif [ "$role" = fixer ]; then
+    fix_model="$(fix_model_of "$host")"
+    escalate=false
+    if [ "$fix_model" != none ] && [ -n "$fix_model" ]; then
+      if [ "$host" = claude ]; then
+        fix_tier="$(claude_tier_of "$fix_model")"
+        host_tier="$(claude_tier_of "$host_model")"
+        fix_rank="$(claude_tier_rank "$fix_tier")"
+        host_rank="$(claude_tier_rank "$host_tier")"
+        if [ -z "$host_model" ]; then
+          escalate=true
+        elif [ "$host_model" = "$fix_model" ]; then
+          escalate=false
+        elif [ "$host_rank" -eq 0 ]; then
+          # Unknown Claude tier (e.g. a newer flagship): skip escalation rather than risk a downgrade.
+          escalate=false
+        elif [ "$fix_rank" -gt 0 ] && [ "$host_rank" -ge "$fix_rank" ]; then
+          escalate=false
+        else
+          escalate=true
+        fi
+      else
+        if [ -n "$host_model" ] && [ "$host_model" = "$fix_model" ]; then
+          escalate=false
+        else
+          escalate=true
+        fi
+      fi
+    fi
+
+    if [ "$has_native" = true ]; then
+      fallback_via="native"
+    else
+      fallback_via="inline"
+    fi
+
+    if [ "$escalate" = true ]; then
+      if [ "$host" = claude ] && [ "$has_native" = true ] && [ -n "$(claude_tier_of "$fix_model")" ]; then
+        tier="$(claude_tier_of "$fix_model")"
+        via="native"
+        model="$tier"
+        effort="high"
+        on_unavailable="fallback:native:inherit"
+        add_note "escalating Defect Fixer to $tier ($fix_model)"
+      elif [ "$has_native" = true ] && native_can_select "$host" "$fix_model"; then
+        via="native"
+        model="$fix_model"
+        effort="inherit"
+        on_unavailable="fallback:native:inherit"
+        add_note "escalating Defect Fixer to $fix_model"
+      elif [ "$has_delegate" = true ]; then
+        via="delegate_task"
+        model="$fix_model"
+        effort="high"
+        on_unavailable="fallback:${fallback_via}:inherit"
+        add_note "escalating Defect Fixer to $fix_model via delegate_task"
+      else
+        via="$fallback_via"
+        model="inherit"
+        if [ "$host" = claude ] && [ "$has_native" = true ]; then effort="high"; else effort="inherit"; fi
+        on_unavailable="stop"
+        add_note "cannot select fix escalation model $fix_model without delegate_task; inheriting session model"
+      fi
+    else
+      via="$fallback_via"
+      model="inherit"
+      if [ "$host" = claude ] && [ "$has_native" = true ]; then effort="high"; else effort="inherit"; fi
+      on_unavailable="stop"
+    fi
+  elif [ "$role" = reviewer ]; then
+    if [ "$has_native" = true ]; then
+      via="native"
+      model="inherit"
+      if [ "$host" = claude ]; then effort="high"; else effort="inherit"; fi
+      on_unavailable="pending-review"
+    else
+      via="pending-review"
+      model="none"
+      effort="none"
+      on_unavailable="pending-review"
+      add_note "no fresh-context subagent or delegate_task available; report PENDING_REVIEW"
+    fi
+  else
+    # phase-implementer on host with no model flag
+    if [ "$has_native" = true ]; then
+      via="native"
+      model="inherit"
+      effort="inherit"
+      on_unavailable="stop"
+    else
+      via="inline"
+      model="inherit"
+      effort="inherit"
+      on_unavailable="none"
+    fi
+  fi
+else
+  # Cross-provider role (delegate_task)
+  if ! delegate_reaches "$provider"; then
+    if [ "$explicit_provider" = true ]; then
+      die 3 "cross-provider dispatch to $provider requires delegate_task (and $provider reachable)" \
+        "stop and report that cross-provider dispatch to $provider requires an orchestrator tool (delegate_task); never substitute another provider silently"
+    fi
+    die 3 "$provider is not reachable via delegate_task" \
+      "stop and report that $provider is unavailable via delegate_task"
+  fi
+  via="delegate_task"
+  if [ "$role" = reviewer ] || [ "$role" = fixer ]; then effort="high"; else effort="medium"; fi
+  if [ -n "$flag_model" ]; then
+    model="$flag_model"
+    on_unavailable="$fail_policy"
+  elif [ "$role" = fixer ] && [ "$(fix_model_of "$provider")" != none ]; then
+    model="$(fix_model_of "$provider")"
+    on_unavailable="fallback:delegate_task:$(default_model_of "$provider")"
+    add_note "escalating Defect Fixer to $model"
+  else
+    model="$(default_model_of "$provider")"
+    on_unavailable="$fail_policy"
+  fi
+fi
+
+if [ "${#notes[@]}" -eq 0 ]; then
+  note="none"
+else
+  note="${notes[0]}"
+  for ((i = 1; i < ${#notes[@]}; i++)); do
+    note+="; ${notes[i]}"
+  done
+fi
+
+printf 'PROVIDER=%s\nVIA=%s\nMODEL=%s\nEFFORT=%s\nON_UNAVAILABLE=%s\nNOTE=%s\n' \
+  "$provider" "$via" "$model" "$effort" "$on_unavailable" "$note"

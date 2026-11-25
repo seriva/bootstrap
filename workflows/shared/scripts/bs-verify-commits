@@ -1,0 +1,165 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Mechanical Verify check for implementer and Defect Fixer commits in /bs-loop and /bs-exec.
+# Verifies branch, clean tree, commit list, gate line SHA match, and Docs-gate docs-only scope.
+# Never modifies the working tree.
+
+usage() {
+  cat >&2 <<'EOF'
+Usage: bs-verify-commits --branch <working-branch> --base <base-branch> --role <implementer|fixer> [options]
+  --branch <name>       Expected current branch (HEAD)
+  --base <branch>       Base branch (checked as origin/<branch>, or literal ref if it already exists)
+  --role <role>         implementer | fixer
+  --since <sha>         Commit SHA before Defect Fixer ran (required for Docs gate when branch has >1 commit)
+  --gate-line <line>    Last line of the subagent's reply (Full gate: ... or Docs gate: ...)
+  --unconfirmed         Set when the reply says elsewhere a Full-gate command did not run
+Prints KEY=value lines: HEAD, COMMIT_COUNT, GATE (lint-only|lint-and-tests|full-gate), REASON,
+FILES (comma-separated files touched in the verified commits, or none), followed by one
+"COMMIT <short-sha> <subject>" line per commit in <base>..HEAD.
+Exit: 0 ok, 2 usage or unknown ref, 4 wrong branch, 5 dirty working tree (paths on stderr).
+On a non-zero exit, the last stderr line is "next: <action>" for the caller.
+EOF
+  echo "next: fix the call (bs-verify-commits --branch ... --base ... --role ...), then retry" >&2
+  exit 2
+}
+
+die() {
+  local code="$1" msg="$2" next="$3"
+  echo "bs-verify-commits: $msg" >&2
+  echo "next: $next" >&2
+  exit "$code"
+}
+
+branch="" base="" role="" since="" gate_line="" unconfirmed=false
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --branch) [ $# -ge 2 ] || usage; branch="$2"; shift 2 ;;
+    --base) [ $# -ge 2 ] || usage; base="$2"; shift 2 ;;
+    --role) [ $# -ge 2 ] || usage; role="$2"; shift 2 ;;
+    --since) [ $# -ge 2 ] || usage; since="$2"; shift 2 ;;
+    --gate-line) [ $# -ge 2 ] || usage; gate_line="$2"; shift 2 ;;
+    --unconfirmed) unconfirmed=true; shift ;;
+    -h | --help) usage ;;
+    *) usage ;;
+  esac
+done
+
+[ -n "$branch" ] && [ -n "$base" ] || usage
+case "$role" in implementer | fixer) ;; *) usage ;; esac
+
+git rev-parse --is-inside-work-tree >/dev/null 2>&1 || die 2 "not inside a git work tree" "run inside TARGET_REPO"
+cd "$(git rev-parse --show-toplevel)"
+
+current="$(git rev-parse --abbrev-ref HEAD)"
+if [ "$current" != "$branch" ]; then
+  die 4 "HEAD is '$current', expected '$branch'" "stop and report the branch mismatch"
+fi
+
+dirty="$(git status --porcelain)"
+if [ -n "$dirty" ]; then
+  printf '%s\n' "$dirty" >&2
+  die 5 "working tree is not clean" \
+    "if the subagent was interrupted before finishing, resume it once per Interrupted subagent; otherwise stop and report the dirty paths above"
+fi
+
+if git rev-parse -q --verify "origin/${base}^{commit}" >/dev/null 2>&1; then
+  base_ref="origin/$base"
+elif git rev-parse -q --verify "${base}^{commit}" >/dev/null 2>&1; then
+  base_ref="$base"
+else
+  die 2 "unknown base ref: $base (tried origin/$base and $base)" "fetch origin or fix --base and retry"
+fi
+
+if [ -n "$since" ]; then
+  git rev-parse -q --verify "${since}^{commit}" >/dev/null 2>&1 || die 2 "unknown --since commit: $since" "fix --since and retry"
+  git merge-base --is-ancestor "$since" HEAD || die 2 "--since ($since) is not an ancestor of HEAD" "fix --since and retry"
+fi
+
+head_full="$(git rev-parse HEAD)"
+head_short="$(git rev-parse --short HEAD)"
+commit_count="$(git rev-list --count "$base_ref..HEAD")"
+
+# Determine commit range for file inspection.
+if [ "$role" = fixer ] && [ -n "$since" ]; then
+  check_range="$since..HEAD"
+else
+  check_range="$base_ref..HEAD"
+fi
+
+touched_files=()
+while IFS= read -r f; do
+  [ -n "$f" ] && touched_files+=("$f")
+done < <(git diff --name-only "$check_range" | LC_ALL=C sort -u)
+
+if [ "${#touched_files[@]}" -eq 0 ]; then
+  files_csv="none"
+else
+  files_csv="$(IFS=','; printf '%s' "${touched_files[*]}")"
+fi
+
+# Strip surrounding whitespace and optional backticks from --gate-line.
+line="$(printf '%s' "$gate_line" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^`//' -e 's/`$//')"
+
+gate="full-gate"
+reason=""
+
+if [ "$unconfirmed" = true ]; then
+  reason="unconfirmed"
+elif [ -z "$line" ]; then
+  reason="missing-gate-line"
+elif [[ "$line" =~ ^Full\ gate:\ exit\ 0\ @\ ([0-9a-fA-F]{4,40})([[:space:]]|$) ]]; then
+  claimed="${BASH_REMATCH[1]}"
+  resolved="$(git rev-parse -q --verify "${claimed}^{commit}" 2>/dev/null || true)"
+  if [ -n "$resolved" ] && [ "$resolved" = "$head_full" ]; then
+    gate="lint-and-tests"
+    reason="full-gate-verified"
+  else
+    reason="sha-mismatch"
+  fi
+elif [[ "$line" =~ ^Docs\ gate:\ exit\ 0\ @\ ([0-9a-fA-F]{4,40})([[:space:]]|$) ]]; then
+  claimed="${BASH_REMATCH[1]}"
+  resolved="$(git rev-parse -q --verify "${claimed}^{commit}" 2>/dev/null || true)"
+  if [ "$role" != fixer ]; then
+    reason="docs-gate-not-fixer"
+  elif [ -z "$resolved" ] || [ "$resolved" != "$head_full" ]; then
+    reason="sha-mismatch"
+  elif [ -z "$since" ] && [ "$commit_count" -ne 1 ]; then
+    reason="docs-gate-needs-since"
+  else
+    # Verify every fixer commit touches only CHANGELOG.md, README.md, or docs/*.
+    fixer_shas=()
+    while IFS= read -r s; do
+      [ -n "$s" ] && fixer_shas+=("$s")
+    done < <(git rev-list "$check_range")
+    docs_only=true
+    if [ "${#fixer_shas[@]}" -eq 0 ]; then
+      docs_only=false
+    else
+      for s in "${fixer_shas[@]}"; do
+        saw_file=false
+        while IFS= read -r p; do
+          [ -n "$p" ] || continue
+          saw_file=true
+          case "$p" in
+            CHANGELOG.md | README.md | docs/*) ;;
+            *) docs_only=false; break 2 ;;
+          esac
+        done < <(git show --name-only --format= "$s")
+        [ "$saw_file" = true ] || { docs_only=false; break; }
+      done
+    fi
+    if [ "$docs_only" = true ]; then
+      gate="lint-only"
+      reason="docs-gate-verified"
+    else
+      reason="docs-gate-touched-non-docs"
+    fi
+  fi
+else
+  reason="non-zero-or-incomplete"
+fi
+
+printf 'HEAD=%s\nCOMMIT_COUNT=%s\nGATE=%s\nREASON=%s\nFILES=%s\n' \
+  "$head_short" "$commit_count" "$gate" "$reason" "$files_csv"
+git log --format='COMMIT %h %s' "$base_ref..HEAD"

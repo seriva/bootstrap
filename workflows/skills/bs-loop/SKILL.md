@@ -66,7 +66,7 @@ Review `$WORKING_BRANCH` against `origin/$BASE_BRANCH` (fetched; the local base 
 
 > [!IMPORTANT]
 > **NO SELF-REVIEW:** Never review your own diff in the current context.
-> - `REVIEWER` unreachable (**Providers & Models**) → leave the PR in **Draft**, tell the user, and return the PR URL with `REVIEW_STATUS=PENDING_REVIEW`.
+> - `REVIEWER` unreachable (**Providers, Models & Routing**) → leave the PR in **Draft**, tell the user, and return the PR URL with `REVIEW_STATUS=PENDING_REVIEW`.
 > - Notify the user on each dispatch and echo each pass's full findings in chat.
 
 - **Pass 1** (`Code Reviewer (Pass 1)` on `REVIEWER`, zero history, `git diff origin/$BASE_BRANCH...HEAD`):

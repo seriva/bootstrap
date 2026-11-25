@@ -153,13 +153,19 @@ done
 for own in .claude/skills/own-skill .claude/commands/own-command.md .config/Code/User/prompts/own.prompt.md; do
   check "install keeps the user's $own" test -e "$home/$own"
 done
-check "models.env override is rendered" grep -q 'smoke-override-model' "$home/.local/share/bootstrap/dispatch.md"
-check "models.env fix override is rendered" grep -q 'smoke-fix-model' "$home/.local/share/bootstrap/dispatch.md"
-check "empty BS_FIX_MODEL_* renders as none" grep -q '`codex` → `none`' "$home/.local/share/bootstrap/dispatch.md"
+check "models.env override is rendered" grep -q 'smoke-override-model' "$home/.local/share/bootstrap/scripts/bs-resolve-role"
+check "models.env fix override is rendered" grep -q 'smoke-fix-model' "$home/.local/share/bootstrap/scripts/bs-resolve-role"
+check "empty BS_FIX_MODEL_* renders as none" grep -q '_f_codex="none"' "$home/.local/share/bootstrap/scripts/bs-resolve-role"
 default_claude="$(sed -n 's/^BS_MODEL_CLAUDE="\(.*\)"$/\1/p' "$REPO_DIR/workflows/shared/models.env")"
 default_fix_claude="$(sed -n 's/^BS_FIX_MODEL_CLAUDE="\(.*\)"$/\1/p' "$REPO_DIR/workflows/shared/models.env")"
-check "non-overridden models keep their defaults" grep -qF "$default_claude" "$home/.local/share/bootstrap/dispatch.md"
-check "non-overridden fix models keep their defaults" grep -qF "$default_fix_claude" "$home/.local/share/bootstrap/dispatch.md"
+check "non-overridden models keep their defaults" grep -qF "$default_claude" "$home/.local/share/bootstrap/scripts/bs-resolve-role"
+check "non-overridden fix models keep their defaults" grep -qF "$default_fix_claude" "$home/.local/share/bootstrap/scripts/bs-resolve-role"
+check "installed bs-resolve-role uses rendered fix override" sh -c \
+  '"$1" --host agy --host-model gemini-4-hydrogen --role fixer --reachable agy | grep -qx "MODEL=smoke-fix-model"' _ \
+  "$home/.local/share/bootstrap/scripts/bs-resolve-role"
+check "installed bs-resolve-role disables empty fix model" sh -c \
+  '"$1" --host claude --role fixer --implementer codex --reachable codex | grep -qx "MODEL=smoke-override-model"' _ \
+  "$home/.local/share/bootstrap/scripts/bs-resolve-role"
 check "second install succeeds" "${install_env[@]}" "$INSTALL"
 
 skills=()
@@ -217,13 +223,13 @@ check "bs-loop writes the Gate line through bs-review-state set" grep -qF 'bs-re
 check "bs-loop branches from and reviews against origin/\$BASE_BRANCH" sh -c \
   'grep -qF "\"origin/\$BASE_BRANCH\"\`" "$1" && grep -qF "with target \`origin/\$BASE_BRANCH\`" "$1"' _ \
   "$home/.claude/skills/bs-loop/SKILL.md"
-check "dispatch Verify counts commits against origin/\$BASE_BRANCH" \
-  grep -qF 'git log "origin/$BASE_BRANCH"..HEAD' "$home/.local/share/bootstrap/dispatch.md"
+check "dispatch Verify uses bs-verify-commits" \
+  grep -qF "$home/.local/share/bootstrap/scripts/bs-verify-commits" "$home/.local/share/bootstrap/dispatch.md"
 check "conventions explain a branch held by another worktree" \
   grep -qF 'already used by worktree at' "$home/.local/share/bootstrap/conventions.md"
 for pair in conventions.md:bs-plan-state skills/bs-exec/SKILL.md:bs-plan-state skills/bs-exec/SKILL.md:bs-plan-branch \
   conventions.md:bs-review-state skills/bs-loop/SKILL.md:bs-review-state skills/bs-exec/SKILL.md:bs-review-state \
-  skills/bs-review/SKILL.md:bs-diff-target dispatch.md:bs-pr-ci \
+  skills/bs-review/SKILL.md:bs-diff-target dispatch.md:bs-pr-ci dispatch.md:bs-resolve-role dispatch.md:bs-verify-commits \
   skills/bs-probe/SKILL.md:bs-worktree role-reviewer.md:bs-worktree role-verifier.md:bs-worktree role-defect-fixer.md:bs-worktree \
   conventions.md:bs-worktree; do
   doc="${pair%%:*}" script="${pair##*:}"

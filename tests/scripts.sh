@@ -16,6 +16,8 @@ PLAN_BRANCH="$REPO_DIR/workflows/shared/scripts/bs-plan-branch"
 DIFF_TARGET="$REPO_DIR/workflows/shared/scripts/bs-diff-target"
 WORKTREE="$REPO_DIR/workflows/shared/scripts/bs-worktree"
 PR_CI="$REPO_DIR/workflows/shared/scripts/bs-pr-ci"
+RESOLVE_ROLE="$REPO_DIR/workflows/shared/scripts/bs-resolve-role"
+VERIFY_COMMITS="$REPO_DIR/workflows/shared/scripts/bs-verify-commits"
 SANDBOX="$(mktemp -d "${TMPDIR:-/tmp}/bootstrap-scripts.XXXXXX")"
 trap 'rm -rf "$SANDBOX"' EXIT
 
@@ -1157,6 +1159,277 @@ fake_gh_reset; printf '{"baseRefName":"main","headRefOid":"%s"}\n' "$pr_sha" > "
 diff_target "$r" https://github.com/o/r/pull/7/files
 expect_eq "PR URL: number parsed" "$(field PR)" "7"
 run_in "$r" "$DIFF_TARGET" cleanup "$(field WORKDIR)" 7
+
+echo "== bs-plan-state drift"
+d_repo="$(new_repo)"
+git -C "$d_repo" branch -q -M main
+mkdir -p "$d_repo/plans/v1.0.0" "$d_repo/plans/archive"
+cat > "$d_repo/plans/roadmap.md" <<'EOF'
+# Roadmap
+
+| Area | Difficulty | Status | Notes |
+|---|---|---|---|
+| [Alpha](v1.0.0/alpha-plan.md) | Medium | Completed (2026-11-10) | Older completed plan |
+| [Beta](v1.0.0/beta-plan.md) | Medium | Completed (2026-11-20) | Newer completed plan |
+| Gamma | High | Completed (2026-11-22) | Mentions [other-plan.md](v1.0.0/other-plan.md) in notes. See [gamma-plan.md](v1.0.0/gamma-plan.md). |
+| [Beta Extra](v1.0.0/beta-extra-plan.md) | Low | Completed (2026-11-24) | Substring guard |
+| [Target](v1.0.0/target-plan.md) | Medium | Completed (2026-11-25) | Own plan guard |
+| [Delta](archive/delta-plan.md) | Low | Completed (2026-11-21) | Archived continuous plan |
+EOF
+cat > "$d_repo/plans/v1.0.0/target-plan.md" <<'EOF'
+# Target
+**Status:** Draft
+**Related:** Follows `alpha`, `beta`, `gamma`, `other`, `delta-plan.md`, and `target`.
+## Implementation Tasks
+### Phase 1: One
+- [ ] Task 1.1
+EOF
+cat > "$d_repo/plans/v1.0.0/none-plan.md" <<'EOF'
+# None
+**Status:** Draft
+**Related:** None
+## Implementation Tasks
+### Phase 1: One
+- [ ] Task 1.1
+EOF
+git -C "$d_repo" add plans
+GIT_AUTHOR_DATE="2026-11-15T12:00:00Z" GIT_COMMITTER_DATE="2026-11-15T12:00:00Z" \
+  git -C "$d_repo" commit -q -m "docs: add plans and roadmap"
+git -C "$d_repo" update-ref refs/remotes/origin/main HEAD
+run_in "$d_repo" "$PLAN_STATE" drift plans/v1.0.0/target-plan.md main
+expect_code "drift: exit 0" 0
+expect_eq "drift: reports only newer related plans (ignores older, Notes mention, own slug, substring)" \
+  "$OUT" "$(printf 'beta 2026-11-20\ndelta 2026-11-21\ngamma 2026-11-22')"
+run_in "$d_repo" "$PLAN_STATE" drift plans/v1.0.0/none-plan.md main
+expect_code "drift Related None: exit 0" 0
+expect_eq "drift Related None: empty output" "$OUT" ""
+cat > "$d_repo/plans/v1.0.0/uncommitted-plan.md" <<'EOF'
+# Uncommitted
+**Status:** Draft
+**Related:** `beta`
+## Implementation Tasks
+### Phase 1: One
+- [ ] Task 1.1
+EOF
+run_in "$d_repo" "$PLAN_STATE" drift plans/v1.0.0/uncommitted-plan.md main
+expect_code "drift plan not yet on base: exit 0" 0
+expect_eq "drift plan not yet on base: empty output" "$OUT" ""
+rm "$d_repo/plans/v1.0.0/uncommitted-plan.md"
+run_in "$d_repo" "$PLAN_STATE" drift plans/v1.0.0/target-plan.md no-such-branch
+expect_code "drift unknown base: exit 2" 2
+
+echo "== bs-resolve-role"
+resolve_role() {
+  set +e
+  OUT="$("$RESOLVE_ROLE" "$@" 2>"$SANDBOX/stderr")"
+  CODE=$?
+  set -e
+}
+rfield() { printf '%s\n' "$OUT" | sed -n "s/^$1=//p" | head -n 1; }
+
+resolve_role --host claude --host-model claude-sonnet-5-5 --role implementer
+expect_code "claude host implementer: exit 0" 0
+expect_eq "claude host implementer: inline" "$(rfield VIA)" "inline"
+expect_eq "claude host implementer: inherit" "$(rfield MODEL)" "inherit"
+expect_eq "claude host implementer: no note" "$(rfield NOTE)" "none"
+
+resolve_role --host claude --host-model claude-sonnet-5-5 --role implementer --implementer-model opus
+expect_code "claude inline with --implementer-model: exit 0" 0
+expect_eq "claude inline with --implementer-model: stays inline" "$(rfield VIA)" "inline"
+check "claude inline with --implementer-model: notes applies only to fixer" \
+  sh -c 'printf "%s\n" "$1" | grep -q "applies only to Defect Fixer"' _ "$(rfield NOTE)"
+
+resolve_role --host claude --host-model claude-sonnet-5-5 --role fixer
+expect_code "claude sonnet host fixer: exit 0" 0
+expect_eq "claude sonnet host fixer: native" "$(rfield VIA)" "native"
+expect_eq "claude sonnet host fixer: escalates to opus tier" "$(rfield MODEL)" "opus"
+expect_eq "claude sonnet host fixer: high effort" "$(rfield EFFORT)" "high"
+expect_eq "claude sonnet host fixer: fallback to native inherit" "$(rfield ON_UNAVAILABLE)" "fallback:native:inherit"
+
+resolve_role --host claude --host-model claude-opus-5-5 --role fixer
+expect_code "claude opus host fixer: exit 0" 0
+expect_eq "claude opus host fixer: inherits (no redundant escalation)" "$(rfield MODEL)" "inherit"
+expect_eq "claude opus host fixer: high effort" "$(rfield EFFORT)" "high"
+expect_eq "claude opus host fixer: no note" "$(rfield NOTE)" "none"
+
+resolve_role --host claude --host-model claude-fable-5-2 --role fixer
+expect_code "claude unknown tier (fable) host fixer: exit 0" 0
+expect_eq "claude unknown tier: skips escalation (no downgrade)" "$(rfield MODEL)" "inherit"
+expect_eq "claude unknown tier: no note" "$(rfield NOTE)" "none"
+
+resolve_role --host claude --host-model claude-sonnet-5-5 --role fixer --implementer-model sonnet
+expect_code "claude explicit --implementer-model sonnet: exit 0" 0
+expect_eq "claude explicit tier: native" "$(rfield VIA)" "native"
+expect_eq "claude explicit tier: sonnet" "$(rfield MODEL)" "sonnet"
+expect_eq "claude explicit tier: stop on unavailable" "$(rfield ON_UNAVAILABLE)" "stop"
+
+resolve_role --host claude --host-model claude-sonnet-5-5 --role fixer --implementer-model claude-opus-5-5
+expect_code "claude explicit full tier ID without delegate: exit 0" 0
+expect_eq "claude explicit full tier ID: native" "$(rfield VIA)" "native"
+expect_eq "claude explicit full tier ID: mapped to opus tier" "$(rfield MODEL)" "opus"
+expect_eq "claude explicit full tier ID: stop on unavailable" "$(rfield ON_UNAVAILABLE)" "stop"
+check "claude explicit full tier ID: notes tier mapping" \
+  sh -c 'printf "%s\n" "$1" | grep -q "native tier opus"' _ "$(rfield NOTE)"
+
+resolve_role --host claude --host-model claude-sonnet-5-5 --role fixer --implementer-model claude-fable-5-2 --has-delegate
+expect_code "claude explicit non-tier model with delegate: exit 0" 0
+expect_eq "claude explicit non-tier model: routes via delegate_task" "$(rfield VIA)" "delegate_task"
+expect_eq "claude explicit non-tier model: keeps full string" "$(rfield MODEL)" "claude-fable-5-2"
+expect_eq "claude explicit non-tier model: stop on unavailable" "$(rfield ON_UNAVAILABLE)" "stop"
+
+resolve_role --host claude --host-model claude-sonnet-5-5 --role fixer --implementer-model claude-fable-5-2
+expect_code "claude explicit non-tier model without delegate: exit 3" 3
+expect_next "claude explicit non-tier model without delegate: next stops" "delegate_task"
+
+resolve_role --host agy --host-model gemini-4-hydrogen --role fixer --reachable claude,codex
+expect_code "agy hydrogen host fixer with delegate (host omitted from --reachable): exit 0" 0
+expect_eq "agy hydrogen host fixer: delegate_task" "$(rfield VIA)" "delegate_task"
+expect_eq "agy hydrogen host fixer: escalates to gemini-4-neon" "$(rfield MODEL)" "gemini-4-neon"
+expect_eq "agy hydrogen host fixer: high effort" "$(rfield EFFORT)" "high"
+expect_eq "agy hydrogen host fixer: fallback to native inherit" "$(rfield ON_UNAVAILABLE)" "fallback:native:inherit"
+
+resolve_role --host agy --host-model gemini-4-hydrogen --role fixer
+expect_code "agy hydrogen host fixer without delegate: exit 0" 0
+expect_eq "agy hydrogen host fixer no delegate: native" "$(rfield VIA)" "native"
+expect_eq "agy hydrogen host fixer no delegate: inherit" "$(rfield MODEL)" "inherit"
+check "agy hydrogen host fixer no delegate: notes fallback" \
+  sh -c 'printf "%s\n" "$1" | grep -q "without delegate_task"' _ "$(rfield NOTE)"
+
+resolve_role --host agy --host-model gemini-4-neon --role fixer --reachable claude,agy
+expect_code "agy neon host fixer: exit 0" 0
+expect_eq "agy neon host fixer: native inherit (no delegate hop)" "$(rfield VIA)" "native"
+expect_eq "agy neon host fixer: inherit" "$(rfield MODEL)" "inherit"
+
+resolve_role --host claude --role reviewer --pairing --reachable claude,agy
+expect_code "claude pairing reviewer: exit 0" 0
+expect_eq "claude pairing reviewer: picks agy" "$(rfield PROVIDER)" "agy"
+expect_eq "claude pairing reviewer: delegate_task" "$(rfield VIA)" "delegate_task"
+expect_eq "claude pairing reviewer: default agy model" "$(rfield MODEL)" "gemini-4-hydrogen"
+expect_eq "claude pairing reviewer: high effort" "$(rfield EFFORT)" "high"
+expect_eq "claude pairing reviewer: pending-review on unavailable" "$(rfield ON_UNAVAILABLE)" "pending-review"
+
+resolve_role --host agy --role reviewer --pairing --reachable claude,agy
+expect_code "agy pairing reviewer: exit 0" 0
+expect_eq "agy pairing reviewer: picks claude" "$(rfield PROVIDER)" "claude"
+expect_eq "agy pairing reviewer: default claude model" "$(rfield MODEL)" "claude-sonnet-5-5"
+
+resolve_role --host claude --role reviewer --pairing
+expect_code "pairing without delegate: exit 0 (warns and uses host)" 0
+expect_eq "pairing without delegate: host provider" "$(rfield PROVIDER)" "claude"
+expect_eq "pairing without delegate: native" "$(rfield VIA)" "native"
+check "pairing without delegate: warns in NOTE" \
+  sh -c 'printf "%s\n" "$1" | grep -q "requires delegate_task"' _ "$(rfield NOTE)"
+
+resolve_role --host claude --role reviewer --reviewer agy
+expect_code "explicit cross-provider without delegate: exit 3" 3
+expect_next "explicit cross-provider without delegate: next stops" "delegate_task"
+
+resolve_role --host claude --role fixer --implementer codex --reachable codex
+expect_code "cross-provider codex fixer: exit 0" 0
+expect_eq "cross-provider codex fixer: provider codex" "$(rfield PROVIDER)" "codex"
+expect_eq "cross-provider codex fixer: escalates to gpt-6.2-sol" "$(rfield MODEL)" "gpt-6.2-sol"
+expect_eq "cross-provider codex fixer: fallback to default paired codex" "$(rfield ON_UNAVAILABLE)" "fallback:delegate_task:gpt-6.1-terra"
+
+resolve_role --host host --role reviewer
+expect_code "host without native subagent or delegate reviewer: exit 0" 0
+expect_eq "host without subagent: pending-review" "$(rfield VIA)" "pending-review"
+check "multiple notes joined with semicolon and space" \
+  sh -c 'printf "%s\n" "$1" | grep -qF "; no fresh-context"' _ "$(rfield NOTE)"
+
+custom_models="$SANDBOX/custom-models.env"
+cat > "$custom_models" <<'EOF'
+BS_FIX_MODEL_CLAUDE=""
+EOF
+BS_MODELS_ENV="$custom_models" resolve_role --host claude --host-model claude-sonnet-5-5 --role fixer
+expect_code "empty BS_FIX_MODEL_CLAUDE disables escalation: exit 0" 0
+expect_eq "disabled fix escalation: inherit" "$(rfield MODEL)" "inherit"
+expect_eq "disabled fix escalation: no note" "$(rfield NOTE)" "none"
+
+resolve_role --host bogus --role fixer
+expect_code "invalid host: exit 2" 2
+expect_next "invalid host: next fixes call" "fix the call"
+
+echo "== bs-verify-commits"
+v_repo="$(new_repo)"
+git -C "$v_repo" branch -q -M main
+git -C "$v_repo" update-ref refs/remotes/origin/main HEAD
+git -C "$v_repo" checkout -q -b feat/test-verify
+echo code > "$v_repo/app.js"
+git -C "$v_repo" add app.js
+git -C "$v_repo" commit -q -m "feat: add app"
+c1="$(git -C "$v_repo" rev-parse --short HEAD)"
+
+run_in "$v_repo" "$VERIFY_COMMITS" --branch feat/other --base main --role implementer --gate-line "Full gate: exit 0 @ $c1 (10s)"
+expect_code "verify wrong branch: exit 4" 4
+expect_next "verify wrong branch: next stops" "branch mismatch"
+
+echo dirty > "$v_repo/dirty.txt"
+run_in "$v_repo" "$VERIFY_COMMITS" --branch feat/test-verify --base main --role implementer --gate-line "Full gate: exit 0 @ $c1 (10s)"
+expect_code "verify dirty tree: exit 5" 5
+expect_next "verify dirty tree: mentions Interrupted subagent" "Interrupted subagent"
+rm "$v_repo/dirty.txt"
+
+run_in "$v_repo" "$VERIFY_COMMITS" --branch feat/test-verify --base main --role implementer \
+  --gate-line "Full gate: exit 0 @ $c1 (289s) (format 1s, check 11s)"
+expect_code "verify matching Full gate with trailing notes: exit 0" 0
+expect_eq "verify matching Full gate: lint-and-tests" "$(rfield GATE)" "lint-and-tests"
+expect_eq "verify matching Full gate: reason" "$(rfield REASON)" "full-gate-verified"
+expect_eq "verify matching Full gate: files" "$(rfield FILES)" "app.js"
+expect_eq "verify matching Full gate: commit count" "$(rfield COMMIT_COUNT)" "1"
+
+run_in "$v_repo" "$VERIFY_COMMITS" --branch feat/test-verify --base main --role implementer \
+  --gate-line "Full gate: exit 0 @ $c1 (10s)" --unconfirmed
+expect_code "verify --unconfirmed: exit 0" 0
+expect_eq "verify --unconfirmed: forces full-gate" "$(rfield GATE)" "full-gate"
+expect_eq "verify --unconfirmed: reason" "$(rfield REASON)" "unconfirmed"
+
+run_in "$v_repo" "$VERIFY_COMMITS" --branch feat/test-verify --base main --role implementer \
+  --gate-line "Full gate: exit 0 @ 0000000 (10s)"
+expect_eq "verify wrong SHA: forces full-gate" "$(rfield GATE)" "full-gate"
+expect_eq "verify wrong SHA: reason" "$(rfield REASON)" "sha-mismatch"
+
+run_in "$v_repo" "$VERIFY_COMMITS" --branch feat/test-verify --base main --role implementer \
+  --gate-line "Docs gate: exit 0 @ $c1 (5s)"
+expect_eq "verify Docs gate on implementer: forces full-gate" "$(rfield GATE)" "full-gate"
+expect_eq "verify Docs gate on implementer: reason" "$(rfield REASON)" "docs-gate-not-fixer"
+
+# Fixer commit touching only CHANGELOG.md and docs/
+pre_fix="$(git -C "$v_repo" rev-parse HEAD)"
+mkdir -p "$v_repo/docs"
+echo entry > "$v_repo/CHANGELOG.md"
+echo guide > "$v_repo/docs/guide.md"
+git -C "$v_repo" add CHANGELOG.md docs/guide.md
+git -C "$v_repo" commit -q -m "fix: address review feedback"
+c2="$(git -C "$v_repo" rev-parse --short HEAD)"
+
+run_in "$v_repo" "$VERIFY_COMMITS" --branch feat/test-verify --base main --role fixer \
+  --since "$pre_fix" --gate-line "Docs gate: exit 0 @ $c2 (12s)"
+expect_code "verify fixer Docs gate on docs-only commit: exit 0" 0
+expect_eq "verify fixer Docs gate: lint-only" "$(rfield GATE)" "lint-only"
+expect_eq "verify fixer Docs gate: reason" "$(rfield REASON)" "docs-gate-verified"
+expect_eq "verify fixer Docs gate: files scoped to --since" "$(rfield FILES)" "CHANGELOG.md,docs/guide.md"
+
+run_in "$v_repo" "$VERIFY_COMMITS" --branch feat/test-verify --base main --role fixer \
+  --gate-line "Docs gate: exit 0 @ $c2 (12s)"
+expect_eq "verify fixer Docs gate without --since on >1 commit branch: full-gate" "$(rfield GATE)" "full-gate"
+expect_eq "verify fixer Docs gate without --since: reason" "$(rfield REASON)" "docs-gate-needs-since"
+
+# Fixer commit touching a code file cannot claim Docs gate
+pre_fix2="$(git -C "$v_repo" rev-parse HEAD)"
+echo more >> "$v_repo/app.js"
+git -C "$v_repo" add app.js
+git -C "$v_repo" commit -q -m "fix: code change"
+c3="$(git -C "$v_repo" rev-parse --short HEAD)"
+
+run_in "$v_repo" "$VERIFY_COMMITS" --branch feat/test-verify --base main --role fixer \
+  --since "$pre_fix2" --gate-line "Docs gate: exit 0 @ $c3 (5s)"
+expect_eq "verify fixer Docs gate touching code: full-gate" "$(rfield GATE)" "full-gate"
+expect_eq "verify fixer Docs gate touching code: reason" "$(rfield REASON)" "docs-gate-touched-non-docs"
+
+run_in "$v_repo" "$VERIFY_COMMITS" --branch feat/test-verify --base main --role fixer \
+  --since "$pre_fix2" --gate-line "Full gate: exit 0 @ $c3 (100s)"
+expect_eq "verify fixer Full gate: lint-and-tests" "$(rfield GATE)" "lint-and-tests"
+expect_eq "verify fixer Full gate: files scoped to fixer commit" "$(rfield FILES)" "app.js"
 
 echo
 if [[ "$FAILURES" -gt 0 ]]; then

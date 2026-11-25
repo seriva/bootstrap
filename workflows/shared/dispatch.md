@@ -3,62 +3,39 @@
 Orchestrator-only rules for `/bs-exec`, `/bs-loop`, and `/bs-review`; worker conventions are in `{{BS_CONVENTIONS}}`.
 
 ## Dispatch
-- **"Spawn subagent `<Role>`"** means a fresh-context agent (zero chat history), routed per **Routing** below.
+- **"Spawn subagent `<Role>`"** means a fresh-context agent (zero chat history), routed per **Providers, Models & Routing** below.
 - **Who orchestrates**: the invoking agent orchestrates every role and always waits for the result. Subagents never spawn subagents.
 - **Prompts** name installed skills and docs by their `install.sh` placeholders.
 - **What you may add to a prompt**: risks to probe, and questions for a review. Never conclusions, a suspected verdict, or how the code was implemented.
 
-### Providers & Models
+### Providers, Models & Routing
 Providers: `claude`, `agy`, `codex`, or `host` (= `HOST_PROVIDER`).
-- **`HOST_PROVIDER`**: the tool you run in (from your system prompt and tools).
-  - `agy` (Antigravity), `claude` (Claude Code), `codex` (Codex), else `host` (e.g. Copilot).
-  - Unsure → ask.
-- **`IMPLEMENTER`** (`/bs-loop` Step 2.2, `Defect Fixer`): `--implementer=<provider>`, default `HOST_PROVIDER`.
-- **`REVIEWER`** (review passes), first rule that applies:
-  1. `--reviewer=<provider>` if given.
-  2. With `--pairing` or `--implementer`, or when the host has no subagent tool: the first reachable of `claude`, `agy`, `codex` that differs from `IMPLEMENTER`.
-     - Reachable: `HOST_PROVIDER` with a subagent tool, or a cross-provider target supported by `delegate_task` (check with `orchestrator_capabilities`).
-     - None reachable → warn that cross-provider pairing requires an orchestrator tool (`delegate_task`) and use `HOST_PROVIDER`.
-  3. Else `HOST_PROVIDER`.
-  - Example: `--pairing` in Claude Code inside T3 Code → `claude` implements, `agy` reviews.
-
-#### Model Selection & Inheritance
-- **Default paired models**: `claude` → `{{BS_MODEL_CLAUDE}}`, `agy` → `{{BS_MODEL_AGY}}`, `codex` → `{{BS_MODEL_CODEX}}`.
-- **Fix escalation models** (`Defect Fixer` when no `--implementer-model` is given; `none` disables fix-turn escalation): `claude` → `{{BS_FIX_MODEL_CLAUDE}}`, `agy` → `{{BS_FIX_MODEL_AGY}}`, `codex` → `{{BS_FIX_MODEL_CODEX}}`.
-
-1. **Host role**:
-   - Inherits the session's model (pass none) unless `--implementer-model` / `--reviewer-model` is given, or `Defect Fixer` escalates below.
-   - Flag given → pass it to the native subagent tool. Claude Code's `Agent` takes only the tiers `sonnet`, `opus`, `haiku`, never full model strings.
-   - The native tool cannot select an explicit flag's model → dispatch through `delegate_task` instead.
-   - `Defect Fixer` with no `--implementer-model`, when the host provider's fix escalation model is not `none` and the session is not already running it (on Claude, its matching tier or higher: `haiku` < `sonnet` < `opus`): use that fix model and say so in chat. A partial fix against a high-effort reviewer costs a full extra review cycle.
-     - Claude Code's native `Agent`: pass its matching tier (`opus`, `sonnet`, or `haiku`).
-     - Native tool cannot select that model (e.g. `agy`'s `invoke_subagent`): dispatch through `delegate_task` if available; without `delegate_task`, inherit the session's model and note it in chat.
-   - Review passes and `Defect Fixer`: set `high` reasoning/effort when the native tool takes one (Claude Code's `Agent`: `effort: "high"`); otherwise they run at the session's setting.
-   - Inline work runs on the session's model. If `--implementer-model` is set and `/bs-loop` Step 2.2 runs inline, say in chat that it applies only to `Defect Fixer`.
-2. **Other-provider role** (`delegate_task`):
-   - Its model flag, else for `Defect Fixer` the provider's fix escalation model (if not `none`), else the provider's default paired model.
-   - Reasoning/effort, when supported: `high` for review passes (`Code Reviewer (Pass <N>)`) and `Defect Fixer`, `medium` for implementation.
-   - A model flag never selects a provider; it applies to the provider its role resolved to.
-3. **Rejected Model**: never substitute silently.
-   - An automatic fix escalation model (no `--implementer-model`) is rejected or unavailable → say so in chat and fall back to the normal model (host: inherit the session's model via the native tool; other-provider: the provider's default paired model).
-   - Any other model (explicit flag or default paired model) is rejected by a native tool or `delegate_task` → say so in chat and stop that role: implementation or fix → stop and report; review → `PENDING_REVIEW`.
-
-### Routing
-1. **Same provider** (`role's provider == HOST_PROVIDER`, with no resolved model the native tool cannot select):
-   - `/bs-loop` Step 2.2 runs inline (never a nested subagent).
-   - `Defect Fixer` uses the native subagent tool, else runs inline (Pass 2 still reviews independently).
-   - Reviews always use the native subagent tool in a fresh context, never inline.
-   - No subagent tool and no `delegate_task` → `PENDING_REVIEW` (`/bs-loop` Step 3).
-2. **Cross-provider, or a resolved model the native tool cannot select** (`delegate_task`):
-   - **Requires `delegate_task`** (e.g. T3 Code). Absent while a cross-provider role or explicit model flag was requested → stop and report that dispatch requires an orchestrator tool (`delegate_task`). Never substitute another provider silently. (For an automatic host `Defect Fixer` escalation with no `delegate_task`, fall back to the native tool inheriting the session's model as above.)
-   - **Dispatch**: check availability with `orchestrator_capabilities`, print the **Verify** → Notify line, then dispatch a fresh child per the orchestrator's `delegate_task` instructions:
-     - in the parent checkout: `isolation="shared"`, never `isolation="worktree"`;
-     - `mode="wait"`;
-     - never reuse an earlier round's thread.
-   - **Waiting**: `mode="wait"` returning on its own timeout (T3 Code: about 45 s) while the child keeps running is normal, not a failure. Wait for the child's completion notification.
-     - Never re-dispatch or poll.
-     - Never pass a delegate or `Agent` id to a background-wait tool (it rejects them).
-   - **Unavailable** provider or model → follow **Rejected Model** (an automatic fix escalation announces the fallback to the normal model; otherwise stop that role without switching provider/model or falling back to native tools).
+- **`HOST_PROVIDER`**: the tool you run in (`agy` = Antigravity, `claude` = Claude Code, `codex` = Codex, else `host`, e.g. Copilot). Unsure → ask.
+- **Orchestrator reachability**: when `delegate_task` is available (e.g. T3 Code), call `orchestrator_capabilities` once per run and collect all available providers (`--reachable <csv>`, including `HOST_PROVIDER` when listed).
+- **Resolve every role via `"{{BS_RESOLVE_ROLE}}"`** (never evaluate model, pairing, escalation, or routing rules by hand):
+  ```bash
+  "{{BS_RESOLVE_ROLE}}" --host "$HOST_PROVIDER" --host-model "<session-model>" \
+    --role <implementer|phase-implementer|fixer|reviewer> \
+    [--pairing] [--implementer <p>] [--reviewer <p>] \
+    [--implementer-model <m>] [--reviewer-model <m>] \
+    [--no-native-subagent] [--reachable "<csv>"]
+  ```
+  - Non-zero exit → do its stderr `next:` line (**Helpers** in `{{BS_CONVENTIONS}}`).
+  - Prints `PROVIDER`, `VIA`, `MODEL`, `EFFORT`, `ON_UNAVAILABLE`, `NOTE`.
+  - `NOTE` is not `none` → say it in chat.
+- **Execute per `VIA`**:
+  - `inline`: run the role brief inline on the session's model (never a nested subagent).
+  - `native`: spawn a fresh-context native subagent per the table below. Omit model when `MODEL=inherit`, else pass `MODEL`. When `EFFORT` is not `inherit` and the native tool takes one (Claude Code's `Agent`: `effort: "<EFFORT>"`), pass it.
+  - `delegate_task`: print the **Verify** → Notify line, then dispatch a fresh child per the orchestrator's `delegate_task` instructions:
+    - model `MODEL`, and reasoning/effort `EFFORT` when supported;
+    - in the parent checkout: `isolation="shared"`, never `isolation="worktree"`;
+    - `mode="wait"`; never reuse an earlier round's thread.
+    - `mode="wait"` returning on its own timeout (T3 Code: ~45 s) while the child keeps running is normal: wait for its completion notification. Never re-dispatch, poll, or pass a delegate or `Agent` id to a background-wait tool.
+  - `pending-review`: report `PENDING_REVIEW` (`/bs-loop` Step 3).
+- **Rejected or unavailable model/provider**: never substitute silently; follow `ON_UNAVAILABLE`:
+  - `fallback:<via>:<model>` (automatic fix escalation only): say so in chat and dispatch using `<via>` and `<model>` (e.g. `fallback:native:inherit`, `fallback:delegate_task:<default>`).
+  - `stop`: say so in chat and stop and report.
+  - `pending-review`: say so in chat and report `PENDING_REVIEW`.
 
 | Provider | Native subagent tool |
 |---|---|
@@ -68,34 +45,39 @@ Providers: `claude`, `agy`, `codex`, or `host` (= `HOST_PROVIDER`).
 | `host` (Copilot) | Host fresh-context subagent tool, if any |
 
 ### Verify
-1. **Notify**: before dispatching, print `> 🤖 **Dispatching <Role>** to <provider> (<orchestrator or native>). Waiting for completion...` and note the time (`date +%s`).
+1. **Notify**: before dispatching, print `> 🤖 **Dispatching <Role>** to <provider> (<orchestrator or native>). Waiting for completion...` and note the time (`date +%s`). For `Defect Fixer`, also note `PRE_FIX_SHA="$(git rev-parse HEAD)"`.
 2. **Echo**: echo the role's full reply in chat under `### 🤖 <Role> Output (<provider>, <M> min since Notify)`.
    - Reviews: every findings section, the probe results, and the verdict.
    - Implementation or fix: commit hashes and summaries, `### Deviations`, and any sightings, `### Tests Changed`, and `### Gate Changes`.
-3. **Check the tree**: HEAD must still be `$WORKING_BRANCH`, and `git status --porcelain` must be clean.
-4. **Check implementer and `Defect Fixer` commits**:
-   - List the new commits with `git log "origin/$BASE_BRANCH"..HEAD`.
-   - Gate them per **Gate runs** (`{{BS_CONVENTIONS}}`):
-     - The reply ends with `Full gate: exit 0 @ <sha>` (ignoring its trailing `(<S>s)` run time) and `<sha>` is `git rev-parse --short HEAD` → that exact commit already passed the full gate. Run only the **Lint** command and the `Test:` files of the phase's tasks (`Defect Fixer`: the test files its commit touched).
-     - `Defect Fixer` reply ends with `Docs gate: exit 0 @ <sha>`, `<sha>` is `HEAD`, and every commit it made touches only `CHANGELOG.md`, `README.md`, or `docs/` (`git show --name-only --format= <sha>` per commit) → run only the **Lint** command (an earlier Verify already gated the code).
-     - Otherwise (line missing, `incomplete`, non-zero exit including timeouts, or another commit) → run the **Full gate** yourself.
-     - The reply elsewhere says a Full-gate command did not run (e.g. under `### Unconfirmed`) → treat the line as `incomplete`.
-     - You cannot run a command either (e.g. no browsers) → stop and report it; never merge or mark a PR ready on a partial gate.
-   - Never skip or mask the gate's exit code.
-5. **Check reviews**:
+3. **Check implementer and `Defect Fixer` commits** via `"{{BS_VERIFY_COMMITS}}"`:
+   ```bash
+   "{{BS_VERIFY_COMMITS}}" --branch "$WORKING_BRANCH" --base "$BASE_BRANCH" \
+     --role <implementer|fixer> [--since "$PRE_FIX_SHA"] \
+     --gate-line "<last line of reply>" [--unconfirmed]
+   ```
+   - For `Defect Fixer`, always pass `--since "$PRE_FIX_SHA"`.
+   - Pass `--unconfirmed` if the reply says elsewhere a Full-gate command did not run (e.g. under `### Unconfirmed`).
+   - Non-zero exit → do its stderr `next:` line (handles wrong branch and dirty tree / **Interrupted subagent**).
+   - Gate per `GATE` (`{{BS_CONVENTIONS}}` **Gate runs**):
+     - `lint-only` → run only the **Lint** command.
+     - `lint-and-tests` → run the **Lint** command and the `Test:` files of the phase's tasks (`Defect Fixer`: the test files in `FILES`).
+     - `full-gate` → run the **Full gate** yourself.
+   - Never skip or mask the gate's exit code. You cannot run a command either (e.g. no browsers) → stop and report it; never merge or mark a PR ready on a partial gate.
+4. **Check reviews**:
+   - Check the tree: HEAD must still be `$WORKING_BRANCH` and `git status --porcelain` clean (standalone `/bs-review` uses `bs-tree-state` hash instead).
    - Verify the expected reply sections are present.
    - A reply looks cut off (e.g. split across messages) → read the child thread (T3 Code: `t3_thread_read`) before treating sections as missing.
-6. **Comparing revisions**: never check out another revision into the working tree; use `"{{BS_WORKTREE}}" add`.
-7. **On a mismatch or a red gate**:
+5. **Comparing revisions**: never check out another revision into the working tree; use `"{{BS_WORKTREE}}" add`.
+6. **On a mismatch or a red gate**:
    - Implementation → stop and report.
    - Review → re-dispatch once, then `PENDING_REVIEW`.
-8. **Interrupted subagent**: a native implementer or `Defect Fixer` subagent stopped before its final reply — by a rate limit, timeout, or API error, or by yielding its turn early while waiting on a backgrounded command with uncommitted changes (not a deliberate stop-and-report for a blocker):
+7. **Interrupted subagent**: a native implementer or `Defect Fixer` subagent stopped before its final reply — by a rate limit, timeout, or API error, or by yielding its turn early while waiting on a backgrounded command with uncommitted changes (not a deliberate stop-and-report for a blocker):
    - Its uncommitted work is not the user's: never treat it as a dirty tree to stop on, and never edit, stage, or commit it yourself.
    - Record the state: `git log --oneline "origin/$BASE_BRANCH"..HEAD` and `git status --porcelain`.
    - Resume the same agent once with its native continue tool (Claude Code: `SendMessage` to its agent id): "You stopped before finishing (`<cause>`). State: `<commits>`, uncommitted `<paths>`. Finish your work per your brief (run gate commands in the foreground, commit) and send your final reply." Never start a fresh agent on its uncommitted tree.
    - No continue tool, a cross-provider (`delegate_task`) child, a second interruption, or a failed resume → stop and report the state.
    - Then run this **Verify** on its final reply as usual.
-9. **Implementer stopped for a user decision** (e.g. a plan's "stop and report" condition): ask the user, even with `--auto`. To apply their answer:
+8. **Implementer stopped for a user decision** (e.g. a plan's "stop and report" condition): ask the user, even with `--auto`. To apply their answer:
    1. Edit on `$WORKING_BRANCH` and **Safe commit** it.
    2. Run the **Full gate** yourself: your commit is not the one the implementer gated.
    3. Only when it is green, push (`/bs-loop` Step 2.3). Nothing is pushed before this gate.
