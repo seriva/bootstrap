@@ -1530,15 +1530,38 @@ expect_code "check-review p1 triage: exit 0" 0
 expect_eq "check-review p1 triage: SUMMARY needs-triage" "$(rfield SUMMARY)" "needs-triage"
 expect_eq "check-review p1 triage: HIGH 1" "$(rfield HIGH)" "1"
 expect_eq "check-review p1 triage: MEDIUM 2" "$(rfield MEDIUM)" "2"
-expect_eq "check-review p1 triage: DECISION_COUNT 3" "$(rfield DECISION_COUNT)" "3"
+expect_eq "check-review p1 triage: DECISION_COUNT 2" "$(rfield DECISION_COUNT)" "2"
+expect_eq "check-review p1 triage: PRE_EXISTING_COUNT 1" "$(rfield PRE_EXISTING_COUNT)" "1"
 expect_eq "check-review p1 triage: SUSPECT_OWNED_COUNT 2" "$(rfield SUSPECT_OWNED_COUNT)" "2"
 check "check-review p1 triage: flags plan-design" sh -c 'printf "%s\n" "$1" | grep -q "^DECISION plan-design:"' _ "$OUT"
-check "check-review p1 triage: flags pre-existing" sh -c 'printf "%s\n" "$1" | grep -q "^DECISION pre-existing:"' _ "$OUT"
+check "check-review p1 triage: flags pre-existing separately" sh -c 'printf "%s\n" "$1" | grep -q "^PRE_EXISTING:"' _ "$OUT"
 check "check-review p1 triage: flags gate-change" sh -c 'printf "%s\n" "$1" | grep -q "^DECISION gate-change:"' _ "$OUT"
 check "check-review p1 triage: flags Low touching src/parser.go" \
   sh -c 'printf "%s\n" "$1" | grep -q "^SUSPECT_OWNED Low:.*touches src/parser.go"' _ "$OUT"
 check "check-review p1 triage: flags Out of Scope touching parser.go:a" \
   sh -c 'printf "%s\n" "$1" | grep -q "^SUSPECT_OWNED Out of Scope:.*touches src/parser.go"' _ "$OUT"
+
+cat > "$cr_dir/p1-preexisting-only.md" <<'EOF'
+### High
+- None
+
+### Medium
+- Old bug on empty slice (pre-existing).
+
+### Low
+- None
+
+### Out of Scope
+- None
+
+### Verification Probes Run
+- probe 1 -> reproduced on base
+EOF
+run_in "$cr_repo" "$CHECK_REVIEW" --pass 1 --base origin/main "$cr_dir/p1-preexisting-only.md"
+expect_code "check-review p1 pre-existing only: exit 0" 0
+expect_eq "check-review p1 pre-existing only: SUMMARY clean" "$(rfield SUMMARY)" "clean"
+expect_eq "check-review p1 pre-existing only: DECISION_COUNT 0" "$(rfield DECISION_COUNT)" "0"
+expect_eq "check-review p1 pre-existing only: PRE_EXISTING_COUNT 1" "$(rfield PRE_EXISTING_COUNT)" "1"
 
 cat > "$cr_dir/p1-missing.md" <<'EOF'
 ### High
@@ -1584,10 +1607,75 @@ cat > "$cr_dir/p2-missed.md" <<'EOF'
 LGTM
 EOF
 run_in "$cr_repo" "$CHECK_REVIEW" --pass 2 --base origin/main --fix-shas none "$cr_dir/p2-missed.md"
-expect_code "check-review p2 missed: exit 0" 0
-expect_eq "check-review p2 missed: SUMMARY missed" "$(rfield SUMMARY)" "missed"
-expect_eq "check-review p2 missed: MISSED 1" "$(rfield MISSED)" "1"
-expect_eq "check-review p2 missed: DECISION_COUNT 1" "$(rfield DECISION_COUNT)" "1"
+expect_code "check-review p2 missed pre-existing: exit 0" 0
+expect_eq "check-review p2 missed pre-existing: SUMMARY clean" "$(rfield SUMMARY)" "clean"
+expect_eq "check-review p2 missed pre-existing: MISSED 1" "$(rfield MISSED)" "1"
+expect_eq "check-review p2 missed pre-existing: DECISION_COUNT 0" "$(rfield DECISION_COUNT)" "0"
+expect_eq "check-review p2 missed pre-existing: PRE_EXISTING_COUNT 1" "$(rfield PRE_EXISTING_COUNT)" "1"
+
+cat > "$cr_dir/p2-missed-owned.md" <<'EOF'
+### Resolved
+- Crash fixed.
+
+### Unresolved
+- None
+
+### Missed
+- New nil deref in added branch.
+
+### Verification Probes Run
+- probe -> reproduced
+
+LGTM
+EOF
+run_in "$cr_repo" "$CHECK_REVIEW" --pass 2 --base origin/main --fix-shas none "$cr_dir/p2-missed-owned.md"
+expect_code "check-review p2 missed owned: exit 0" 0
+expect_eq "check-review p2 missed owned: SUMMARY missed" "$(rfield SUMMARY)" "missed"
+expect_eq "check-review p2 missed owned: MISSED 1" "$(rfield MISSED)" "1"
+expect_eq "check-review p2 missed owned: PRE_EXISTING_COUNT 0" "$(rfield PRE_EXISTING_COUNT)" "0"
+
+# Overlap precedence: decision tags take precedence over (pre-existing); Unresolved never emits PRE_EXISTING.
+cat > "$cr_dir/p1-overlap.md" <<'EOF'
+### High
+- None
+
+### Medium
+- Relaxed lint rule (gate change: biome.json: disables rule) (pre-existing).
+- Spec says return zero (plan design: "return 0") (pre-existing).
+
+### Low
+- None
+
+### Out of Scope
+- None
+
+### Verification Probes Run
+- probe -> reproduced
+EOF
+run_in "$cr_repo" "$CHECK_REVIEW" --pass 1 --base origin/main "$cr_dir/p1-overlap.md"
+expect_code "check-review p1 decision+pre-existing overlap: exit 0" 0
+expect_eq "check-review p1 overlap: SUMMARY needs-triage" "$(rfield SUMMARY)" "needs-triage"
+expect_eq "check-review p1 overlap: DECISION_COUNT 2" "$(rfield DECISION_COUNT)" "2"
+expect_eq "check-review p1 overlap: PRE_EXISTING_COUNT 0" "$(rfield PRE_EXISTING_COUNT)" "0"
+
+cat > "$cr_dir/p2-unresolved-preexisting.md" <<'EOF'
+### Resolved
+- None
+
+### Unresolved
+- Partial fix still fails on edge case (pre-existing).
+
+### Missed
+- Spec quirk (plan design: "keep quirk") (pre-existing).
+
+### Verification Probes Run
+- probe -> failed
+EOF
+run_in "$cr_repo" "$CHECK_REVIEW" --pass 2 --base origin/main --fix-shas "$cr_fix_sha" "$cr_dir/p2-unresolved-preexisting.md"
+expect_code "check-review p2 unresolved with (pre-existing): exit 0" 0
+expect_eq "check-review p2 unresolved with (pre-existing): SUMMARY blocked" "$(rfield SUMMARY)" "blocked"
+expect_eq "check-review p2 unresolved with (pre-existing): PRE_EXISTING_COUNT 0" "$(rfield PRE_EXISTING_COUNT)" "0"
+expect_eq "check-review p2 unresolved with (pre-existing): DECISION_COUNT 1" "$(rfield DECISION_COUNT)" "1"
 
 # Formatted None, horizontal rules, case-insensitive headings, 2-space bullets, and backticked basenames.
 cat > "$cr_dir/p1-fmt.md" <<'EOF'
