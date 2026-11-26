@@ -82,10 +82,10 @@ flowchart TD
 | :--- | :--- | :--- |
 | **`/bs-plan`** | Probe the codebase, define scope boundaries, and split work into small TDD phases (`review` audits a plan; `follow-ups` turns logged bugs you pick into fix phases) | Verified design plan in `plans/` |
 | **`/bs-exec`** | Orchestrate an approved plan phase by phase on `feat/<plan-slug>`, then open the final merge PR | One reviewed, CI-verified PR per phase and a CI-verified final PR into `main` |
-| **`/bs-loop`** | Implement a single phase or standalone task with TDD, quality gates, a PR, and 2-pass review (using `/bs-review` and `/bs-probe`) | Tested, AI-reviewed, CI-verified PR |
-| **`/bs-task`** | Single-task local TDD implementation with root-cause checks and quality gates on the current branch (ad-hoc or for one plan task; no PR or review loop) | Verified local changes (optional safe commit) |
-| **`/bs-review`** | Fresh-context, probe-verified AI code review for local diffs, branches, or PRs (supports `--pairing`; also drives `/bs-loop` Pass 1) | Review findings (`High`/`Medium`/`Low`/`Out of Scope`) |
-| **`/bs-probe`** | Read-only root-cause investigation using `.probes/` and sibling-path checks (used standalone or inside `/bs-plan`, `/bs-task`, `/bs-review`, and `/bs-loop`) | Root cause, minimal repro, and probe evidence |
+| **`/bs-loop`** | Implement a single phase or standalone task via T3 Code workers with TDD, quality gates, a PR, and 2-pass review (using `/bs-review` and `/bs-probe`) | Tested, AI-reviewed, CI-verified PR |
+| **`/bs-task`** | Single-task local TDD implementation with root-cause checks and quality gates on the current branch (runs inline in any tool; no PR or review loop) | Verified local changes (optional safe commit) |
+| **`/bs-review`** | Fresh-context, probe-verified AI code review via T3 Code for local diffs, branches, or PRs (supports `--pairing`; also drives `/bs-loop` Pass 1) | Review findings (`High`/`Medium`/`Low`/`Out of Scope`) |
+| **`/bs-probe`** | Read-only root-cause investigation using `.probes/` and sibling-path checks (runs inline in any tool, or inside `/bs-plan`, `/bs-task`, `/bs-review`, and `/bs-loop`) | Root cause, minimal repro, and probe evidence |
 
 > [!NOTE]
 > Agents never commit on their own. Invoking `/bs-loop` or `/bs-exec` grants explicit permission to branch, commit, push, and open PRs according to the workflow rules.
@@ -107,7 +107,7 @@ Operates on a dedicated `feat/<plan-slug>` branch and runs `/bs-loop` for each p
 ```
 
 ### 3. `/bs-loop` — From Failing Test to Reviewed PR
-1. **TDD Implementation (with `/bs-probe`):** Implements the standalone task or each `Task N.M` in a plan phase (using `/bs-probe` to isolate root causes and check sibling paths), writing a failing test first and the minimal implementation to pass.
+1. **TDD Implementation (T3 Code `Implementer` & `/bs-probe`):** Dispatches a fresh T3 Code worker for the standalone task or each `Task N.M` in a plan phase (using `/bs-probe` to isolate root causes and check sibling paths), writing a failing test first and the minimal implementation to pass.
 2. **Quality Gate & Docs:** Runs the project's full gate (format, lint, and tests) and updates `CHANGELOG.md` / user docs when behavior changed. The orchestrator re-runs the full test suite only when the implementer's own run failed or tested a different commit; reviewers run lint, the affected tests, and their probes.
 3. **Draft PR:** Pushes the branch and opens a draft PR once the gate has passed.
 4. **2-Pass Fresh AI Review (`/bs-review` & `/bs-probe`):** Pass 1 runs `/bs-review` in a fresh reviewer context with active `/bs-probe` verification in `.probes/`. High/Medium findings get at most one fix turn, after which a *new* fresh reviewer verifies the fixes. Pass 2 is terminal: `LGTM` passes the gate; anything unresolved leaves the PR in Draft as `BLOCKED_BY_DEFECTS` for you to investigate, or you can tell the orchestrator to fix it on the PR's branch, which grants one more fix turn and a new fresh review. Out-of-scope bugs and unfixed behavioral nits are logged to `plans/follow-ups.md` with a repro. They stay there until you run `/bs-plan follow-ups`, which re-probes them, groups them by root cause, and asks you which groups to schedule, defer, or drop. Even under `--auto`, you are asked before a change that loosens a check (a lint exclude, a re-saved quality baseline) is kept, and before a known bug is left for later when a later phase depends on it, it forced a test to be dropped, or the final review found it in new code the first review missed, and before an unrelated bug that already existed before the change is fixed as part of it.
@@ -140,10 +140,9 @@ Pair different model families so the reviewer doesn't share the implementer's bl
   BS_FIX_MODEL_CLAUDE=""        # empty disables fix-turn escalation (also BS_FIX_MODEL_AGY, BS_FIX_MODEL_CODEX)
   ```
   The paired defaults are deliberately mid-tier models rather than each provider's most capable one: plans split the work into small phases, so each diff is small enough for them to handle well, which keeps paired runs fast and cheap. They apply only to the paired tool; the tool you are in keeps your session's model. Pass a model flag for a stronger model on large or risky changes.
-- If no cross-provider orchestrator (`delegate_task`, such as in T3 Code) is available, `--pairing` warns and reviews with the host tool's native subagent instead.
-- A model is never swapped silently: if one you asked for, or a paired default, is unavailable, that role stops and tells you (an unavailable automatic fix-escalation model announces a fallback to the normal model).
-- When the tool you are in implements, it writes the code on your session's model; `--implementer-model` then applies only to the fix turn after review. Without `--implementer-model`, the fix turn escalates to the provider's `BS_FIX_MODEL_*` when configured (falling back to the normal model with a note in chat if it is unavailable, or if the native tool cannot select it and no orchestrator is available).
-- Cross-provider pairing requires an orchestrator with `delegate_task` (such as T3 Code inside the Docker agent server below), where paired roles run as live threads.
+- Orchestrated workflows (`/bs-exec`, `/bs-loop`, `/bs-review`) run through **T3 Code (`delegate_task`)** (for example inside the Docker agent server below), so every implementer, fixer, and reviewer runs as a live child thread with explicit model and reasoning effort. Running `/bs-review` outside T3 Code reports `PENDING_REVIEW`, and `/bs-loop`/`/bs-exec` stop and direct you to `/bs-task` or `/bs-probe` for local inline work.
+- A model or provider is never swapped silently: if one you asked for, or a paired default, is unavailable, that role stops and tells you (an unavailable automatic fix-escalation model announces a fallback to the normal model via `delegate_task`).
+- Without `--implementer-model`, the fix turn escalates to the provider's `BS_FIX_MODEL_*` when configured (unless the session is already on that model), falling back to the normal model with a note in chat if it is unavailable.
 
 ---
 
@@ -177,12 +176,12 @@ plans/                                   plans/
 
 ## Supported Tools & Harnesses
 
-| Tool / CLI | Skill Location | Review Mode |
+| Tool / CLI | Skill Location | Orchestrated Roles (`/bs-exec`, `/bs-loop`, `/bs-review`) |
 | :--- | :--- | :--- |
-| **Google Antigravity (`agy`)** | `~/.gemini/config/skills/` | Native subagents + T3 Code pairing |
-| **Claude Code (`claude`)** | `~/.claude/skills/` & `~/.claude/commands/` | Native subagents + T3 Code pairing |
-| **OpenAI Codex (`codex`)** | `~/.codex/skills/` | Native subagents + T3 Code pairing |
-| **GitHub Copilot / VS Code (`code`)** | User prompt files (`.prompt.md`) | Own subagents if available |
+| **Google Antigravity (`agy`)** | `~/.gemini/config/skills/` | T3 Code (`delegate_task`) worker & orchestrator |
+| **Claude Code (`claude`)** | `~/.claude/skills/` & `~/.claude/commands/` | T3 Code (`delegate_task`) worker & orchestrator |
+| **OpenAI Codex (`codex`)** | `~/.codex/skills/` | T3 Code (`delegate_task`) worker & orchestrator |
+| **GitHub Copilot / VS Code (`code`)** | User prompt files (`.prompt.md`) | Local inline skills (`/bs-plan`, `/bs-task`, `/bs-probe`) |
 
 ---
 
@@ -219,11 +218,13 @@ bootstrap/
 │   │   ├── bs-review/SKILL.md
 │   │   └── bs-probe/SKILL.md
 │   └── shared/         Shared docs and scripts, installed to ${XDG_DATA_HOME:-~/.local/share}/bootstrap/
-│       ├── conventions.md  Shared worker conventions
-│       ├── dispatch.md     Orchestrator dispatch rules
-│       ├── role-*.md       Short briefs for each subagent role (implementer, defect fixer, reviewer, fix verifier)
-│       ├── scripts/        Helpers the skills call to check the tree, commit safely, resolve role routing/models, verify subagent commits/gates, pick the diff to review, check out temporary worktrees, set up plan branches, write the PR review gate, and read plan, drift, PR, and CI state
-│       └── models.env      Default paired and fix-escalation model names, filled in at install (override in ${XDG_CONFIG_HOME:-~/.config}/bootstrap/models.env)
+│       ├── conventions-core.md    Core worker conventions (terms, probes, people docs, follow-ups)
+│       ├── conventions-writer.md  Writer-only rules (implementation, gate runs, safe commit)
+│       ├── dispatch.md            Orchestrator states, T3 Code dispatch, verify, and CI rules
+│       ├── recovery.md            On-demand resume, user-granted fix turn, and docs-only fast path
+│       ├── role-*.md              Short briefs for each worker role (implementer, defect fixer, reviewer, fix verifier)
+│       ├── scripts/               Helpers the skills call to check the tree, commit safely, run/time gate commands, resolve T3 Code role routing/models, verify worker commits/gates, pick the diff to review, check out temporary worktrees, set up plan branches, write the PR review gate, and read plan, drift, PR, and CI state
+│       └── models.env             Default paired and fix-escalation model names, filled in at install (override in ${XDG_CONFIG_HOME:-~/.config}/bootstrap/models.env)
 ├── install.sh          Installs skills, shared docs, and helper scripts across detected AI tools
 ├── init.sh             Scaffolds a new project (--type continuous|versioned)
 ├── sync.sh             Synchronizes shared rules across projects (--check, --dry-run)

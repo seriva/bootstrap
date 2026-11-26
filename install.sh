@@ -78,7 +78,7 @@ SHARED_SED_ARGS=(
   -e "s|{{BS_FIX_MODEL_AGY}}|$(sed_escape "${BS_FIX_MODEL_AGY:-none}")|g"
   -e "s|{{BS_FIX_MODEL_CODEX}}|$(sed_escape "${BS_FIX_MODEL_CODEX:-none}")|g"
 )
-# Shared docs are referenced as {{BS_<NAME_UPPER>}} (conventions.md -> {{BS_CONVENTIONS}},
+# Shared docs are referenced as {{BS_<NAME_UPPER>}} (conventions-core.md -> {{BS_CONVENTIONS_CORE}},
 # role-implementer.md -> {{BS_ROLE_IMPLEMENTER}}), so every doc can cite every other.
 for doc_path in "$SHARED_SRC"/*.md; do
   [ -f "$doc_path" ] || continue
@@ -87,7 +87,7 @@ for doc_path in "$SHARED_SRC"/*.md; do
   SHARED_SED_ARGS+=(-e "s|{{${doc_key}}}|$(sed_escape "$BOOTSTRAP_SHARE_DIR/$doc_name.md")|g")
 done
 # Helper scripts are referenced as {{<NAME_UPPER>}} (bs-commit -> {{BS_COMMIT}}). Added before
-# the shared docs are rendered, because conventions.md references them too.
+# the shared docs are rendered, because shared docs reference them too.
 for script_path in "$SHARED_SRC"/scripts/*; do
   [ -f "$script_path" ] || continue
   script_name="$(basename "$script_path")"

@@ -60,7 +60,7 @@ dirty="$(git status --porcelain)"
 if [ -n "$dirty" ]; then
   printf '%s\n' "$dirty" >&2
   die 5 "working tree is not clean" \
-    "if the subagent was interrupted before finishing, resume it once per Interrupted subagent; otherwise stop and report the dirty paths above"
+    "stop and report the dirty paths above (if the worker stopped mid-run, see Interrupted worker in dispatch; never stash, discard, or commit them)"
 fi
 
 if git rev-parse -q --verify "origin/${base}^{commit}" >/dev/null 2>&1; then

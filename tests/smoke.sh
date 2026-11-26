@@ -144,10 +144,11 @@ mkdir -p "$home/.claude/skills/bs-dropped" "$home/.claude/skills/dev-loop" "$hom
   "$home/.claude/commands" "$home/.config/Code/User/prompts" "$home/.local/share/bootstrap/scripts"
 touch "$home/.claude/commands/bs-dropped.md" "$home/.claude/commands/own-command.md" \
   "$home/.config/Code/User/prompts/bs-dropped.prompt.md" "$home/.config/Code/User/prompts/own.prompt.md" \
-  "$home/.local/share/bootstrap/scripts/bs-dropped"
+  "$home/.local/share/bootstrap/conventions.md" "$home/.local/share/bootstrap/scripts/bs-dropped"
 check "install succeeds" "${install_env[@]}" "$INSTALL"
 for stale in .claude/skills/bs-dropped .claude/skills/dev-loop .claude/commands/bs-dropped.md \
-  .config/Code/User/prompts/bs-dropped.prompt.md .local/share/bootstrap/scripts/bs-dropped; do
+  .config/Code/User/prompts/bs-dropped.prompt.md .local/share/bootstrap/conventions.md \
+  .local/share/bootstrap/scripts/bs-dropped; do
   check_not "install removes stale $stale" test -e "$home/$stale"
 done
 for own in .claude/skills/own-skill .claude/commands/own-command.md .config/Code/User/prompts/own.prompt.md; do
@@ -199,11 +200,13 @@ done)"
 missing+="$(grep -rhoE "$home/[^\`\"' )]+/scripts/[A-Za-z0-9_-]+" "$home" | sort -u | while IFS= read -r p; do
   [[ -x "$p" ]] || echo "$p"
 done)"
-check "conventions.md references helper scripts" grep -qF "$home/.local/share/bootstrap/scripts/" "$home/.local/share/bootstrap/conventions.md"
+check "conventions-core.md references helper scripts" grep -qF "$home/.local/share/bootstrap/scripts/" "$home/.local/share/bootstrap/conventions-core.md"
+check "conventions-writer.md references helper scripts" grep -qF "$home/.local/share/bootstrap/scripts/" "$home/.local/share/bootstrap/conventions-writer.md"
 check "skills reference helper scripts" grep -rqF "$home/.local/share/bootstrap/scripts/" "$home/.claude/skills"
 # Retired workflow rules: resume never stashes; follow-ups are open or deferred, never routed;
-# `.git` is a file in a linked worktree, so paths under it come from `git rev-parse --git-path`.
-for retired in 'git stash' 'unrouted' 'Route rule' 'Routed Follow-ups' 'belong' '.git/info/exclude'; do
+# `.git` is a file in a linked worktree, so paths under it come from `git rev-parse --git-path`;
+# orchestrated dispatch is T3 Code delegate_task only (no native subagent fallback).
+for retired in 'git stash' 'unrouted' 'Route rule' 'Routed Follow-ups' 'belong' '.git/info/exclude' 'invoke_subagent' 'fallback:native'; do
   check_not "installed docs and skills never mention '$retired'" \
     grep -rqF -- "$retired" "$home/.local/share/bootstrap" "$home/.claude/skills"
 done
@@ -225,18 +228,19 @@ check "bs-loop branches from and reviews against origin/\$BASE_BRANCH" sh -c \
   "$home/.claude/skills/bs-loop/SKILL.md"
 check "dispatch Verify uses bs-verify-commits" \
   grep -qF "$home/.local/share/bootstrap/scripts/bs-verify-commits" "$home/.local/share/bootstrap/dispatch.md"
-check "conventions explain a branch held by another worktree" \
-  grep -qF 'already used by worktree at' "$home/.local/share/bootstrap/conventions.md"
-for pair in conventions.md:bs-plan-state skills/bs-exec/SKILL.md:bs-plan-state skills/bs-exec/SKILL.md:bs-plan-branch \
-  conventions.md:bs-review-state skills/bs-loop/SKILL.md:bs-review-state skills/bs-exec/SKILL.md:bs-review-state \
-  skills/bs-review/SKILL.md:bs-diff-target dispatch.md:bs-pr-ci dispatch.md:bs-resolve-role dispatch.md:bs-verify-commits \
-  skills/bs-probe/SKILL.md:bs-worktree role-reviewer.md:bs-worktree role-verifier.md:bs-worktree role-defect-fixer.md:bs-worktree \
-  conventions.md:bs-worktree; do
+check "conventions-core explains a branch held by another worktree" \
+  grep -qF 'already used by worktree at' "$home/.local/share/bootstrap/conventions-core.md"
+for pair in dispatch.md:bs-plan-state skills/bs-exec/SKILL.md:bs-plan-state skills/bs-exec/SKILL.md:bs-plan-branch \
+  dispatch.md:bs-review-state skills/bs-loop/SKILL.md:bs-review-state skills/bs-exec/SKILL.md:bs-review-state \
+  recovery.md:bs-review-state skills/bs-review/SKILL.md:bs-diff-target dispatch.md:bs-pr-ci dispatch.md:bs-resolve-role \
+  dispatch.md:bs-verify-commits skills/bs-probe/SKILL.md:bs-worktree role-reviewer.md:bs-worktree \
+  role-verifier.md:bs-worktree role-defect-fixer.md:bs-worktree conventions-core.md:bs-worktree \
+  conventions-writer.md:bs-worktree conventions-writer.md:bs-gate-run conventions-writer.md:bs-commit; do
   doc="${pair%%:*}" script="${pair##*:}"
   case "$doc" in skills/*) path="$home/.claude/$doc" ;; *) path="$home/.local/share/bootstrap/$doc" ;; esac
   check "$doc calls $script" grep -qF "$home/.local/share/bootstrap/scripts/$script" "$path"
 done
-# Each role brief is handed to its subagent by an orchestrating skill.
+# Each role brief is handed to its worker by an orchestrating skill.
 for pair in role-implementer.md:bs-loop role-implementer.md:bs-exec role-defect-fixer.md:bs-loop \
   role-verifier.md:bs-loop role-reviewer.md:bs-review; do
   brief="${pair%%:*}" skill="${pair##*:}"
@@ -255,8 +259,10 @@ import glob, os, re, sys
 
 repo = sys.argv[1]
 docs = {
-    "conventions": os.path.join(repo, "workflows/shared/conventions.md"),
+    "conventions-core": os.path.join(repo, "workflows/shared/conventions-core.md"),
+    "conventions-writer": os.path.join(repo, "workflows/shared/conventions-writer.md"),
     "dispatch": os.path.join(repo, "workflows/shared/dispatch.md"),
+    "recovery": os.path.join(repo, "workflows/shared/recovery.md"),
     "role-implementer": os.path.join(repo, "workflows/shared/role-implementer.md"),
     "role-defect-fixer": os.path.join(repo, "workflows/shared/role-defect-fixer.md"),
     "role-reviewer": os.path.join(repo, "workflows/shared/role-reviewer.md"),

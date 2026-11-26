@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Run one quality-gate command for the bs-* skills: capture stdout+stderr to a unique temp log
+# without piping (so the real exit code is preserved), time it, append the exit/secs footer to
+# the log, print a uniform summary line, and exit with the command's own exit code.
+# Never writes inside the repository (unless the wrapped command itself does).
+
+usage() {
+  cat >&2 <<'EOF'
+Usage: bs-gate-run [--] <command> [args...]
+       bs-gate-run -c "<shell-command>"
+Runs one gate command, writing all output to a unique temp log file.
+Prints "exit=<rc> secs=<S> log=<path>" on stdout. On failure, prints the last 80 lines of the
+log to stderr and exits with the command's exit code.
+Exit: <command exit code> (0 green), or 2 on usage error.
+On usage error, the last stderr line is "next: <action>" for the caller.
+EOF
+  echo "next: fix the call (bs-gate-run -- <cmd...> or bs-gate-run -c '<cmd>'), then retry" >&2
+  exit 2
+}
+
+shell_cmd=""
+use_shell=false
+
+[ $# -ge 1 ] || usage
+case "$1" in
+  -h | --help) usage ;;
+  -c)
+    [ $# -eq 2 ] && [ -n "$2" ] || usage
+    use_shell=true
+    shell_cmd="$2"
+    ;;
+  --)
+    shift
+    [ $# -ge 1 ] || usage
+    ;;
+  -*)
+    usage
+    ;;
+esac
+
+log="$(mktemp "${TMPDIR:-/tmp}/bs-gate-run.XXXXXX")"
+start="$(date +%s)"
+rc=0
+if [ "$use_shell" = true ]; then
+  bash -c "$shell_cmd" >"$log" 2>&1 || rc=$?
+else
+  "$@" >"$log" 2>&1 || rc=$?
+fi
+secs="$(( $(date +%s) - start ))"
+
+if [ "$rc" -ne 0 ] && [ -s "$log" ]; then
+  tail -n 80 "$log" >&2
+fi
+printf 'exit=%s secs=%s\n' "$rc" "$secs" >>"$log"
+printf 'exit=%s secs=%s log=%s\n' "$rc" "$secs" "$log"
+exit "$rc"

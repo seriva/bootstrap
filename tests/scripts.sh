@@ -18,6 +18,7 @@ WORKTREE="$REPO_DIR/workflows/shared/scripts/bs-worktree"
 PR_CI="$REPO_DIR/workflows/shared/scripts/bs-pr-ci"
 RESOLVE_ROLE="$REPO_DIR/workflows/shared/scripts/bs-resolve-role"
 VERIFY_COMMITS="$REPO_DIR/workflows/shared/scripts/bs-verify-commits"
+GATE_RUN="$REPO_DIR/workflows/shared/scripts/bs-gate-run"
 SANDBOX="$(mktemp -d "${TMPDIR:-/tmp}/bootstrap-scripts.XXXXXX")"
 trap 'rm -rf "$SANDBOX"' EXIT
 
@@ -1227,78 +1228,52 @@ resolve_role() {
 }
 rfield() { printf '%s\n' "$OUT" | sed -n "s/^$1=//p" | head -n 1; }
 
-resolve_role --host claude --host-model claude-sonnet-5-5 --role implementer
-expect_code "claude host implementer: exit 0" 0
-expect_eq "claude host implementer: inline" "$(rfield VIA)" "inline"
-expect_eq "claude host implementer: inherit" "$(rfield MODEL)" "inherit"
+resolve_role --host claude --host-model claude-sonnet-5-5 --role implementer --reachable claude,agy
+expect_code "claude host implementer via delegate: exit 0" 0
+expect_eq "claude host implementer: provider claude" "$(rfield PROVIDER)" "claude"
+expect_eq "claude host implementer: delegate_task" "$(rfield VIA)" "delegate_task"
+expect_eq "claude host implementer: reuses host model" "$(rfield MODEL)" "claude-sonnet-5-5"
+expect_eq "claude host implementer: medium effort" "$(rfield EFFORT)" "medium"
+expect_eq "claude host implementer: stop on unavailable" "$(rfield ON_UNAVAILABLE)" "stop"
 expect_eq "claude host implementer: no note" "$(rfield NOTE)" "none"
 
-resolve_role --host claude --host-model claude-sonnet-5-5 --role implementer --implementer-model opus
-expect_code "claude inline with --implementer-model: exit 0" 0
-expect_eq "claude inline with --implementer-model: stays inline" "$(rfield VIA)" "inline"
-check "claude inline with --implementer-model: notes applies only to fixer" \
-  sh -c 'printf "%s\n" "$1" | grep -q "applies only to Defect Fixer"' _ "$(rfield NOTE)"
+resolve_role --host claude --role phase-implementer --reachable claude
+expect_code "claude phase-implementer without host-model: exit 0" 0
+expect_eq "claude phase-implementer: falls back to default model" "$(rfield MODEL)" "claude-sonnet-5-5"
+expect_eq "claude phase-implementer: medium effort" "$(rfield EFFORT)" "medium"
 
-resolve_role --host claude --host-model claude-sonnet-5-5 --role fixer
+resolve_role --host claude --host-model claude-sonnet-5-5 --role fixer --reachable claude,agy
 expect_code "claude sonnet host fixer: exit 0" 0
-expect_eq "claude sonnet host fixer: native" "$(rfield VIA)" "native"
-expect_eq "claude sonnet host fixer: escalates to opus tier" "$(rfield MODEL)" "opus"
+expect_eq "claude sonnet host fixer: delegate_task" "$(rfield VIA)" "delegate_task"
+expect_eq "claude sonnet host fixer: escalates to opus" "$(rfield MODEL)" "claude-opus-5-5"
 expect_eq "claude sonnet host fixer: high effort" "$(rfield EFFORT)" "high"
-expect_eq "claude sonnet host fixer: fallback to native inherit" "$(rfield ON_UNAVAILABLE)" "fallback:native:inherit"
+expect_eq "claude sonnet host fixer: fallback to delegate_task sonnet" "$(rfield ON_UNAVAILABLE)" "fallback:delegate_task:claude-sonnet-5-5"
 
-resolve_role --host claude --host-model claude-opus-5-5 --role fixer
+resolve_role --host claude --host-model claude-opus-5-5 --role fixer --reachable claude
 expect_code "claude opus host fixer: exit 0" 0
-expect_eq "claude opus host fixer: inherits (no redundant escalation)" "$(rfield MODEL)" "inherit"
+expect_eq "claude opus host fixer: keeps opus (no redundant escalation)" "$(rfield MODEL)" "claude-opus-5-5"
 expect_eq "claude opus host fixer: high effort" "$(rfield EFFORT)" "high"
+expect_eq "claude opus host fixer: stop on unavailable" "$(rfield ON_UNAVAILABLE)" "stop"
 expect_eq "claude opus host fixer: no note" "$(rfield NOTE)" "none"
 
-resolve_role --host claude --host-model claude-fable-5-2 --role fixer
-expect_code "claude unknown tier (fable) host fixer: exit 0" 0
-expect_eq "claude unknown tier: skips escalation (no downgrade)" "$(rfield MODEL)" "inherit"
-expect_eq "claude unknown tier: no note" "$(rfield NOTE)" "none"
-
-resolve_role --host claude --host-model claude-sonnet-5-5 --role fixer --implementer-model sonnet
-expect_code "claude explicit --implementer-model sonnet: exit 0" 0
-expect_eq "claude explicit tier: native" "$(rfield VIA)" "native"
-expect_eq "claude explicit tier: sonnet" "$(rfield MODEL)" "sonnet"
-expect_eq "claude explicit tier: stop on unavailable" "$(rfield ON_UNAVAILABLE)" "stop"
-
-resolve_role --host claude --host-model claude-sonnet-5-5 --role fixer --implementer-model claude-opus-5-5
-expect_code "claude explicit full tier ID without delegate: exit 0" 0
-expect_eq "claude explicit full tier ID: native" "$(rfield VIA)" "native"
-expect_eq "claude explicit full tier ID: mapped to opus tier" "$(rfield MODEL)" "opus"
-expect_eq "claude explicit full tier ID: stop on unavailable" "$(rfield ON_UNAVAILABLE)" "stop"
-check "claude explicit full tier ID: notes tier mapping" \
-  sh -c 'printf "%s\n" "$1" | grep -q "native tier opus"' _ "$(rfield NOTE)"
-
 resolve_role --host claude --host-model claude-sonnet-5-5 --role fixer --implementer-model claude-fable-5-2 --has-delegate
-expect_code "claude explicit non-tier model with delegate: exit 0" 0
-expect_eq "claude explicit non-tier model: routes via delegate_task" "$(rfield VIA)" "delegate_task"
-expect_eq "claude explicit non-tier model: keeps full string" "$(rfield MODEL)" "claude-fable-5-2"
-expect_eq "claude explicit non-tier model: stop on unavailable" "$(rfield ON_UNAVAILABLE)" "stop"
+expect_code "claude explicit model with delegate: exit 0" 0
+expect_eq "claude explicit model: delegate_task" "$(rfield VIA)" "delegate_task"
+expect_eq "claude explicit model: keeps exact string" "$(rfield MODEL)" "claude-fable-5-2"
+expect_eq "claude explicit model: stop on unavailable" "$(rfield ON_UNAVAILABLE)" "stop"
 
-resolve_role --host claude --host-model claude-sonnet-5-5 --role fixer --implementer-model claude-fable-5-2
-expect_code "claude explicit non-tier model without delegate: exit 3" 3
-expect_next "claude explicit non-tier model without delegate: next stops" "delegate_task"
-
-resolve_role --host agy --host-model gemini-4-hydrogen --role fixer --reachable claude,codex
-expect_code "agy hydrogen host fixer with delegate (host omitted from --reachable): exit 0" 0
+resolve_role --host agy --host-model gemini-4-hydrogen --role fixer --reachable agy,claude
+expect_code "agy hydrogen host fixer: exit 0" 0
 expect_eq "agy hydrogen host fixer: delegate_task" "$(rfield VIA)" "delegate_task"
 expect_eq "agy hydrogen host fixer: escalates to gemini-4-neon" "$(rfield MODEL)" "gemini-4-neon"
 expect_eq "agy hydrogen host fixer: high effort" "$(rfield EFFORT)" "high"
-expect_eq "agy hydrogen host fixer: fallback to native inherit" "$(rfield ON_UNAVAILABLE)" "fallback:native:inherit"
+expect_eq "agy hydrogen host fixer: fallback to delegate_task hydrogen" "$(rfield ON_UNAVAILABLE)" "fallback:delegate_task:gemini-4-hydrogen"
 
-resolve_role --host agy --host-model gemini-4-hydrogen --role fixer
-expect_code "agy hydrogen host fixer without delegate: exit 0" 0
-expect_eq "agy hydrogen host fixer no delegate: native" "$(rfield VIA)" "native"
-expect_eq "agy hydrogen host fixer no delegate: inherit" "$(rfield MODEL)" "inherit"
-check "agy hydrogen host fixer no delegate: notes fallback" \
-  sh -c 'printf "%s\n" "$1" | grep -q "without delegate_task"' _ "$(rfield NOTE)"
-
-resolve_role --host agy --host-model gemini-4-neon --role fixer --reachable claude,agy
+resolve_role --host agy --host-model gemini-4-neon --role fixer --reachable agy
 expect_code "agy neon host fixer: exit 0" 0
-expect_eq "agy neon host fixer: native inherit (no delegate hop)" "$(rfield VIA)" "native"
-expect_eq "agy neon host fixer: inherit" "$(rfield MODEL)" "inherit"
+expect_eq "agy neon host fixer: keeps neon (no redundant escalation)" "$(rfield MODEL)" "gemini-4-neon"
+expect_eq "agy neon host fixer: stop on unavailable" "$(rfield ON_UNAVAILABLE)" "stop"
+expect_eq "agy neon host fixer: no note" "$(rfield NOTE)" "none"
 
 resolve_role --host claude --role reviewer --pairing --reachable claude,agy
 expect_code "claude pairing reviewer: exit 0" 0
@@ -1313,16 +1288,31 @@ expect_code "agy pairing reviewer: exit 0" 0
 expect_eq "agy pairing reviewer: picks claude" "$(rfield PROVIDER)" "claude"
 expect_eq "agy pairing reviewer: default claude model" "$(rfield MODEL)" "claude-sonnet-5-5"
 
-resolve_role --host claude --role reviewer --pairing
-expect_code "pairing without delegate: exit 0 (warns and uses host)" 0
-expect_eq "pairing without delegate: host provider" "$(rfield PROVIDER)" "claude"
-expect_eq "pairing without delegate: native" "$(rfield VIA)" "native"
-check "pairing without delegate: warns in NOTE" \
-  sh -c 'printf "%s\n" "$1" | grep -q "requires delegate_task"' _ "$(rfield NOTE)"
+resolve_role --host claude --host-model claude-sonnet-5-5 --role reviewer --pairing --reachable claude
+expect_code "pairing with only host reachable: exit 0" 0
+expect_eq "pairing with only host reachable: reviews with host" "$(rfield PROVIDER)" "claude"
+expect_eq "pairing with only host reachable: delegate_task" "$(rfield VIA)" "delegate_task"
+check "pairing with only host reachable: warns in NOTE" \
+  sh -c 'printf "%s\n" "$1" | grep -q "no other provider reachable"' _ "$(rfield NOTE)"
+
+resolve_role --host claude --role reviewer
+expect_code "reviewer without delegate: exit 0 (pending-review)" 0
+expect_eq "reviewer without delegate: pending-review" "$(rfield VIA)" "pending-review"
+expect_eq "reviewer without delegate: model none" "$(rfield MODEL)" "none"
+check "reviewer without delegate: notes T3 Code requirement" \
+  sh -c 'printf "%s\n" "$1" | grep -q "delegate_task"' _ "$(rfield NOTE)"
+
+resolve_role --host claude --role implementer
+expect_code "implementer without delegate: exit 3" 3
+expect_next "implementer without delegate: next mentions delegate_task" "delegate_task"
 
 resolve_role --host claude --role reviewer --reviewer agy
-expect_code "explicit cross-provider without delegate: exit 3" 3
-expect_next "explicit cross-provider without delegate: next stops" "delegate_task"
+expect_code "explicit reviewer without delegate: exit 3" 3
+expect_next "explicit reviewer without delegate: next mentions delegate_task" "delegate_task"
+
+resolve_role --host claude --role reviewer --reviewer agy --reachable claude
+expect_code "explicit unreachable reviewer: exit 3" 3
+expect_next "explicit unreachable reviewer: next stops" "unavailable via delegate_task"
 
 resolve_role --host claude --role fixer --implementer codex --reachable codex
 expect_code "cross-provider codex fixer: exit 0" 0
@@ -1330,24 +1320,55 @@ expect_eq "cross-provider codex fixer: provider codex" "$(rfield PROVIDER)" "cod
 expect_eq "cross-provider codex fixer: escalates to gpt-6.2-sol" "$(rfield MODEL)" "gpt-6.2-sol"
 expect_eq "cross-provider codex fixer: fallback to default paired codex" "$(rfield ON_UNAVAILABLE)" "fallback:delegate_task:gpt-6.1-terra"
 
-resolve_role --host host --role reviewer
-expect_code "host without native subagent or delegate reviewer: exit 0" 0
-expect_eq "host without subagent: pending-review" "$(rfield VIA)" "pending-review"
-check "multiple notes joined with semicolon and space" \
-  sh -c 'printf "%s\n" "$1" | grep -qF "; no fresh-context"' _ "$(rfield NOTE)"
-
 custom_models="$SANDBOX/custom-models.env"
 cat > "$custom_models" <<'EOF'
 BS_FIX_MODEL_CLAUDE=""
 EOF
-BS_MODELS_ENV="$custom_models" resolve_role --host claude --host-model claude-sonnet-5-5 --role fixer
+BS_MODELS_ENV="$custom_models" resolve_role --host claude --host-model claude-sonnet-5-5 --role fixer --reachable claude
 expect_code "empty BS_FIX_MODEL_CLAUDE disables escalation: exit 0" 0
-expect_eq "disabled fix escalation: inherit" "$(rfield MODEL)" "inherit"
+expect_eq "disabled fix escalation: keeps normal model" "$(rfield MODEL)" "claude-sonnet-5-5"
+expect_eq "disabled fix escalation: stop on unavailable" "$(rfield ON_UNAVAILABLE)" "stop"
 expect_eq "disabled fix escalation: no note" "$(rfield NOTE)" "none"
 
 resolve_role --host bogus --role fixer
 expect_code "invalid host: exit 2" 2
 expect_next "invalid host: next fixes call" "fix the call"
+
+echo "== bs-gate-run"
+g_repo="$(new_repo)"
+g_tmp="$SANDBOX/gate-tmp"
+mkdir -p "$g_tmp"
+gate_log() { printf '%s\n' "$OUT" | sed -n 's/.*log=//p'; }
+
+run_in "$g_repo" env TMPDIR="$g_tmp" "$GATE_RUN" -- true
+expect_code "gate-run pass: exit 0" 0
+check "gate-run pass: prints exit=0 secs= log=" sh -c 'printf "%s\n" "$1" | grep -qE "^exit=0 secs=[0-9]+ log="' _ "$OUT"
+expect_eq "gate-run pass: empty stderr" "$(cat "$SANDBOX/stderr")" ""
+gl="$(gate_log)"
+check "gate-run pass: log file created with exit footer" grep -qE '^exit=0 secs=[0-9]+$' "$gl"
+
+run_in "$g_repo" env TMPDIR="$g_tmp" "$GATE_RUN" -- sh -c 'echo out-line; echo err-line >&2; exit 7'
+expect_code "gate-run fail: preserves command exit code 7" 7
+check "gate-run fail: prints exit=7 summary" sh -c 'printf "%s\n" "$1" | grep -qE "^exit=7 secs=[0-9]+ log="' _ "$OUT"
+check "gate-run fail: stderr gets stdout+stderr tail" sh -c 'grep -q out-line "$1" && grep -q err-line "$1"' _ "$SANDBOX/stderr"
+gl="$(gate_log)"
+check "gate-run fail: log has full output and exit=7 footer" sh -c 'grep -q out-line "$1" && grep -q err-line "$1" && grep -qE "^exit=7 secs=[0-9]+$" "$1"' _ "$gl"
+
+run_in "$g_repo" env TMPDIR="$g_tmp" "$GATE_RUN" -c 'echo one && echo two'
+expect_code "gate-run -c compound pass: exit 0" 0
+gl="$(gate_log)"
+check "gate-run -c compound pass: log captures both halves" sh -c 'grep -qx one "$1" && grep -qx two "$1"' _ "$gl"
+
+run_in "$g_repo" env TMPDIR="$g_tmp" "$GATE_RUN" -c 'echo before && exit 4'
+expect_code "gate-run -c compound fail: exit 4" 4
+check "gate-run -c compound fail: stderr has output" grep -q before "$SANDBOX/stderr"
+
+run_in "$g_repo" env TMPDIR="$g_tmp" "$GATE_RUN"
+expect_code "gate-run no args: usage exit 2" 2
+expect_next "gate-run no args: next fixes call" "fix the call"
+
+run_in "$g_repo" env TMPDIR="$g_tmp" "$GATE_RUN" -c ""
+expect_code "gate-run empty -c: usage exit 2" 2
 
 echo "== bs-verify-commits"
 v_repo="$(new_repo)"
@@ -1366,7 +1387,7 @@ expect_next "verify wrong branch: next stops" "branch mismatch"
 echo dirty > "$v_repo/dirty.txt"
 run_in "$v_repo" "$VERIFY_COMMITS" --branch feat/test-verify --base main --role implementer --gate-line "Full gate: exit 0 @ $c1 (10s)"
 expect_code "verify dirty tree: exit 5" 5
-expect_next "verify dirty tree: mentions Interrupted subagent" "Interrupted subagent"
+expect_next "verify dirty tree: mentions Interrupted worker" "Interrupted worker"
 rm "$v_repo/dirty.txt"
 
 run_in "$v_repo" "$VERIFY_COMMITS" --branch feat/test-verify --base main --role implementer \
