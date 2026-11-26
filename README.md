@@ -82,10 +82,10 @@ flowchart TD
 | :--- | :--- | :--- |
 | **`/bs-plan`** | Probe the codebase, define scope boundaries, and split work into small TDD phases (`review` audits a plan; `follow-ups` turns logged bugs you pick into fix phases) | Verified design plan in `plans/` |
 | **`/bs-exec`** | Orchestrate an approved plan phase by phase on `feat/<plan-slug>`, then open the final merge PR | One reviewed, CI-verified PR per phase and a CI-verified final PR into `main` |
-| **`/bs-loop`** | Implement a single phase or standalone task by orchestrating `/bs-task`, `/bs-review`, and `/bs-probe` through a PR and 2-pass review | Tested, AI-reviewed, CI-verified PR |
-| **`/bs-task`** | Single-task TDD implementation with root-cause checks and quality gates (used standalone on current branch or per task inside `/bs-loop`) | Verified local changes (optional safe commit) |
+| **`/bs-loop`** | Implement a single phase or standalone task with TDD, quality gates, a PR, and 2-pass review (using `/bs-review` and `/bs-probe`) | Tested, AI-reviewed, CI-verified PR |
+| **`/bs-task`** | Single-task local TDD implementation with root-cause checks and quality gates on the current branch (ad-hoc or for one plan task; no PR or review loop) | Verified local changes (optional safe commit) |
 | **`/bs-review`** | Fresh-context, probe-verified AI code review for local diffs, branches, or PRs (supports `--pairing`; also drives `/bs-loop` Pass 1) | Review findings (`High`/`Medium`/`Low`/`Out of Scope`) |
-| **`/bs-probe`** | Read-only root-cause investigation using `.probes/` and sibling-path checks (used standalone or inside `/bs-plan`, `/bs-task`, and `/bs-review`) | Root cause, minimal repro, and probe evidence |
+| **`/bs-probe`** | Read-only root-cause investigation using `.probes/` and sibling-path checks (used standalone or inside `/bs-plan`, `/bs-task`, `/bs-review`, and `/bs-loop`) | Root cause, minimal repro, and probe evidence |
 
 > [!NOTE]
 > Agents never commit on their own. Invoking `/bs-loop` or `/bs-exec` grants explicit permission to branch, commit, push, and open PRs according to the workflow rules.
@@ -107,7 +107,7 @@ Operates on a dedicated `feat/<plan-slug>` branch and runs `/bs-loop` for each p
 ```
 
 ### 3. `/bs-loop` — From Failing Test to Reviewed PR
-1. **TDD (`/bs-task` & `/bs-probe`):** Runs `/bs-task` for the standalone task or for each `Task N.M` in a plan phase (which uses `/bs-probe` when isolating root causes), writing a failing test first and the minimal implementation to pass.
+1. **TDD Implementation (with `/bs-probe`):** Implements the standalone task or each `Task N.M` in a plan phase (using `/bs-probe` to isolate root causes and check sibling paths), writing a failing test first and the minimal implementation to pass.
 2. **Quality Gate & Docs:** Runs the project's full gate (format, lint, and tests) and updates `CHANGELOG.md` / user docs when behavior changed. The orchestrator re-runs the full test suite only when the implementer's own run failed or tested a different commit; reviewers run lint, the affected tests, and their probes.
 3. **Draft PR:** Pushes the branch and opens a draft PR once the gate has passed.
 4. **2-Pass Fresh AI Review (`/bs-review` & `/bs-probe`):** Pass 1 runs `/bs-review` in a fresh reviewer context with active `/bs-probe` verification in `.probes/`. High/Medium findings get at most one fix turn, after which a *new* fresh reviewer verifies the fixes. Pass 2 is terminal: `LGTM` passes the gate; anything unresolved leaves the PR in Draft as `BLOCKED_BY_DEFECTS` for you to investigate, or you can tell the orchestrator to fix it on the PR's branch, which grants one more fix turn and a new fresh review. Out-of-scope bugs and unfixed behavioral nits are logged to `plans/follow-ups.md` with a repro. They stay there until you run `/bs-plan follow-ups`, which re-probes them, groups them by root cause, and asks you which groups to schedule, defer, or drop. Even under `--auto`, you are asked before a change that loosens a check (a lint exclude, a re-saved quality baseline) is kept, and before a known bug is left for later when a later phase depends on it, it forced a test to be dropped, or the final review found it in new code the first review missed, and before an unrelated bug that already existed before the change is fixed as part of it.

@@ -17,13 +17,13 @@ Invoking `/bs-plan` authorizes inspecting code, running non-destructive probes a
 ## Operational Workflow
 
 ### Step 1: Target Discovery & Context
-1. Resolve `$TARGET_REPO` and read `AGENTS.md` per **Target** (`{{BS_CONVENTIONS}}`).
+1. Resolve `$TARGET_REPO` and read `AGENTS.md` per **Target** (conventions).
 2. Read `$TARGET_REPO/plans/roadmap.md` (target milestone) and `plans/template.md` (required section structure and order).
 
 ### Step 2: Empirical Audit & Probing (NO ASSUMPTIONS)
 1. **Codebase Inspection**: locate the exact files, modules, types, and test runners.
 2. **Empirical Probes (`/bs-probe`)**:
-   - Prove every claimed gap or bottleneck: run non-destructive probes per `/bs-probe` (`{{BS_PROBE_SKILL}}`) and **Probes** (`{{BS_CONVENTIONS}}`), or inspect compiler/runtime outputs.
+   - Prove every claimed gap or bottleneck: run non-destructive probes per `/bs-probe` (`{{BS_PROBE_SKILL}}`) and **Probes** (conventions), or inspect compiler/runtime outputs.
    - Record each probe's command and observed result in `Verified Gaps & Baseline Audit` (`Area | Finding | Evidence & Probe Reference`), so the evidence survives cleanup.
 3. **Root Causes & Sibling Paths**:
    - Name the root cause of every gap by reading the code that produces it, not by restating the repro.
@@ -83,7 +83,7 @@ Audits and tightens an existing plan against `$TARGET_REPO`.
    - Run Step 1.
    - `$PLAN_FILE`: `<plan-path>`, else the one plan `"{{BS_PLAN_STATE}}" active` lists (it lists several → ask).
    - **Plan branch check**: `feat/<plan-slug>` exists locally or on origin → the plan is in progress there and other copies are stale. Check it out and `git pull --ff-only` before reading or editing the plan (tree dirty → ask).
-2. **Empirical Plan Audit**: audit `$PLAN_FILE` against `$TARGET_REPO` with read-only probes per **Probes**:
+2. **Empirical Plan Audit**: audit `$PLAN_FILE` against `$TARGET_REPO` with read-only probes per **Probes** (conventions):
    - **Codebase accuracy (Step 2)**:
      - Every claim about existing code (files, symbols, types, callers, baselines) in `Verified Gaps`, `Approach`, and `Implementation Tasks` holds in `$TARGET_REPO`.
      - Proposed new files and symbols are checked for feasibility and consistency, not existence.
@@ -96,10 +96,10 @@ Audits and tightens an existing plan against `$TARGET_REPO`.
      - No root is fixed by separate per-path tasks where one shared fix would cover them.
    - **Execution readiness (Step 4)**:
      - Phases compile and pass tests sequentially, with no forward dependencies.
-     - They obey the Step 4.2 task/phase contract and the `AGENTS.md` **Changelog**/**Docs** rules.
+     - They obey the Step 4.2 task/phase contract and **Changelog** (AGENTS.md) / **Docs** (AGENTS.md).
    - **In-scope edge cases**: check touched callers, types, and `AGENTS.md` boundaries for missed interactions or broken invariants, without proposing features outside the `Scope Boundary Matrix`.
 3. **Revise & Summarize**:
-   - Scope or design trade-off → ask the user per `AGENTS.md` **Blockers**.
+   - Scope or design trade-off → ask the user per **Blockers** (AGENTS.md).
    - Otherwise fix verified issues in `$PLAN_FILE` in place.
    - Report findings, probes run, and edits made (or `PLAN_LGTM`), and remind the user to commit before `/bs-exec`.
 
@@ -107,17 +107,17 @@ Audits and tightens an existing plan against `$TARGET_REPO`.
 
 ## Follow-up Mode (`/bs-plan follow-ups [<plan-path>]`)
 
-Run by the user to turn open entries in `plans/follow-ups.md` (**Follow-ups** in `{{BS_CONVENTIONS}}`) into planned work.
-- **The user decides** what gets scheduled. Never schedule, defer, or drop an entry without their answer (**Blockers**).
+Run by the user to turn open entries in `plans/follow-ups.md` (**Follow-ups** (conventions)) into planned work.
+- **The user decides** what gets scheduled. Never schedule, defer, or drop an entry without their answer (**Blockers** (AGENTS.md)).
 - **Which entries**:
-  - With `<plan-path>` (must not be `closed`, **States**): entries whose provenance names its `<plan-slug>`, plus open entries its Scope Rule covers.
+  - With `<plan-path>` (must not be `closed`, **States** (conventions)): entries whose provenance names its `<plan-slug>`, plus open entries its Scope Rule covers.
   - Without: every open entry.
   - Deferred entries: only if the user asks.
 
 1. **Context**:
    - Step 1 above, plus the Scope Rule & Boundary Matrix of every active plan (`"{{BS_PLAN_STATE}}" active`).
    - With `<plan-path>`: run the **Plan branch check** (Review Mode Step 1) for it now.
-2. **Re-probe every entry** per **Probes**:
+2. **Re-probe every entry** per **Probes** (conventions):
    - Entries that no longer reproduce, or are already scheduled in an active plan → propose them for deletion.
    - Name each entry's root cause by reading the code (Step 2.3), then cluster the entries by root.
 3. **Widen each root** per Step 2.3: probe the root's other paths, not only the logged repros.

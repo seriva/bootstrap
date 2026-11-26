@@ -20,7 +20,7 @@ Providers: `claude`, `agy`, `codex`, or `host` (= `HOST_PROVIDER`).
     [--implementer-model <m>] [--reviewer-model <m>] \
     [--no-native-subagent] [--reachable "<csv>"]
   ```
-  - Non-zero exit → do its stderr `next:` line (**Helpers** in `{{BS_CONVENTIONS}}`).
+  - Non-zero exit → do its stderr `next:` line (**Helpers** (conventions)).
   - Prints `PROVIDER`, `VIA`, `MODEL`, `EFFORT`, `ON_UNAVAILABLE`, `NOTE`.
   - `NOTE` is not `none` → say it in chat.
 - **Execute per `VIA`**:
@@ -31,7 +31,7 @@ Providers: `claude`, `agy`, `codex`, or `host` (= `HOST_PROVIDER`).
     - in the parent checkout: `isolation="shared"`, never `isolation="worktree"`;
     - `mode="wait"`; never reuse an earlier round's thread.
     - `mode="wait"` returning on its own timeout (T3 Code: ~45 s) while the child keeps running is normal: wait for its completion notification. Never re-dispatch, poll, or pass a delegate or `Agent` id to a background-wait tool.
-  - `pending-review`: report `PENDING_REVIEW` (`/bs-loop` Step 3).
+  - `pending-review`: report `PENDING_REVIEW` (**Review** (bs-loop)).
 - **Rejected or unavailable model/provider**: never substitute silently; follow `ON_UNAVAILABLE`:
   - `fallback:<via>:<model>` (automatic fix escalation only): say so in chat and dispatch using `<via>` and `<model>` (e.g. `fallback:native:inherit`, `fallback:delegate_task:<default>`).
   - `stop`: say so in chat and stop and report.
@@ -58,7 +58,7 @@ Providers: `claude`, `agy`, `codex`, or `host` (= `HOST_PROVIDER`).
    - For `Defect Fixer`, always pass `--since "$PRE_FIX_SHA"`.
    - Pass `--unconfirmed` if the reply says elsewhere a Full-gate command did not run (e.g. under `### Unconfirmed`).
    - Non-zero exit → do its stderr `next:` line (handles wrong branch and dirty tree / **Interrupted subagent**).
-   - Gate per `GATE` (`{{BS_CONVENTIONS}}` **Gate runs**):
+   - Gate per `GATE` (**Gate runs** (conventions)):
      - `lint-only` → run only the **Lint** command.
      - `lint-and-tests` → run the **Lint** command and the `Test:` files of the phase's tasks (`Defect Fixer`: the test files in `FILES`).
      - `full-gate` → run the **Full gate** yourself.
@@ -78,14 +78,14 @@ Providers: `claude`, `agy`, `codex`, or `host` (= `HOST_PROVIDER`).
    - No continue tool, a cross-provider (`delegate_task`) child, a second interruption, or a failed resume → stop and report the state.
    - Then run this **Verify** on its final reply as usual.
 8. **Implementer stopped for a user decision** (e.g. a plan's "stop and report" condition): ask the user, even with `--auto`. To apply their answer:
-   1. Edit on `$WORKING_BRANCH` and **Safe commit** it.
+   1. Edit on `$WORKING_BRANCH` and **Safe commit** (conventions) it.
    2. Run the **Full gate** yourself: your commit is not the one the implementer gated.
-   3. Only when it is green, push (`/bs-loop` Step 2.3). Nothing is pushed before this gate.
+   3. Only when it is green, push (**Draft PR** (bs-loop)). Nothing is pushed before this gate.
 
 ## CI wait
 Every PR waits, phase PRs included.
-- `/bs-loop` PRs: `bs-review-state ci` runs this wait and applies the mapping below itself (`/bs-loop` Step 4.3).
-- The final plan PR (`/bs-exec` Step 4): run `"{{BS_PR_CI}}" "<branch>"` yourself; it prints:
+- `/bs-loop` PRs: `bs-review-state ci` runs this wait and applies the mapping below itself (**CI Gate** (bs-loop)).
+- The final plan PR (**Finalize Plan** (bs-exec)): run `"{{BS_PR_CI}}" "<branch>"` yourself; it prints:
 - `pass`: CI passed.
 - `fail <check>,…` → `BLOCKED_BY_CI` with those checks.
 - `skipped`: every check was skipped, so CI did not test this PR.

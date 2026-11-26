@@ -248,6 +248,72 @@ else
   fail "rendered paths that do not exist: ${missing//$'\n'/, }"
 fi
 
+# Every tagged cross-file reference `**Name** (doc)` across workflows/ must resolve to a heading
+# or bold anchor in the named doc (catches renamed or deleted sections).
+if python3 - "$REPO_DIR" <<'PYEOF'
+import glob, os, re, sys
+
+repo = sys.argv[1]
+docs = {
+    "conventions": os.path.join(repo, "workflows/shared/conventions.md"),
+    "dispatch": os.path.join(repo, "workflows/shared/dispatch.md"),
+    "role-implementer": os.path.join(repo, "workflows/shared/role-implementer.md"),
+    "role-defect-fixer": os.path.join(repo, "workflows/shared/role-defect-fixer.md"),
+    "role-reviewer": os.path.join(repo, "workflows/shared/role-reviewer.md"),
+    "role-verifier": os.path.join(repo, "workflows/shared/role-verifier.md"),
+    "AGENTS.md": os.path.join(repo, "scaffold/AGENTS.md"),
+}
+for p in glob.glob(os.path.join(repo, "workflows/skills/*/SKILL.md")):
+    docs[os.path.basename(os.path.dirname(p))] = p
+
+anchors = {}
+for name, path in docs.items():
+    text = open(path, encoding="utf-8").read()
+    found = set()
+    for m in re.finditer(r'^#{1,4}\s+(.+?)\s*$', text, re.M):
+        found.add(m.group(1).strip())
+    # Bold lead-in anchors: `- **Name**:`, `1. **Name**:`, `**Name**:`, `**Name** (`
+    for m in re.finditer(r'(?:^|\n)\s*(?:[-*]|\d+\.)?\s*\*\*([^*\n]+?)\*\*(?:[: (]|$)', text):
+        found.add(m.group(1).strip().rstrip(':'))
+    # Table first-column bold anchors: `| **Name**:`
+    for m in re.finditer(r'^\|\s*\*\*([^*\n]+?)\*\*', text, re.M):
+        found.add(m.group(1).strip().rstrip(':'))
+    anchors[name] = found
+
+non_doc_tags = {"terminal"}
+ref_re = re.compile(r'\*\*([^*\n]+?)\*\*\s+\(([A-Za-z0-9._-]+)\)')
+errors = []
+ref_count = 0
+for src in sorted(glob.glob(os.path.join(repo, "workflows/skills/*/SKILL.md")) +
+                  glob.glob(os.path.join(repo, "workflows/shared/*.md"))):
+    text = open(src, encoding="utf-8").read()
+    for lineno, line in enumerate(text.splitlines(), 1):
+        for m in ref_re.finditer(line):
+            target_label, target_doc = m.group(1).strip(), m.group(2)
+            if target_doc in non_doc_tags:
+                continue
+            ref_count += 1
+            if target_doc not in docs:
+                rel = os.path.relpath(src, repo)
+                errors.append(f"{rel}:{lineno}: unknown doc tag ({target_doc}) on **{target_label}**")
+            elif target_label not in anchors[target_doc]:
+                rel = os.path.relpath(src, repo)
+                errors.append(f"{rel}:{lineno}: **{target_label}** ({target_doc}) not found")
+
+if ref_count == 0:
+    print("no tagged cross-file references found", file=sys.stderr)
+    sys.exit(1)
+if errors:
+    for e in errors:
+        print(e, file=sys.stderr)
+    sys.exit(1)
+PYEOF
+then
+  pass "all tagged cross-file doc references resolve"
+else
+  fail "broken cross-file doc reference(s) above"
+fi
+
 echo
 if [[ "$FAILURES" -gt 0 ]]; then
   echo "[FAIL] $FAILURES check(s) failed."

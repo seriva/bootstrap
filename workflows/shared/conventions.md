@@ -3,21 +3,25 @@
 Shared conventions referenced by all `bs-*` skills. Orchestrator-only dispatch and CI rules live in `{{BS_DISPATCH}}`.
 
 ## Terms
-Every `bs-*` doc and role brief uses these words in exactly this sense.
-- **Owned**: a defect whose repro runs through a function the diff adds or changes, or through newly written code in a file the diff creates. A function moved from another file with no line edited is not owned (`git blame -s -C5 -C5 <BASE>..HEAD -- <file>` prints each of its lines with a leading `^`). Reviewers judge against the diff under review. Writers take it as `git diff "$(git merge-base "origin/$BASE_BRANCH" HEAD)"`, which includes uncommitted edits (standalone `/bs-task`: `git diff HEAD` plus its task commits).
+Every `bs-*` doc and role brief uses these words and placeholders in exactly this sense.
+- **Notation**:
+  - `{{…}}`: filled in by `install.sh` (an installed doc, skill, script path, or model name).
+  - `$VAR`: a shell variable or value from an earlier step (e.g. `$TARGET_REPO`, `$WORKING_BRANCH`, `$BASE_BRANCH`, `$PLAN_FILE`). Prompt input lines use plain key names on the left (`TARGET_REPO: $TARGET_REPO`, `BASE: origin/$BASE_BRANCH`, `PROBE_SKILL: …`).
+  - `<…>`: a value the agent fills in when running a step or building a prompt (`<BASE>` is the git ref or commit diffed against; in `/bs-loop`, `<BASE>` is `origin/$BASE_BRANCH`).
+- **Owned**: a defect whose repro runs through a function the diff adds or changes, or through newly written code in a file the diff creates. A function moved from another file with no line edited is not owned (`git blame -s -C5 -C5 <BASE>..HEAD -- <file>` prints each of its lines with a leading `^`). Reviewers judge against the diff under review. Writers take it as `git diff "$(git merge-base "origin/$BASE_BRANCH" HEAD)"`, which includes uncommitted edits; standalone `/bs-task` uses `git diff HEAD` plus its task commits.
 - **Behavioural**: wrong output, crash, broken build, valid input rejected, or invalid input accepted. Anything else (naming, comments, dead code, style) is a nit.
 - **Pre-existing**: fails the same way on `<BASE>` and lies outside the bug or feature the task or plan targets. An incomplete sibling of that bug or feature is never pre-existing.
 - **Gate change**: a change that makes a gate check less: lint or format rules and excludes, quality baselines (e.g. a re-saved `sentrux gate`), coverage or size thresholds, hook or CI config, and skipped or disabled checks.
 
 ## Worker rules
-For every role brief (`Implementer`, `Defect Fixer`, `Code Reviewer`, `Fix Verifier`), dispatched or run inline:
+For every role brief (`Implementer`, `Defect Fixer`, `Code Reviewer (Pass 1)`, `Code Reviewer (Pass 2)`), dispatched or run inline:
 - Never spawn or dispatch subagents; probe inline.
 - Put your entire reply in one final message.
 - **Writers** (`Implementer`, `Defect Fixer`):
-  - **Start check**: HEAD is `WORKING_BRANCH` and `git status --porcelain` is clean, else stop and report. Install dependencies per **Dependencies** if needed.
+  - **Start check**: HEAD is `$WORKING_BRANCH` and `git status --porcelain` is clean, else stop and report. Install dependencies per **Dependencies** if needed.
   - Never push, amend, or rebase; the orchestrator pushes after verifying.
   - Never edit `plans/follow-ups.md`: defects in other mechanisms go under `### Side Sightings` (**Side sightings**).
-- **Reviewers** (`Code Reviewer`, `Fix Verifier`): never modify tracked or pre-existing dirty files, never commit, and never run the full **Test** command (the orchestrator's **Verify** and CI gate it).
+- **Reviewers** (`Code Reviewer (Pass 1)`, `Code Reviewer (Pass 2)`): never modify tracked or pre-existing dirty files, never commit, and never run the full **Test** command (the orchestrator's **Verify** (dispatch) and CI gate it).
 
 ## Target
 1. **`TARGET_REPO`**:
@@ -45,7 +49,7 @@ For every role brief (`Implementer`, `Defect Fixer`, `Code Reviewer`, `Fix Verif
 ### Plan
 Run `"{{BS_PLAN_STATE}}" <plan-file>` on the plan branch. It prints one of:
 - `open <N> <checked>/<total>`: Phase N is next.
-- `finishing <total>/<total>`: all tasks checked; only then run `/bs-exec` Step 4.
+- `finishing <total>/<total>`: all tasks checked; only then run **Finalize Plan** (bs-exec).
 - `closed`: `Completed` or archived; never append phases.
 
 `"{{BS_PLAN_STATE}}" active` lists the open and finishing plans.
@@ -53,7 +57,7 @@ Run `"{{BS_PLAN_STATE}}" <plan-file>` on the plan branch. It prints one of:
 ### Review run
 `"{{BS_REVIEW_STATE}}" <branch>` prints `<state> <base-branch>`, or `none` (no PR).
 - **In review**: `in-review` or `fix-used`.
-  - A draft still showing the `/bs-loop` Step 2.3 placeholder (a live, stopped, or `PENDING_REVIEW` run).
+  - A draft still showing the **Draft PR** (bs-loop) placeholder (a live, stopped, or `PENDING_REVIEW` run).
   - `fix-used`: the one Fix Turn is spent.
 - **Gated**: `gated:<GATE>` (draft) or `ready`.
 - Any other state: nothing to resume.
@@ -61,7 +65,7 @@ Run `"{{BS_PLAN_STATE}}" <plan-file>` on the plan branch. It prints one of:
 **Resume** (in review only; never re-implement):
 - The tree must be clean (`git status --porcelain`).
 - Dirty → stop and list the paths; never stash, discard, or commit them.
-- Clean → continue at `/bs-loop` Step 3.
+- Clean → continue at **Review** (bs-loop).
 
 ## Probes
 - **Location**: the host's scratch dir, or `$TARGET_REPO/.probes/` when a probe needs repo-relative imports. Never in source or test dirs (workflow: `/bs-probe`).
@@ -111,7 +115,7 @@ How a task is implemented (`/bs-task`, `Implementer`, `Defect Fixer`):
    - **Gate changes**: a **Gate change** is never a silent way to green.
      - First look for a code change that passes the gate as it is.
      - None → make the narrowest change, and list it under `### Gate Changes` in your reply: the file, what it stops checking, the failing output that forced it, and why no code change avoids it.
-     - The user decides whether it stays (`/bs-loop` **Gate change**).
+     - The user decides whether it stays (**User decisions** (bs-loop)).
 3. **Report**: implementers and `Defect Fixer` end their reply with `Full gate: exit <N> @ <short-sha> (<S>s)` (a `Defect Fixer` on the **Docs gate**: `Docs gate: exit <N> @ <short-sha> (<S>s)`).
    - It covers every command of that gate, each sub-command included (e.g. both halves of `npm test && npm run test:e2e`).
    - A command you could not run (missing browser, service, or tool) → `Full gate: incomplete (<command>: <reason>) @ <short-sha>`, never `exit 0`.
@@ -144,7 +148,7 @@ How a task is implemented (`/bs-task`, `Implementer`, `Defect Fixer`):
    - Plan work uses `(<plan-slug>)` as its scope.
 
 ## People docs
-Follow `AGENTS.md` **Audiences**, **Changelog**, and **Docs**. In addition:
+Follow **Audiences** (AGENTS.md), **Changelog** (AGENTS.md), and **Docs** (AGENTS.md). In addition:
 1. **Start the `CHANGELOG.md` entry** from the plan's **Release note:** header line when it has one. Otherwise write it from the user's perspective before rereading the commits or the plan.
 2. **One `## [Unreleased]` entry per plan**:
    - Once a phase changes user-facing behaviour (or on the final phase), write or rewrite that entry so it says what works as of this phase, in 1–2 sentences. Never claim something is already documented or works on targets that a later phase handles.
@@ -160,7 +164,7 @@ Follow `AGENTS.md` **Audiences**, **Changelog**, and **Docs**. In addition:
 **What goes in the ledger**:
 - Real bugs outside the diff's scope (`### Out of Scope`).
 - Unfixed **Behavioural** `### Low` items.
-- Do not fix these here (**Scope**), and do not leave them only in a PR body.
+- Do not fix these here per **Scope** (AGENTS.md), and do not leave them only in a PR body.
 - Pure style or wording nits stay in the PR body only.
 
 **How to record**:

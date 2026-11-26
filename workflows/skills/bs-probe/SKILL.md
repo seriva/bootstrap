@@ -11,7 +11,7 @@ Invoking `/bs-probe` authorizes inspecting `$TARGET_REPO` and running non-destru
 
 ## Workflow
 
-1. **Target & Invariants**: resolve `$TARGET_REPO` and read `AGENTS.md` per **Target** (`{{BS_CONVENTIONS}}`).
+1. **Target & Invariants**: resolve `$TARGET_REPO` and read `AGENTS.md` per **Target** (conventions).
 2. **Identify Root Cause**:
    - Read the code producing the symptom and name the underlying mechanism (a function, rule, or data path), not just the input or caller that exposed it.
    - Slug the mechanism in kebab-case.
