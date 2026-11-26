@@ -60,72 +60,61 @@ Review `$WORKING_BRANCH` against `origin/$BASE_BRANCH`. Always diff against the 
 
 **Flow** (say each promotion, re-filing, and decision in chat):
 1. **Pass 1**: dispatch `Code Reviewer (Pass 1)` (**Prompts**), zero history, `git diff origin/$BASE_BRANCH...HEAD`.
-2. **Triage** its verdict, even an `LGTM`: run **Same-root check**, then **User decisions**.
+2. **Check & Triage** (even on `LGTM`):
+   - Save the reviewer reply to a temp file outside the repo, run `"{{BS_CHECK_REVIEW}}" --pass 1 --base "origin/$BASE_BRANCH" <reply.md>` (non-zero exit → do its `next:` line), and remove the temp file.
+   - **Same-root check**: inspect every `SUSPECT_OWNED` line from `bs-check-review`, any behavioural `### Low` item, any implementer `### Side Sightings` / `### Unconfirmed` Pass 1 skipped, and any line the diff adds to `plans/follow-ups.md`. Promote a candidate to Medium if its repro runs through a High/Medium finding's mechanism or **Owned** (conventions-core) code (even if on `<BASE>` or prescribed by the plan). Exception: if it is **Pre-existing** (conventions-core) outside an unmarked High/Medium finding, mark `(pre-existing)` for **User decisions**. Never demote a finding yourself.
+   - **User decisions**: ask once in one message (even under `/bs-exec --auto`) for every `DECISION` line (`plan-design`, `pre-existing`, `gate-change`) plus any **Plan impact** item below.
+   - Persist via `"{{BS_REVIEW_STATE}}" record "$WORKING_BRANCH" --pass "Pass 1" [--defer "<item>"]... [--keep-gate "<item>"]...`.
 3. **Act**, first that applies:
    - No High/Medium finding left → `REVIEW_STATUS=PASSED`, go to **Finalize PR**.
    - Every one left is a **People docs** (conventions-core) edit with a suggested rewrite → read `{{BS_RECOVERY}}` and follow **Docs-only fast path** (recovery).
    - Otherwise → **Fix Turn**, then **Pass 2**.
 
-**Same-root check** (catches defects the reviewer misfiled below High/Medium):
-- **Candidates**:
-  - **Behavioural** (conventions-core) `### Low` items (the reviewer brief keeps these out of Low, so one there is misfiled);
-  - `### Out of Scope` items;
-  - implementer `### Side Sightings` / `### Unconfirmed` items Pass 1 did not classify;
-  - lines the diff adds to `plans/follow-ups.md`.
-- **Promote** a candidate to Medium when its own repro runs through either:
-  1. the mechanism of a High/Medium finding, or
-  2. code the diff owns (the candidate is **Owned** (conventions-core)).
-  - This holds even when it fails on `<BASE>` too or the plan prescribes it (**Review Rubric** (role-reviewer) item 3). An `LGTM` with a promoted item goes to the Fix Turn.
-- **Exception**: if it is **Pre-existing** (conventions-core) and its repro does not run through an unmarked (diff-introduced) High/Medium finding, mark it `(pre-existing)` instead and leave it to **User decisions**.
-- Never demote a finding yourself.
-
-**User decisions**: ask even under `/bs-exec --auto`, all in one message, once per root per run. The answer stands, and it is the only way a finding leaves the Fix Turn.
+**User decisions** (answer stands; the only way a finding leaves the Fix Turn; "record" logs to `plans/follow-ups.md` as a **Deferred item**):
 
 | Item | Choices |
 |---|---|
-| **Plan design**: a High/Medium finding (promoted ones included) marked `(plan design: …)` or that the plan prescribes | fix now, or record |
-| **Pre-existing**: a High/Medium finding marked `(pre-existing)`, or a candidate left unpromoted by the exception. Skip the question when the task (standalone `$TASK`, or the plan task's `Done when:`/`Test:`) targets that bug or feature: it is an incomplete sibling, so Medium | fix now (Medium), or record |
-| **Gate change**: a finding marked `(gate change: …)` | fix the code and revert the change (stays in the Fix Turn), or keep it (named in the **Update PR Body** report) |
-| **Plan impact** (phases with a `$PLAN_FILE`): an unpromoted `### Out of Scope` item, behavioural `### Low`, or sighting that the reviewer, the implementer, or you expect to break a later phase's task or `Done when:`, that made the implementer drop or narrow a test (its `### Deviations`), or that shares a root with a follow-up from an earlier phase of this plan. Name the later task or dropped test | fix now (promote to Medium), or record |
-
-"Record" means `plans/follow-ups.md` at **Record Follow-ups**, and the item becomes a **Deferred item**.
+| **Plan design** (`(plan design: …)` or plan-prescribed) | fix now, or record |
+| **Pre-existing** (`(pre-existing)`; skip question if the task's `$TASK` / `Done when:` / `Test:` targets that bug/feature — it is an incomplete sibling, so Medium) | fix now (Medium), or record |
+| **Gate change** (`(gate change: …)`) | fix code & revert gate change, or keep it |
+| **Plan impact** (phases with `$PLAN_FILE`: unpromoted `Out of Scope`, behavioural `Low`, or sighting that breaks a later phase, forced a dropped/narrowed test in `### Deviations`, or shares a root with an earlier phase follow-up) | fix now (Medium), or record |
 
 **Deferred items**: every item the user chose to record, left out of a granted Fix Turn, or wanted fixed "only if cheap" and the `Defect Fixer` left unfixed.
-- Name each in chat.
-- Carry it on the `Deferred by user:` line of every later pass and every **Update PR Body** report.
-- The line accumulates every deferral made on this PR, never only the latest, and **Record Follow-ups** logs them all.
+- Name each in chat and persist it via `"{{BS_REVIEW_STATE}}" record "$WORKING_BRANCH" --defer "<item>"` (and kept gate changes via `--keep-gate "<file: what it stops checking>"`).
+- Before Pass 2 (or any later pass), **Record Follow-ups**, and **Update PR Body**, read `"{{BS_REVIEW_STATE}}" get "$WORKING_BRANCH"` and carry every `DEFERRED` and `KEPT_GATE` line verbatim so nothing is dropped across passes or resumed sessions.
 
 **Fix Turn** (max 1): dispatch `Defect Fixer` (**Prompts**) on `IMPLEMENTER` with the Pass 1 High/Medium findings left after triage.
-- It commits the fix as `"fix(<scope>): address review feedback"`. Verify it per **Verify** (dispatch), then `git push` → **Pass 2**.
-- Red gate → still push so the PR shows the spent Fix Turn for **States** (dispatch), then `BLOCKED_BY_DEFECTS` (**Finalize PR**).
+- It commits the fix as `"fix(<scope>): address review feedback"`. Verify it per **Verify** (dispatch), then `git push` and record `"{{BS_REVIEW_STATE}}" record "$WORKING_BRANCH" --fix-used [--fix-sha <sha>]... --pass "Fix"` → **Pass 2**.
+- Red gate → still push and run `"{{BS_REVIEW_STATE}}" record "$WORKING_BRANCH" --fix-used --pass "Fix"` so the PR records the spent Fix Turn for **States** (dispatch), then `BLOCKED_BY_DEFECTS` (**Finalize PR**).
 
-**Pass 2** (terminal): dispatch a new `Code Reviewer (Pass 2)` (**Prompts**), zero history.
-1. **Check its filing** (the brief sorts these itself; its `LGTM` token alone never decides).
-   - Move to `### Unresolved`: anything its own probes show the fix regressed against `<BASE>`, and any `### Out of Scope` item whose repro runs through a verified finding's mechanism or code the fix changed (a partial fix).
-   - Move to `### Missed`: any other `### Out of Scope` item or `Defect Fixer` sighting that is **Owned** (conventions-core). Mark it `(pre-existing)` if it is **Pre-existing** (conventions-core) against `<BASE>` = `origin/$BASE_BRANCH`.
-2. **Outcome**, first that applies:
+**Pass 2** (terminal): read `"{{BS_REVIEW_STATE}}" get "$WORKING_BRANCH"`, then dispatch a new `Code Reviewer (Pass 2)` (**Prompts**), zero history.
+1. **Check its filing** (its `LGTM` token alone never decides): save the reply to a temp file, run `"{{BS_CHECK_REVIEW}}" --pass 2 --base "origin/$BASE_BRANCH" --fix-shas "<FIX_SHAS>" <reply.md>` (non-zero exit → do its `next:` line), and remove the temp file.
+   - Move to `### Unresolved`: any fix regression against `<BASE>`, and any `SUSPECT_OWNED` / `### Out of Scope` item whose repro runs through a verified finding's mechanism or code the fix changed (a partial fix).
+   - Move to `### Missed`: any other `SUSPECT_OWNED` / `### Out of Scope` item or `Defect Fixer` sighting that is **Owned** (conventions-core) (append `(pre-existing)` if **Pre-existing** (conventions-core) on `origin/$BASE_BRANCH`).
+2. **Record pass**: run `"{{BS_REVIEW_STATE}}" record "$WORKING_BRANCH" --pass "Pass 2"`.
+3. **Outcome**, first that applies:
    - Any `### Unresolved` → `BLOCKED_BY_DEFECTS` (stop). List any `### Missed` items with them.
-   - Any `### Missed` → ask the user, even under `/bs-exec --auto`, once per root per run: fix now (read `{{BS_RECOVERY}}` and run **User-granted Fix Turn** (recovery)), or record (`PASSED`; **Record Follow-ups** logs them). Label each `(pre-existing)` item as failing the same way on `<BASE>` outside this phase's target, and recommend recording it rather than widening the PR.
+   - Any `### Missed` → ask the user, even under `/bs-exec --auto`, once per root per run: fix now (read `{{BS_RECOVERY}}` and run **User-granted Fix Turn** (recovery)), or record (persist each via `"{{BS_REVIEW_STATE}}" record "$WORKING_BRANCH" --defer "<item>"`, then `PASSED`; **Record Follow-ups** logs them). Label each `(pre-existing)` item as failing the same way on `<BASE>` outside this phase's target, and recommend recording it rather than widening the PR.
    - Otherwise → `PASSED`.
 
 ### Finalize PR
 1. **Record Follow-ups**:
    - Skip when `REVIEW_STATUS=PENDING_REVIEW`.
-   - Append to `plans/follow-ups.md` per **Follow-ups** (conventions-core), skipping duplicates:
+   - Read `"{{BS_REVIEW_STATE}}" get "$WORKING_BRANCH"` and append to `plans/follow-ups.md` per **Follow-ups** (conventions-core), skipping duplicates:
      - every pass's unpromoted `### Out of Scope` items (not those moved to Medium, `### Unresolved`, or `### Missed`);
      - unfixed behavioural `### Low` items, plus **Plan design** findings, **Pre-existing** findings, and `### Missed` items the user chose to record;
-     - every item on the `Deferred by user:` line (**Deferred items**), including any the latest pass no longer lists;
+     - every `DEFERRED` line from `bs-review-state get` (**Deferred items**), including any the latest pass no longer lists;
      - confirmed `### Side Sightings` that were neither fixed nor refuted.
    - If the file changed: `git add -- plans/follow-ups.md`, **Safe commit** (conventions-writer) `"docs(<scope>): record review follow-ups"` on `$WORKING_BRANCH` (`--` `plans/follow-ups.md`), and `git push`.
 2. **Update PR Body**:
-   - With the host's file-write tool, write a report to a new temp file outside the repo (the host's scratch dir, else the literal path `mktemp` prints; never a fixed name, as runs can overlap). The report holds:
-     - **Findings**: `High`/`Medium`/`Low`/`Out of Scope`, any `### Unresolved`, `### Missed`, and `### Unconfirmed`, the fix commit hash or `None required`, `Gate changes kept: <file: what it stops checking>` or `None`, `Deferred by user: <item>` or `None`, and `Follow-ups: <N> recorded in plans/follow-ups.md` or `None`;
+   - With the host's file-write tool, write a report to a new temp file outside the repo (the host's scratch dir, else the literal path `mktemp` prints; never a fixed name, as runs can overlap). Using `PASSES`, `FIX_SHAS`, `KEPT_GATE`, and `DEFERRED` from `"{{BS_REVIEW_STATE}}" get "$WORKING_BRANCH"`, the report holds:
+     - **Findings**: `High`/`Medium`/`Low`/`Out of Scope`, any `### Unresolved`, `### Missed`, and `### Unconfirmed`, the fix commit hash(es) or `None required`, `Gate changes kept: <file: what it stops checking>` or `None`, `Deferred by user: <item>` or `None`, and `Follow-ups: <N> recorded in plans/follow-ups.md` or `None`;
      - a collapsed `<details>` block containing `### Verification Probes Run`.
-   - Run `"{{BS_REVIEW_STATE}}" set "$WORKING_BRANCH" <PASSED | BLOCKED_BY_DEFECTS> "<passes run>" <report.md>`. It replaces the **Draft PR** placeholder with the Gate line and the report, and prints the state it reads back.
+   - Run `"{{BS_REVIEW_STATE}}" set "$WORKING_BRANCH" <PASSED | BLOCKED_BY_DEFECTS> "<passes run>" <report.md>` (using `PASSES` from `get` as `<passes run>`). It replaces the **Draft PR** placeholder with the Gate line and the report, preserves the state block, and prints the state it reads back.
    - Remove the temp file.
 3. **CI Gate**:
    - `BLOCKED_BY_DEFECTS` → leave the PR in **Draft**, alert the user, and return the PR URL + `REVIEW_STATUS`.
-   - `PASSED` → wait until **Record Follow-ups** (including its push) and **Update PR Body** have finished so CI watches the PR's last commit, then run `"{{BS_REVIEW_STATE}}" ci "$WORKING_BRANCH" "<passes run>"`:
+   - `PASSED` → wait until **Record Follow-ups** (including its push) and **Update PR Body** have finished so CI watches the PR's last commit, then run `"{{BS_REVIEW_STATE}}" ci "$WORKING_BRANCH" "<passes run>"` (using `PASSES`):
      - It waits for CI, rewrites the Gate line from the result, and marks the PR ready when it stays `PASSED`. A failing check or merge conflict makes it `BLOCKED_BY_CI` and keeps the PR in **Draft**.
      - Take `REVIEW_STATUS` from its first output line (`<REVIEW_STATUS> <ci-result>`).
      - Do its second output line (`next: <action>`), e.g. tell the user when CI was skipped or alert them when blocked.

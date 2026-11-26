@@ -19,6 +19,7 @@ PR_CI="$REPO_DIR/workflows/shared/scripts/bs-pr-ci"
 RESOLVE_ROLE="$REPO_DIR/workflows/shared/scripts/bs-resolve-role"
 VERIFY_COMMITS="$REPO_DIR/workflows/shared/scripts/bs-verify-commits"
 GATE_RUN="$REPO_DIR/workflows/shared/scripts/bs-gate-run"
+CHECK_REVIEW="$REPO_DIR/workflows/shared/scripts/bs-check-review"
 SANDBOX="$(mktemp -d "${TMPDIR:-/tmp}/bootstrap-scripts.XXXXXX")"
 trap 'rm -rf "$SANDBOX"' EXIT
 
@@ -713,6 +714,95 @@ expect_eq "set: placeholder under another heading gets its own Review Status hea
 check "set: new heading follows the other heading" \
   sh -c 'sed -n "/^## Checklist/,\$p" "$1" | grep -qx "## Review Status"' _ "$FAKE_GH/pr-edit.body"
 
+echo "== bs-review-state record & get"
+pr_record OPEN true 0 "## Summary\nDid things.\n\n## Review Status: $PH"
+review_state get feat/x
+expect_code "get without state block: exit 0" 0
+expect_eq "get without state block: defaults" "$OUT" \
+  "$(printf 'FIX_USED=false\nFIX_SHAS=none\nPASSES=none\nDEFERRED none\nKEPT_GATE none')"
+
+review_state record feat/x --pass "Pass 1" --defer 'Bug A: `x --> y` fails' --keep-gate "eslint.config.js: no-console"
+expect_code "record Pass 1 decisions: exit 0" 0
+expect_eq "record Pass 1: FIX_USED stays false" "$(printf '%s\n' "$OUT" | sed -n 's/^FIX_USED=//p')" "false"
+expect_eq "record Pass 1: PASSES" "$(printf '%s\n' "$OUT" | sed -n 's/^PASSES=//p')" "Pass 1"
+expect_eq "record Pass 1: DEFERRED preserves -->" "$(printf '%s\n' "$OUT" | sed -n 's/^DEFERRED //p')" 'Bug A: `x --> y` fails'
+expect_eq "record Pass 1: KEPT_GATE" "$(printf '%s\n' "$OUT" | sed -n 's/^KEPT_GATE //p')" "eslint.config.js: no-console"
+check "record Pass 1: raw --> escaped inside HTML comment" check_not grep -qF 'x --> y' "$FAKE_GH/pr-edit.body"
+review_state feat/x
+expect_eq "state after Pass 1 record (no fix yet): still in-review" "$OUT" "in-review feat/base"
+
+# Recording --fix-sha marks fix-used even when commits do not end in ": address review feedback".
+review_state record feat/x --fix-sha abc1234 --pass "Fix" --defer 'Bug A: `x --> y` fails' --defer "Bug B: second"
+expect_code "record Fix Turn: exit 0" 0
+expect_eq "record Fix Turn: FIX_USED true" "$(printf '%s\n' "$OUT" | sed -n 's/^FIX_USED=//p')" "true"
+expect_eq "record Fix Turn: FIX_SHAS" "$(printf '%s\n' "$OUT" | sed -n 's/^FIX_SHAS=//p')" "abc1234"
+expect_eq "record Fix Turn: PASSES accumulated" "$(printf '%s\n' "$OUT" | sed -n 's/^PASSES=//p')" "Pass 1, Fix"
+expect_eq "record Fix Turn: DEFERRED deduped and accumulated" "$(printf '%s\n' "$OUT" | sed -n 's/^DEFERRED //p')" \
+  "$(printf 'Bug A: `x --> y` fails\nBug B: second')"
+expect_eq "record Fix Turn: KEPT_GATE preserved" "$(printf '%s\n' "$OUT" | sed -n 's/^KEPT_GATE //p')" "eslint.config.js: no-console"
+review_state feat/x
+expect_eq "recorded fix_used detects fix-used without fix commit subject" "$OUT" "fix-used feat/base"
+
+# `set` replaces the placeholder and keeps the trailing state block intact.
+review_state set feat/x PASSED "Pass 1, Fix, Pass 2" "$SANDBOX/report.md"
+expect_code "set with state block present: exit 0" 0
+expect_eq "set with state block present: reads back PASSED" "$OUT" "gated:PASSED feat/base"
+review_state get feat/x
+expect_code "get after set: exit 0" 0
+expect_eq "get after set: FIX_SHAS preserved" "$(printf '%s\n' "$OUT" | sed -n 's/^FIX_SHAS=//p')" "abc1234"
+expect_eq "get after set: DEFERRED preserved" "$(printf '%s\n' "$OUT" | sed -n 's/^DEFERRED //p')" \
+  "$(printf 'Bug A: `x --> y` fails\nBug B: second')"
+
+# Subsequent `record` (e.g. User-granted Fix Turn) preserves the Gate line and report.
+review_state record feat/x --fix-sha def5678 --pass "Fix 2" --pass "Pass 3"
+expect_code "record after set: exit 0" 0
+expect_eq "record after set: FIX_SHAS accumulated" "$(printf '%s\n' "$OUT" | sed -n 's/^FIX_SHAS=//p')" "abc1234,def5678"
+check "record after set: Gate line preserved" grep -qxF '**Gate:** PASSED (Pass 1, Fix, Pass 2)' "$FAKE_GH/pr-edit.body"
+check "record after set: report preserved" grep -qxF '<details>probes</details>' "$FAKE_GH/pr-edit.body"
+check "record after set: body ends with a single trailing newline" \
+  python3 -c 'import sys; b = open(sys.argv[1], "rb").read(); sys.exit(0 if b.endswith(b"\n") and not b.endswith(b"\n\n") else 1)' "$FAKE_GH/pr-edit.body"
+
+# Corrupted state block (bad JSON, unclosed, single-line, non-bool fix_used) fails loudly (exit 4).
+pr_record OPEN true 0 "$(printf '## Review Status: %s\n\n<!-- bs-review-state:v1\n{not-json\n-->\n' "$PH")"
+review_state feat/x
+expect_code "corrupted state block on read: exit 4" 4
+expect_next "corrupted state block on read: next stops" "stop and report"
+review_state get feat/x
+expect_code "corrupted state block on get: exit 4" 4
+review_state record feat/x --fix-used
+expect_code "corrupted state block on record: exit 4" 4
+
+pr_record OPEN true 0 "$(printf '## Review Status: %s\n\n<!-- bs-review-state:v1\n{"fix_used":true}\n' "$PH")"
+review_state feat/x
+expect_code "unclosed state block on read: exit 4" 4
+review_state get feat/x
+expect_code "unclosed state block on get: exit 4" 4
+review_state record feat/x --fix-used
+expect_code "unclosed state block on record: exit 4" 4
+
+pr_record OPEN true 0 "$(printf '## Review Status: %s\n\n<!-- bs-review-state:v1 {"fix_used":true} -->\n' "$PH")"
+review_state get feat/x
+expect_code "single-line malformed state block on get: exit 4" 4
+
+pr_record OPEN true 0 "$(printf '## Review Status: %s\n\n<!-- bs-review-state:v1\n{"fix_used":"false"}\n-->\n' "$PH")"
+review_state feat/x
+expect_code "non-bool fix_used on read: exit 4" 4
+review_state get feat/x
+expect_code "non-bool fix_used on get: exit 4" 4
+review_state record feat/x --pass "Pass 1"
+expect_code "non-bool fix_used on record: exit 4" 4
+
+# Usage errors on record & get.
+pr_record OPEN true 0 "## Review Status: $PH"
+review_state record feat/x
+expect_code "record with no flags: usage exit 2" 2
+review_state record feat/x --bogus
+expect_code "record with unknown flag: usage exit 2" 2
+review_state record feat/x --defer ""
+expect_code "record with empty value: usage exit 2" 2
+review_state get
+expect_code "get without branch: usage exit 2" 2
+
 echo "== bs-plan-branch"
 # Origin with main, a release branch, and committed plans; the clone is what the script runs in.
 origin="$SANDBOX/plan-origin.git"
@@ -1369,6 +1459,235 @@ expect_next "gate-run no args: next fixes call" "fix the call"
 
 run_in "$g_repo" env TMPDIR="$g_tmp" "$GATE_RUN" -c ""
 expect_code "gate-run empty -c: usage exit 2" 2
+
+echo "== bs-check-review"
+cr_repo="$(new_repo)"
+git -C "$cr_repo" branch -q -M main
+mkdir -p "$cr_repo/src"
+printf 'func a() {}\n' > "$cr_repo/src/parser.go"
+printf 'func b() {}\n' > "$cr_repo/src/other.go"
+git -C "$cr_repo" add src
+git -C "$cr_repo" commit -q -m "add src"
+git -C "$cr_repo" update-ref refs/remotes/origin/main HEAD
+git -C "$cr_repo" checkout -q -b feat/check-rev
+printf 'func a() { return }\n' > "$cr_repo/src/parser.go"
+git -C "$cr_repo" add src/parser.go
+git -C "$cr_repo" commit -q -m "feat: update parser"
+cr_fix_base="$(git -C "$cr_repo" rev-parse HEAD)"
+printf 'func a() { return 1 }\n' > "$cr_repo/src/parser.go"
+git -C "$cr_repo" add src/parser.go
+git -C "$cr_repo" commit -q -m "fix: address review feedback"
+cr_fix_sha="$(git -C "$cr_repo" rev-parse --short HEAD)"
+cr_dir="$SANDBOX/check-review"
+mkdir -p "$cr_dir"
+
+cat > "$cr_dir/p1-clean.md" <<'EOF'
+### High
+- None
+
+### Medium
+None.
+
+### Low
+- Rename helper `x` for clarity.
+
+### Out of Scope
+- `src/other.go:b`: panics on empty input. Repro: `b("")` -> panic, want err.
+
+### Verification Probes Run
+- `go test ./...` -> ok
+
+LGTM
+EOF
+run_in "$cr_repo" "$CHECK_REVIEW" --pass 1 --base origin/main "$cr_dir/p1-clean.md"
+expect_code "check-review p1 clean: exit 0" 0
+expect_eq "check-review p1 clean: SUMMARY clean" "$(rfield SUMMARY)" "clean"
+expect_eq "check-review p1 clean: LGTM true" "$(rfield LGTM)" "true"
+expect_eq "check-review p1 clean: HIGH 0" "$(rfield HIGH)" "0"
+expect_eq "check-review p1 clean: LOW 1" "$(rfield LOW)" "1"
+expect_eq "check-review p1 clean: OUT_OF_SCOPE 1" "$(rfield OUT_OF_SCOPE)" "1"
+expect_eq "check-review p1 clean: SUSPECT_OWNED_COUNT 0" "$(rfield SUSPECT_OWNED_COUNT)" "0"
+
+cat > "$cr_dir/p1-triage.md" <<'EOF'
+### High
+- Crash on nil input (plan design: "allow nil").
+
+### Medium
+- Old bug on empty slice (pre-existing).
+- Relaxed lint rule (gate change: biome.json: disables noUnused).
+
+### Low
+- `src/parser.go`: drops trailing space on multiline input.
+
+### Out of Scope
+- `parser.go:a` mishandles escaped quotes. Repro: `a("\"")` -> err, want ok.
+
+### Verification Probes Run
+- probe 1 -> reproduced
+EOF
+run_in "$cr_repo" "$CHECK_REVIEW" --pass 1 --base origin/main "$cr_dir/p1-triage.md"
+expect_code "check-review p1 triage: exit 0" 0
+expect_eq "check-review p1 triage: SUMMARY needs-triage" "$(rfield SUMMARY)" "needs-triage"
+expect_eq "check-review p1 triage: HIGH 1" "$(rfield HIGH)" "1"
+expect_eq "check-review p1 triage: MEDIUM 2" "$(rfield MEDIUM)" "2"
+expect_eq "check-review p1 triage: DECISION_COUNT 3" "$(rfield DECISION_COUNT)" "3"
+expect_eq "check-review p1 triage: SUSPECT_OWNED_COUNT 2" "$(rfield SUSPECT_OWNED_COUNT)" "2"
+check "check-review p1 triage: flags plan-design" sh -c 'printf "%s\n" "$1" | grep -q "^DECISION plan-design:"' _ "$OUT"
+check "check-review p1 triage: flags pre-existing" sh -c 'printf "%s\n" "$1" | grep -q "^DECISION pre-existing:"' _ "$OUT"
+check "check-review p1 triage: flags gate-change" sh -c 'printf "%s\n" "$1" | grep -q "^DECISION gate-change:"' _ "$OUT"
+check "check-review p1 triage: flags Low touching src/parser.go" \
+  sh -c 'printf "%s\n" "$1" | grep -q "^SUSPECT_OWNED Low:.*touches src/parser.go"' _ "$OUT"
+check "check-review p1 triage: flags Out of Scope touching parser.go:a" \
+  sh -c 'printf "%s\n" "$1" | grep -q "^SUSPECT_OWNED Out of Scope:.*touches src/parser.go"' _ "$OUT"
+
+cat > "$cr_dir/p1-missing.md" <<'EOF'
+### High
+- None
+
+### Medium
+- None
+EOF
+run_in "$cr_repo" "$CHECK_REVIEW" --pass 1 --base origin/main "$cr_dir/p1-missing.md"
+expect_code "check-review missing sections: exit 4" 4
+expect_next "check-review missing sections: next reads child thread" "t3_thread_read"
+
+cat > "$cr_dir/p2-blocked.md" <<'EOF'
+### Resolved
+- Crash fixed.
+
+### Unresolved
+- Partial fix on nested input.
+
+### Verification Probes Run
+- probe -> failed
+
+LGTM
+EOF
+run_in "$cr_repo" "$CHECK_REVIEW" --pass 2 --base origin/main --fix-shas "$cr_fix_sha" "$cr_dir/p2-blocked.md"
+expect_code "check-review p2 blocked: exit 0" 0
+expect_eq "check-review p2 blocked: SUMMARY blocked despite trailing LGTM" "$(rfield SUMMARY)" "blocked"
+expect_eq "check-review p2 blocked: UNRESOLVED 1" "$(rfield UNRESOLVED)" "1"
+
+cat > "$cr_dir/p2-missed.md" <<'EOF'
+### Resolved
+- Crash fixed.
+
+### Unresolved
+- None
+
+### Missed
+- Empty map panics (pre-existing).
+
+### Verification Probes Run
+- probe -> ok
+
+LGTM
+EOF
+run_in "$cr_repo" "$CHECK_REVIEW" --pass 2 --base origin/main --fix-shas none "$cr_dir/p2-missed.md"
+expect_code "check-review p2 missed: exit 0" 0
+expect_eq "check-review p2 missed: SUMMARY missed" "$(rfield SUMMARY)" "missed"
+expect_eq "check-review p2 missed: MISSED 1" "$(rfield MISSED)" "1"
+expect_eq "check-review p2 missed: DECISION_COUNT 1" "$(rfield DECISION_COUNT)" "1"
+
+# Formatted None, horizontal rules, case-insensitive headings, 2-space bullets, and backticked basenames.
+cat > "$cr_dir/p1-fmt.md" <<'EOF'
+### High
+*None*
+
+---
+
+### Medium:
+- **None.**
+
+### Low
+  - Rename helper `x` for clarity.
+    Not a behavioural issue.
+
+### Out of scope
+None found.
+
+### Verification probes run
+- `go test ./...` -> ok
+
+**LGTM**
+EOF
+run_in "$cr_repo" "$CHECK_REVIEW" --pass 1 --base origin/main "$cr_dir/p1-fmt.md"
+expect_code "check-review p1 formatting edge cases: exit 0" 0
+expect_eq "check-review p1 formatting edge cases: SUMMARY clean" "$(rfield SUMMARY)" "clean"
+expect_eq "check-review p1 formatting edge cases: LGTM true" "$(rfield LGTM)" "true"
+expect_eq "check-review p1 formatting edge cases: HIGH 0" "$(rfield HIGH)" "0"
+expect_eq "check-review p1 formatting edge cases: MEDIUM 0" "$(rfield MEDIUM)" "0"
+expect_eq "check-review p1 formatting edge cases: LOW 1 (2-space bullet merged)" "$(rfield LOW)" "1"
+expect_eq "check-review p1 formatting edge cases: OUT_OF_SCOPE 0" "$(rfield OUT_OF_SCOPE)" "0"
+
+cat > "$cr_dir/p1-backtick-base.md" <<'EOF'
+### High
+None
+
+### Medium
+None
+
+### Low
+- `parser.go`: drops trailing space.
+
+### Out of Scope
+None
+
+### Verification Probes Run
+- ok
+EOF
+run_in "$cr_repo" "$CHECK_REVIEW" --pass 1 --base origin/main "$cr_dir/p1-backtick-base.md"
+expect_eq "check-review backticked basename: flags SUSPECT_OWNED" "$(rfield SUSPECT_OWNED_COUNT)" "1"
+
+# Pass 3+ scopes SUSPECT_OWNED to --fix-shas (does not re-flag files only touched in earlier commits).
+printf 'func b() { return 2 }\n' > "$cr_repo/src/other.go"
+git -C "$cr_repo" add src/other.go
+git -C "$cr_repo" commit -q -m "fix: second fix turn"
+cr_fix2_sha="$(git -C "$cr_repo" rev-parse --short HEAD)"
+cat > "$cr_dir/p3-scope.md" <<'EOF'
+### Resolved
+- Fixed.
+
+### Unresolved
+- *None*
+
+### Out of Scope
+- `src/parser.go:a`: old edge case outside fix2. Repro: `a()` -> x, want y.
+
+### Verification Probes Run
+- ok
+
+LGTM
+EOF
+run_in "$cr_repo" "$CHECK_REVIEW" --pass 3 --base origin/main --fix-shas "$cr_fix2_sha" "$cr_dir/p3-scope.md"
+expect_code "check-review p3 scoped to fix2: exit 0" 0
+expect_eq "check-review p3 ignores earlier-diff file" "$(rfield SUSPECT_OWNED_COUNT)" "0"
+expect_eq "check-review p3 clean" "$(rfield SUMMARY)" "clean"
+
+cat > "$cr_dir/p3-hit.md" <<'EOF'
+### Resolved
+- Fixed.
+
+### Unresolved
+- None
+
+### Out of Scope
+- `src/other.go:b`: regression in fix2 file. Repro: `b()` -> 2, want 1.
+
+### Verification Probes Run
+- ok
+
+LGTM
+EOF
+run_in "$cr_repo" "$CHECK_REVIEW" --pass 3 --base origin/main --fix-shas "$cr_fix2_sha" "$cr_dir/p3-hit.md"
+expect_eq "check-review p3 flags fix2 file" "$(rfield SUSPECT_OWNED_COUNT)" "1"
+expect_eq "check-review p3 needs-triage" "$(rfield SUMMARY)" "needs-triage"
+
+# Usage / bad ref errors
+run_in "$cr_repo" "$CHECK_REVIEW" --pass 1 --base no-such-ref "$cr_dir/p1-clean.md"
+expect_code "check-review unknown base: exit 2" 2
+run_in "$cr_repo" "$CHECK_REVIEW" --pass 2 --base "$cr_fix_base" --fix-shas badsha "$cr_dir/p2-missed.md"
+expect_code "check-review unknown fix sha: exit 2" 2
 
 echo "== bs-verify-commits"
 v_repo="$(new_repo)"

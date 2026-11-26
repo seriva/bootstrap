@@ -1,26 +1,35 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Review-run state of a branch's PR for the bs-* skills, from one `gh pr view` call, and the
-# writer of the Gate line /bs-loop records (`set`, `ci`), so reader and writer share these markers.
-# Never writes the working tree.
+# Review-run state of a branch's PR for the bs-* skills, from one `gh pr view` call, plus the
+# writers of the Gate line (`set`, `ci`) and persistent triage/fix metadata (`record`, `get`)
+# stored in an HTML comment block in the PR body. Never writes the working tree.
 PLACEHOLDER='*Automated AI review & fix cycle in progress...*'
 FIX_SUBJECT_SUFFIX=': address review feedback'
 GATE_MARKER='**Gate:**'
+STATE_START='<!-- bs-review-state:v1'
+STATE_END='-->'
 
 usage() {
   cat >&2 <<'EOF'
 Usage: bs-review-state <branch>
+       bs-review-state get <branch>
+       bs-review-state record <branch> [--fix-used] [--fix-sha <sha>]... [--pass <label>]... [--defer <item>]... [--keep-gate <item>]...
        bs-review-state set <branch> <GATE> <detail> [<report-file>]
        bs-review-state ci <branch> <passes-run>
 Prints "<state> <base-branch>", or "none" when the branch has no PR. <state> is the first match:
   merged | closed        the PR is merged or closed (gh may return one for a reused branch name)
   ready                  open and not a draft
-  in-review | fix-used   draft whose Review Status is still the placeholder; fix-used once a
-                         commit subject ends in ": address review feedback" (the one Fix Turn)
+  in-review | fix-used   draft whose Review Status is still the placeholder; fix-used once recorded
+                         via `record --fix-used`/`--fix-sha` or a commit subject ends in
+                         ": address review feedback" (the one Fix Turn)
   gated:<GATE>           draft whose first Gate line starts with PASSED, BLOCKED_BY_DEFECTS,
                          or BLOCKED_BY_CI (later Gate lines, e.g. quoted in the report, are ignored)
   draft                  any other draft
+get reads the persistent triage/fix state block from the PR body (defaults if absent) and prints:
+  FIX_USED=true|false, FIX_SHAS=<csv|none>, PASSES=<list|none>, DEFERRED <item|none>, KEPT_GATE <item|none>.
+record merges the given flags into that HTML comment block in the PR body (preserving prior entries
+  and all visible PR text; --fix-sha implies --fix-used) and prints the updated state like `get`.
 set writes "**Gate:** <GATE> (<detail>)", GATE one of PASSED, BLOCKED_BY_DEFECTS, BLOCKED_BY_CI:
   while the body has the placeholder, the line holding it becomes "## Review Status", the
   Gate line, and <report-file>'s contents (required then; e.g. Findings and probe details);
@@ -30,7 +39,7 @@ ci waits for the PR's CI (bs-pr-ci), rewrites the Gate line from the result, mar
     pass, skipped, none-configured   PASSED (skipped: CI did not test this PR)
     fail <checks>, conflict          BLOCKED_BY_CI (the PR stays a draft)
     gh failure while waiting         BLOCKED_BY_CI error
-Exit: 0 ok, 2 usage, 3 gh failed, 4 (set, ci) PR body has neither the placeholder nor a Gate line.
+Exit: 0 ok, 2 usage, 3 gh failed, 4 malformed PR body (missing placeholder/Gate line or corrupted state block).
 On a non-zero exit, the last stderr line is "next: <action>" for the caller.
 EOF
   exit 2
@@ -40,15 +49,16 @@ next_on_failure() {
   case "$1" in
     2) echo "fix the call as the error or usage above says, then retry" ;;
     3) echo "gh failed (error above): retry once; if it fails again, stop and report the error" ;;
-    4) echo "stop and report: the PR body has neither the review placeholder nor a Gate line" ;;
+    4) echo "stop and report: the PR body is missing its review marker or has a corrupted bs-review-state block" ;;
   esac
 }
 
 err="$(mktemp "${TMPDIR:-/tmp}/bs-review-state.XXXXXX")"
+body_in="$(mktemp "${TMPDIR:-/tmp}/bs-review-state.in.XXXXXX")"
 body_file="$(mktemp "${TMPDIR:-/tmp}/bs-review-state.body.XXXXXX")"
 on_exit() {
   local rc=$? n
-  rm -f "$err" "$body_file"
+  rm -f "$err" "$body_in" "$body_file"
   if [ "$rc" -ne 0 ]; then
     n="$(next_on_failure "$rc")"
     [ -z "$n" ] || echo "next: $n" >&2
@@ -56,9 +66,149 @@ on_exit() {
 }
 trap on_exit EXIT
 
+# state_helper <mode:fix-used|get|record> [args...]: reads PR body from $body_in.
+# On mode=record, writes updated PR body to $body_file and prints formatted state on stdout.
+state_helper() {
+  STATE_START="$STATE_START" STATE_END="$STATE_END" BODY_IN="$body_in" BODY_OUT="$body_file" \
+    python3 - "$@" <<'PY'
+import json
+import os
+import re
+import sys
+
+start_marker = os.environ["STATE_START"]
+end_marker = os.environ["STATE_END"]
+body_out = os.environ["BODY_OUT"]
+mode = sys.argv[1]
+args = sys.argv[2:]
+with open(os.environ["BODY_IN"], "r", encoding="utf-8") as f:
+    body = f.read()
+
+pattern = re.compile(
+    re.escape(start_marker) + r"\r?\n(.*?)\r?\n" + re.escape(end_marker),
+    re.DOTALL,
+)
+matches = list(pattern.finditer(body))
+
+def default_state():
+    return {
+        "fix_used": False,
+        "fix_shas": [],
+        "passes": [],
+        "deferred": [],
+        "gate_changes_kept": [],
+    }
+
+def load_state():
+    if not matches:
+        if start_marker in body:
+            sys.stderr.write("bs-review-state: corrupted or unclosed state block in PR body\n")
+            sys.exit(4)
+        return default_state(), None
+    m = matches[-1]
+    raw = m.group(1).strip()
+    try:
+        data = json.loads(raw)
+        if not isinstance(data, dict):
+            raise ValueError("state must be a JSON object")
+    except Exception as exc:
+        sys.stderr.write(f"bs-review-state: corrupted state block in PR body: {exc}\n")
+        sys.exit(4)
+    st = default_state()
+    fix_used = data.get("fix_used", False)
+    if not isinstance(fix_used, bool):
+        sys.stderr.write("bs-review-state: corrupted 'fix_used' field in state block\n")
+        sys.exit(4)
+    st["fix_used"] = fix_used
+    for key in ("fix_shas", "passes", "deferred", "gate_changes_kept"):
+        val = data.get(key, [])
+        if not isinstance(val, list) or not all(isinstance(x, str) for x in val):
+            sys.stderr.write(f"bs-review-state: corrupted '{key}' field in state block\n")
+            sys.exit(4)
+        st[key] = list(val)
+    return st, m
+
+def clean_line(text):
+    return re.sub(r"[\r\n]+", " ", text).strip()
+
+def append_unique(lst, item):
+    item = clean_line(item)
+    if item and item not in lst:
+        lst.append(item)
+
+def print_state(st):
+    print(f"FIX_USED={'true' if st['fix_used'] else 'false'}")
+    print(f"FIX_SHAS={','.join(st['fix_shas']) if st['fix_shas'] else 'none'}")
+    print(f"PASSES={', '.join(st['passes']) if st['passes'] else 'none'}")
+    if st["deferred"]:
+        for item in st["deferred"]:
+            print(f"DEFERRED {item}")
+    else:
+        print("DEFERRED none")
+    if st["gate_changes_kept"]:
+        for item in st["gate_changes_kept"]:
+            print(f"KEPT_GATE {item}")
+    else:
+        print("KEPT_GATE none")
+
+st, match = load_state()
+
+if mode == "fix-used":
+    print("true" if st["fix_used"] else "false")
+elif mode == "get":
+    print_state(st)
+elif mode == "record":
+    i = 0
+    changed = False
+    while i < len(args):
+        flag = args[i]
+        if flag == "--fix-used":
+            st["fix_used"] = True
+            changed = True
+            i += 1
+        elif flag in ("--fix-sha", "--pass", "--defer", "--keep-gate"):
+            if i + 1 >= len(args) or not args[i + 1].strip():
+                sys.stderr.write(f"bs-review-state: {flag} requires a non-empty value\n")
+                sys.exit(2)
+            val = args[i + 1]
+            if flag == "--fix-sha":
+                st["fix_used"] = True
+                append_unique(st["fix_shas"], val)
+            elif flag == "--pass":
+                append_unique(st["passes"], val)
+            elif flag == "--defer":
+                append_unique(st["deferred"], val)
+            elif flag == "--keep-gate":
+                append_unique(st["gate_changes_kept"], val)
+            changed = True
+            i += 2
+        else:
+            sys.stderr.write(f"bs-review-state: unknown record option: {flag}\n")
+            sys.exit(2)
+    if not changed:
+        sys.stderr.write("bs-review-state: record requires at least one option\n")
+        sys.exit(2)
+    # Escape '-->' inside JSON strings so a repro containing '-->' cannot close the HTML comment.
+    payload = json.dumps(st, separators=(",", ":"), ensure_ascii=False).replace("-->", "--\\u003e")
+    block = f"{start_marker}\n{payload}\n{end_marker}"
+    if match is not None:
+        new_body = body[:match.start()] + block + body[match.end():]
+        if not new_body.endswith("\n"):
+            new_body += "\n"
+    else:
+        trimmed = body.rstrip("\r\n")
+        new_body = f"{trimmed}\n\n{block}\n" if trimmed else f"{block}\n"
+    with open(body_out, "w", encoding="utf-8") as f:
+        f.write(new_body)
+    print_state(st)
+else:
+    sys.exit(2)
+PY
+}
+
 # read_state <branch>: print "<state> <base-branch>", or "none".
 read_state() {
-  local record state draft base fixes body gate s
+  local record state draft base fixes body gate s recorded_fix
   # First line: state, isDraft, baseRefName, number of fix commits (tab-separated); then the body.
   local jq_record="\"\(.state)\t\(.isDraft)\t\(.baseRefName)\t\([.commits[].messageHeadline | select(endswith(\"$FIX_SUBJECT_SUFFIX\"))] | length)\n\(.body)\""
   if ! record="$(gh pr view "$1" --json state,isDraft,baseRefName,body,commits --jq "$jq_record" 2>"$err")"; then
@@ -77,11 +227,22 @@ EOF
   elif [ "$state" = CLOSED ]; then s=closed
   elif [ "$draft" != true ]; then s=ready
   elif printf '%s\n' "$body" | grep -qF -- "$PLACEHOLDER"; then
-    if [ "${fixes:-0}" -gt 0 ]; then s=fix-used; else s=in-review; fi
+    printf '%s' "$body" > "$body_in"
+    recorded_fix="$(state_helper fix-used)"
+    if [ "$recorded_fix" = true ] || [ "${fixes:-0}" -gt 0 ]; then s=fix-used; else s=in-review; fi
   else
     case "$gate" in PASSED | BLOCKED_BY_DEFECTS | BLOCKED_BY_CI) s="gated:$gate" ;; *) s=draft ;; esac
   fi
   echo "$s $base"
+}
+
+fetch_body() {
+  local body
+  if ! body="$(gh pr view "$1" --json body --jq '"\(.body)"' 2>"$err")"; then
+    cat "$err" >&2
+    exit 3
+  fi
+  printf '%s' "$body"
 }
 
 # set_gate <branch> <GATE> <detail> [<report-file>]: write the Gate line into the PR body.
@@ -89,10 +250,7 @@ set_gate() {
   local branch="$1" gate="$2" detail="$3" report="${4:-}" body line
   case "$gate" in PASSED | BLOCKED_BY_DEFECTS | BLOCKED_BY_CI) ;; *) usage ;; esac
   [ -z "$report" ] || [ -f "$report" ] || { echo "bs-review-state: no such report file: $report" >&2; exit 2; }
-  if ! body="$(gh pr view "$branch" --json body --jq '"\(.body)"' 2>"$err")"; then
-    cat "$err" >&2
-    exit 3
-  fi
+  body="$(fetch_body "$branch")"
   line="$GATE_MARKER $gate ($detail)"
   if printf '%s\n' "$body" | grep -qF -- "$PLACEHOLDER"; then
     [ -n "$report" ] || { echo "bs-review-state: set needs a <report-file> to replace the placeholder" >&2; exit 2; }
@@ -124,6 +282,23 @@ set_gate() {
 }
 
 case "${1:-}" in
+  get)
+    [ $# -eq 2 ] && [ -n "$2" ] || usage
+    fetch_body "$2" > "$body_in"
+    state_helper get
+    ;;
+  record)
+    [ $# -ge 3 ] && [ -n "$2" ] || usage
+    branch="$2"
+    shift 2
+    fetch_body "$branch" > "$body_in"
+    out="$(state_helper record "$@")"
+    if ! gh pr edit "$branch" --body-file "$body_file" >/dev/null 2>"$err"; then
+      cat "$err" >&2
+      exit 3
+    fi
+    printf '%s\n' "$out"
+    ;;
   set)
     [ $# -ge 4 ] && [ $# -le 5 ] && [ -n "$2" ] && [ -n "$4" ] || usage
     set_gate "$2" "$3" "$4" "${5:-}"

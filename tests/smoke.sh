@@ -222,6 +222,8 @@ for gate in PASSED BLOCKED_BY_DEFECTS BLOCKED_BY_CI; do
     sh -c 'grep -qF "$1" "$2" && grep -qF "$1" "$3"' _ "$gate" "$REPO_DIR/workflows/skills/bs-loop/SKILL.md" "$review_state_src"
 done
 check "bs-loop writes the Gate line through bs-review-state set" grep -qF 'bs-review-state" set ' "$home/.claude/skills/bs-loop/SKILL.md"
+check "bs-loop persists triage state through bs-review-state record" grep -qF 'bs-review-state" record ' "$home/.claude/skills/bs-loop/SKILL.md"
+check "bs-loop reads triage state through bs-review-state get" grep -qF 'bs-review-state" get ' "$home/.claude/skills/bs-loop/SKILL.md"
 # A stale local base (normal in a worktree) must not leak upstream commits into reviews or Verify.
 check "bs-loop branches from and reviews against origin/\$BASE_BRANCH" sh -c \
   'grep -qF "\"origin/\$BASE_BRANCH\"\`" "$1" && grep -qF "with target \`origin/\$BASE_BRANCH\`" "$1"' _ \
@@ -235,7 +237,8 @@ for pair in dispatch.md:bs-plan-state skills/bs-exec/SKILL.md:bs-plan-state skil
   recovery.md:bs-review-state skills/bs-review/SKILL.md:bs-diff-target dispatch.md:bs-pr-ci dispatch.md:bs-resolve-role \
   dispatch.md:bs-verify-commits skills/bs-probe/SKILL.md:bs-worktree role-reviewer.md:bs-worktree \
   role-verifier.md:bs-worktree role-defect-fixer.md:bs-worktree conventions-core.md:bs-worktree \
-  conventions-writer.md:bs-worktree conventions-writer.md:bs-gate-run conventions-writer.md:bs-commit; do
+  conventions-writer.md:bs-worktree conventions-writer.md:bs-gate-run conventions-writer.md:bs-commit \
+  skills/bs-loop/SKILL.md:bs-check-review recovery.md:bs-check-review; do
   doc="${pair%%:*}" script="${pair##*:}"
   case "$doc" in skills/*) path="$home/.claude/$doc" ;; *) path="$home/.local/share/bootstrap/$doc" ;; esac
   check "$doc calls $script" grep -qF "$home/.local/share/bootstrap/scripts/$script" "$path"

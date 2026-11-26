@@ -15,9 +15,10 @@ Run `"{{BS_PLAN_STATE}}" <plan-file>` on the plan branch. It prints one of:
 `"{{BS_REVIEW_STATE}}" <branch>` prints `<state> <base-branch>`, or `none` (no PR).
 - **In review**: `in-review` or `fix-used`.
   - A draft still showing the **Draft PR** (bs-loop) placeholder (a live, stopped, or `PENDING_REVIEW` run).
-  - `fix-used`: the one Fix Turn is spent.
+  - `fix-used`: the one Fix Turn is spent (recorded via `bs-review-state record`, or detected from a `: address review feedback` commit on legacy PRs).
 - **Gated**: `gated:<GATE>` (draft) or `ready`.
 - Any other state: nothing to resume.
+- **Triage state**: `"{{BS_REVIEW_STATE}}" record <branch> ...` persists passes, fix SHAs, `fix-used`, deferred items, and kept gate changes in a hidden PR-body block; `"{{BS_REVIEW_STATE}}" get <branch>` reads them back across passes and resumed sessions.
 
 **Resume** (in review only; never re-implement):
 - The tree must be clean (`git status --porcelain`).

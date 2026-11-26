@@ -223,7 +223,7 @@ bootstrap/
 │       ├── dispatch.md            Orchestrator states, T3 Code dispatch, verify, and CI rules
 │       ├── recovery.md            On-demand resume, user-granted fix turn, and docs-only fast path
 │       ├── role-*.md              Short briefs for each worker role (implementer, defect fixer, reviewer, fix verifier)
-│       ├── scripts/               Helpers the skills call to check the tree, commit safely, run/time gate commands, resolve T3 Code role routing/models, verify worker commits/gates, pick the diff to review, check out temporary worktrees, set up plan branches, write the PR review gate, and read plan, drift, PR, and CI state
+│       ├── scripts/               Helpers the skills call to check the tree, commit safely, run/time gate commands, check review replies, resolve T3 Code role routing/models, verify worker commits/gates, pick the diff to review, check out temporary worktrees, set up plan branches, write the PR review gate and triage state, and read plan, drift, PR, and CI state
 │       └── models.env             Default paired and fix-escalation model names, filled in at install (override in ${XDG_CONFIG_HOME:-~/.config}/bootstrap/models.env)
 ├── install.sh          Installs skills, shared docs, and helper scripts across detected AI tools
 ├── init.sh             Scaffolds a new project (--type continuous|versioned)

@@ -48,5 +48,5 @@ From your prompt: `REVIEW_WORKDIR`, `DIFF_TARGET`, `BASE`, `UNTRACKED_FILES` (or
    - **Test scope**: run the **Lint** command, the changed test files and those covering the changed code, and your probes. Delete `.probes/` before running lint.
 4. **Required Reply Format**:
    - Sections: `### High`, `### Medium`, `### Low`, `### Out of Scope`, and `### Verification Probes Run` (command + observed result).
-   - Every Out of Scope item includes a one-line repro (snippet or command, actual, expected). Every Low item is a non-behavioural nit (Must-not-break rule 4).
+   - Every `### Out of Scope` item names its untouched mechanism/file (`<path:symbol>`) plus a one-line repro (snippet or command, actual, expected). Every `### Low` item is a non-behavioural nit (Must-not-break rule 4).
    - High and Medium empty → end with the single token `LGTM`.

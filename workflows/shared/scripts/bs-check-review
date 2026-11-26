@@ -1,0 +1,266 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Mechanically check a Code Reviewer reply for /bs-loop: validate required sections, count findings,
+# extract (plan design: ...), (pre-existing), and (gate change: ...) user-decision tags, and flag
+# any Low or Out of Scope item that mentions a file touched by the diff (or fix commits).
+# Never modifies the working tree.
+
+usage() {
+  cat >&2 <<'EOF'
+Usage: bs-check-review --pass <N> --base <ref> [--fix-shas <csv|none>] <reply-file>
+  --pass <N>           Review pass number (1 = Pass 1 rubric; >=2 = Pass 2+ verifier rubric)
+  --base <ref>         Base ref diffed against (e.g. origin/main)
+  --fix-shas <csv>     Optional comma-separated fix commit SHAs (or "none") for Pass 2+
+  <reply-file>         Path to a file containing the reviewer's reply
+Prints KEY=value lines (PASS, LGTM, counts, DECISION_COUNT, SUSPECT_OWNED_COUNT, SUMMARY)
+followed by any "DECISION <kind>: <item>" and "SUSPECT_OWNED <section>: <item> (touches <files>)" lines.
+Exit: 0 ok, 2 usage/unknown ref/missing file, 4 required reply section(s) missing.
+On a non-zero exit, the last stderr line is "next: <action>" for the caller.
+EOF
+  exit 2
+}
+
+next_on_failure() {
+  case "$1" in
+    2) echo "fix the call (bs-check-review --pass <N> --base <ref> [--fix-shas <csv>] <reply-file>), then retry" ;;
+    4) echo "read the child thread with t3_thread_read; if required sections are still missing, re-dispatch once, then report PENDING_REVIEW" ;;
+  esac
+}
+on_exit() {
+  local rc=$? n
+  if [ "$rc" -ne 0 ]; then
+    n="$(next_on_failure "$rc")"
+    [ -z "$n" ] || echo "next: $n" >&2
+  fi
+}
+trap on_exit EXIT
+
+pass_num="" base="" fix_shas="" reply_file=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --pass) [ $# -ge 2 ] || usage; pass_num="$2"; shift 2 ;;
+    --base) [ $# -ge 2 ] || usage; base="$2"; shift 2 ;;
+    --fix-shas) [ $# -ge 2 ] || usage; fix_shas="$2"; shift 2 ;;
+    -h | --help) usage ;;
+    -*) usage ;;
+    *)
+      [ -z "$reply_file" ] || usage
+      reply_file="$1"
+      shift
+      ;;
+  esac
+done
+
+case "$pass_num" in '' | *[!0-9]* | 0) usage ;; esac
+[ -n "$base" ] && [ -n "$reply_file" ] || usage
+[ -f "$reply_file" ] || { echo "bs-check-review: reply file not found: $reply_file" >&2; exit 2; }
+
+git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "bs-check-review: not inside a git work tree" >&2; exit 2; }
+repo_root="$(git rev-parse --show-toplevel)"
+git -C "$repo_root" rev-parse -q --verify "${base}^{tree}" >/dev/null 2>&1 \
+  || { echo "bs-check-review: unknown base ref: $base" >&2; exit 2; }
+
+diff_files="$(git -C "$repo_root" diff --name-only "${base}...HEAD" 2>/dev/null \
+  || git -C "$repo_root" diff --name-only "$base" HEAD)"
+
+fix_files=""
+if [ -n "$fix_shas" ] && [ "$fix_shas" != none ]; then
+  IFS=',' read -ra _shas <<< "$fix_shas"
+  for sha in "${_shas[@]}"; do
+    sha="${sha//[[:space:]]/}"
+    [ -n "$sha" ] || continue
+    git -C "$repo_root" rev-parse -q --verify "${sha}^{commit}" >/dev/null 2>&1 \
+      || { echo "bs-check-review: unknown fix commit: $sha" >&2; exit 2; }
+    fix_files+="$(git -C "$repo_root" show --name-only --format= "$sha")"$'\n'
+  done
+fi
+
+PASS_NUM="$pass_num" REPLY_FILE="$reply_file" DIFF_FILES="$diff_files" FIX_FILES="$fix_files" \
+  python3 - <<'PY'
+import os
+import re
+import sys
+
+pass_num = int(os.environ["PASS_NUM"])
+with open(os.environ["REPLY_FILE"], "r", encoding="utf-8") as f:
+    text = f.read()
+
+diff_files = sorted({line.strip() for line in os.environ["DIFF_FILES"].splitlines() if line.strip()})
+fix_files = sorted({line.strip() for line in os.environ["FIX_FILES"].splitlines() if line.strip()})
+
+if pass_num == 1:
+    required = ["High", "Medium", "Low", "Out of Scope", "Verification Probes Run"]
+else:
+    required = ["Resolved", "Unresolved", "Verification Probes Run"]
+
+# Parse `### <Heading>` sections outside fenced code blocks (case-insensitive, optional trailing ':').
+sections = {}
+current = None
+in_fence = False
+for raw_line in text.splitlines():
+    stripped = raw_line.strip()
+    if stripped.startswith("```"):
+        in_fence = not in_fence
+        if current is not None:
+            sections[current].append(raw_line)
+        continue
+    if not in_fence:
+        m = re.match(r"^###\s+(.+?)\s*$", raw_line)
+        if m:
+            current = m.group(1).strip().rstrip(":").lower()
+            sections.setdefault(current, [])
+            continue
+    if current is not None:
+        sections[current].append(raw_line)
+
+missing = [h for h in required if h.lower() not in sections]
+if missing:
+    sys.stderr.write(f"bs-check-review: missing required section(s): {', '.join(missing)}\n")
+    sys.exit(4)
+
+HR_RE = re.compile(r"^(?:[-*_]\s*){3,}$")
+NONE_RE = re.compile(
+    r"^(?:none(?:\s+found)?|n/?a|nothing(?:\s+(?:unresolved|missed|found|to\s+report))?|no\s+(?:findings|items|issues|unresolved|missed|low|high|medium|out[- ]of[- ]scope)(?:\s+(?:items|findings|issues))?|\(none\)|—|-)\.?$",
+    re.IGNORECASE,
+)
+
+def strip_md_wrappers(text):
+    return re.sub(r"^[*_`]+|[*_`]+$", "", text.strip()).strip()
+
+def is_none(text):
+    cleaned = strip_md_wrappers(text)
+    return not cleaned or bool(NONE_RE.match(cleaned))
+
+def parse_items(name):
+    lines = sections.get(name.lower(), [])
+    items = []
+    cur = None
+    base_indent = None
+    in_code = False
+    for raw in lines:
+        s = raw.strip()
+        if s.startswith("```"):
+            in_code = not in_code
+            if cur is not None:
+                cur += " " + s
+            continue
+        if in_code:
+            if cur is not None:
+                cur += " " + s
+            continue
+        if not s or HR_RE.match(s):
+            if cur is not None:
+                items.append(cur.strip())
+                cur = None
+            continue
+        # Stop before a trailing standalone LGTM line inside the last section.
+        if strip_md_wrappers(s) == "LGTM":
+            if cur is not None:
+                items.append(cur.strip())
+                cur = None
+            continue
+        indent = len(raw) - len(raw.lstrip())
+        m = re.match(r"^(?:[-*+]|\d+[.)])\s+(.*)$", raw.lstrip())
+        if m and (base_indent is None or indent <= base_indent + 1):
+            if base_indent is None:
+                base_indent = indent
+            if cur is not None:
+                items.append(cur.strip())
+            cur = m.group(1).strip()
+        elif cur is not None:
+            cur += " " + s
+        else:
+            # Plain single-line entry without a bullet marker.
+            if not is_none(s):
+                items.append(s)
+    if cur is not None:
+        items.append(cur.strip())
+    return [it for it in items if it and not is_none(it)]
+
+non_empty_lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+lgtm = bool(non_empty_lines and strip_md_wrappers(non_empty_lines[-1]) == "LGTM")
+
+def matched_files(item, candidates):
+    hits = []
+    for path in candidates:
+        # Match full repo-relative path bounded by non-path chars, or basename followed by ':' (or '`:')
+        full_pat = r"(?<![A-Za-z0-9_./-])" + re.escape(path) + r"(?![A-Za-z0-9_./-])"
+        base = os.path.basename(path)
+        base_pat = r"(?<![A-Za-z0-9_./-])" + re.escape(base) + r"`?:"
+        if re.search(full_pat, item) or (len(base) >= 3 and re.search(base_pat, item)):
+            hits.append(path)
+    return hits
+
+decisions = []
+suspects = []
+
+def extract_decisions(items):
+    for it in items:
+        low = it.lower()
+        if "(plan design:" in low:
+            decisions.append(("plan-design", it))
+        if "(pre-existing)" in low:
+            decisions.append(("pre-existing", it))
+        if "(gate change:" in low:
+            decisions.append(("gate-change", it))
+
+if pass_num == 1:
+    high = parse_items("High")
+    medium = parse_items("Medium")
+    low = parse_items("Low")
+    oos = parse_items("Out of Scope")
+    extract_decisions(high + medium)
+    for sec_name, sec_items in (("Low", low), ("Out of Scope", oos)):
+        for it in sec_items:
+            hits = matched_files(it, diff_files)
+            if hits:
+                suspects.append((sec_name, it, hits))
+    if decisions or suspects:
+        summary = "needs-triage"
+    elif high or medium:
+        summary = "needs-fix"
+    else:
+        summary = "clean"
+    print(f"PASS={pass_num}")
+    print(f"LGTM={'true' if lgtm else 'false'}")
+    print(f"HIGH={len(high)}")
+    print(f"MEDIUM={len(medium)}")
+    print(f"LOW={len(low)}")
+    print(f"OUT_OF_SCOPE={len(oos)}")
+    print(f"DECISION_COUNT={len(decisions)}")
+    print(f"SUSPECT_OWNED_COUNT={len(suspects)}")
+    print(f"SUMMARY={summary}")
+else:
+    unresolved = parse_items("Unresolved")
+    missed = parse_items("Missed")
+    oos = parse_items("Out of Scope")
+    extract_decisions(unresolved + missed)
+    target_files = fix_files if (pass_num >= 3 and fix_files) else sorted(set(diff_files) | set(fix_files))
+    for it in oos:
+        hits = matched_files(it, target_files)
+        if hits:
+            suspects.append(("Out of Scope", it, hits))
+    if unresolved:
+        summary = "blocked"
+    elif suspects:
+        summary = "needs-triage"
+    elif missed:
+        summary = "missed"
+    else:
+        summary = "clean"
+    print(f"PASS={pass_num}")
+    print(f"LGTM={'true' if lgtm else 'false'}")
+    print(f"UNRESOLVED={len(unresolved)}")
+    print(f"MISSED={len(missed)}")
+    print(f"OUT_OF_SCOPE={len(oos)}")
+    print(f"DECISION_COUNT={len(decisions)}")
+    print(f"SUSPECT_OWNED_COUNT={len(suspects)}")
+    print(f"SUMMARY={summary}")
+
+for kind, it in decisions:
+    print(f"DECISION {kind}: {it}")
+for sec_name, it, hits in suspects:
+    print(f"SUSPECT_OWNED {sec_name}: {it} (touches {','.join(hits)})")
+PY
+

@@ -16,9 +16,10 @@ Triggered when `"{{BS_REVIEW_STATE}}" "$(git rev-parse --abbrev-ref HEAD)"` (or 
 Never grant one yourself; at most one per user request.
 - **When**: the PR is `BLOCKED_BY_DEFECTS` and the user explicitly asks to fix it on its branch, or the user chose "fix now" for a terminal pass's `### Missed` items.
 - Require a clean tree first (`git status --porcelain`). Dirty → stop and list the paths.
-- Run a **Fix Turn** (bs-loop) on the latest `### Unresolved` and `### Missed` items. In a new session, take them — plus `Gate changes kept:` and `Deferred by user:` — from the latest **Findings** in the PR body or its comments.
-- If the user grants it for only some items, or only if cheap, track the rest under **Deferred items** (bs-loop).
-- Then dispatch `Code Reviewer (Pass <N+1>)` with the Pass 2 prompt (**Prompts** (bs-loop)) given those items; it is terminal like **Pass 2** (bs-loop). Name every pass in `<passes run>` at **Finalize PR** (bs-loop).
+- Run `"{{BS_REVIEW_STATE}}" get "$WORKING_BRANCH"` to load accumulated `DEFERRED`, `KEPT_GATE`, `FIX_SHAS`, and `PASSES` (for legacy PRs without a state block, read `Gate changes kept:` and `Deferred by user:` from the latest **Findings** in the PR body or its comments).
+- If the user grants the turn for only some items, or only if cheap, record the rest via `"{{BS_REVIEW_STATE}}" record "$WORKING_BRANCH" --defer "<item>"` (**Deferred items** (bs-loop)).
+- Run a **Fix Turn** (bs-loop) on the latest `### Unresolved` and `### Missed` items, recording its fix SHA(s) and pass (`--pass "Fix <K>"`) via `"{{BS_REVIEW_STATE}}" record`.
+- Then dispatch `Code Reviewer (Pass <N+1>)` with the Pass 2 prompt (**Prompts** (bs-loop)) given those items and the `KEPT_GATE`/`DEFERRED` lines from `bs-review-state get`; it is terminal like **Pass 2** (bs-loop) (check its reply with `"{{BS_CHECK_REVIEW}}" --pass <N+1> --base "origin/$BASE_BRANCH" --fix-shas "<new-fix-shas>" <reply.md>`). Record `--pass "Pass <N+1>"` and use `PASSES` as `<passes run>` at **Finalize PR** (bs-loop).
 - At **Update PR Body** (bs-loop), if the PR body already has a Gate line (it was gated `BLOCKED_BY_DEFECTS`), `set` refuses a report: post the report with `gh pr comment "$WORKING_BRANCH" --body-file <report.md>`, then run `set` without `<report.md>`. If the placeholder is still there (a Fix Turn granted for `### Missed` items), run **Update PR Body** (bs-loop) as written.
 
 ## Docs-only fast path
