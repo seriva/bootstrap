@@ -65,6 +65,7 @@ Providers: `claude`, `agy`, `codex`, or `host` (= `HOST_PROVIDER`).
    - Reviews: verdict, every `High`/`Medium`/`Unresolved`/`Missed` finding, `Out of Scope` one-liners, and a probe count (full probes stay in the child thread and PR `<details>`).
    - Implementation or fix: commit hashes + one-line summaries, gate line, and any `### Deviations`, `### Side Sightings`, `### Unconfirmed`, `### Tests Changed`, and `### Gate Changes`.
 3. **Check implementer and `Defect Fixer` commits** via `"{{BS_VERIFY_COMMITS}}"`:
+   - If the reply looks cut off or yielded early (e.g. `"Waiting for …"`, missing its final reply or gate line), read the child thread (`t3_thread_read`) first so you pass the real final reply (if one landed) to `bs-verify-commits`.
    ```bash
    "{{BS_VERIFY_COMMITS}}" --branch "$WORKING_BRANCH" --base "$BASE_BRANCH" \
      --role <implementer|fixer> [--since "$PRE_FIX_SHA"] \
@@ -76,7 +77,7 @@ Providers: `claude`, `agy`, `codex`, or `host` (= `HOST_PROVIDER`).
    - Gate per `GATE` (**Gate runs** (conventions-writer)):
      - `lint-only` → run only the **Lint** command.
      - `lint-and-tests` → run the **Lint** command and the `Test:` files of the phase's tasks (`Defect Fixer`: the test files in `FILES`).
-     - `full-gate` → run the **Full gate** yourself.
+     - `full-gate` → report `REASON` in chat and any run summary (e.g. `sha-mismatch`, `missing-gate-line`, `non-zero-or-incomplete`, `unconfirmed`) so it is clear why the full gate re-ran, then run the **Full gate** yourself.
    - Never skip or mask the gate's exit code. You cannot run a command either (e.g. no browsers) → stop and report it; never merge or mark a PR ready on a partial gate.
 4. **Check reviews**:
    - Check the tree: HEAD must still be `$WORKING_BRANCH` and `git status --porcelain` clean (standalone `/bs-review` uses `bs-tree-state` hash instead).

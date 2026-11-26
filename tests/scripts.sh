@@ -1771,6 +1771,49 @@ run_in "$v_repo" "$VERIFY_COMMITS" --branch feat/test-verify --base main --role 
 expect_eq "verify fixer Full gate: lint-and-tests" "$(rfield GATE)" "lint-and-tests"
 expect_eq "verify fixer Full gate: files scoped to fixer commit" "$(rfield FILES)" "app.js"
 
+# Harmless markdown list markers and bold/backtick wrappers on --gate-line
+for fmt_case in \
+  "- Full gate: exit 0 @ $c3 (100s)" \
+  "* Full gate: exit 0 @ $c3 (100s)" \
+  "**Full gate: exit 0 @ $c3 (100s)**" \
+  "- **Full gate: exit 0 @ $c3 (100s)**" \
+  "**Full gate:** exit 0 @ $c3 (100s)" \
+  "**Full gate**: exit 0 @ $c3 (100s)" \
+  "- **Full gate:** \`exit 0 @ $c3 (100s)\`" \
+  "* **\`Full gate: exit 0 @ $c3 (100s)\`**"
+do
+  run_in "$v_repo" "$VERIFY_COMMITS" --branch feat/test-verify --base main --role fixer \
+    --since "$pre_fix2" --gate-line "$fmt_case"
+  expect_eq "verify formatted Full gate ($fmt_case): lint-and-tests" "$(rfield GATE)" "lint-and-tests"
+  expect_eq "verify formatted Full gate ($fmt_case): full-gate-verified" "$(rfield REASON)" "full-gate-verified"
+done
+
+run_in "$v_repo" "$VERIFY_COMMITS" --branch feat/test-verify --base main --role fixer \
+  --since "$pre_fix2" --gate-line "- **Full gate:** exit 1 @ $c3 (100s)"
+expect_eq "verify formatted non-zero Full gate: full-gate" "$(rfield GATE)" "full-gate"
+expect_eq "verify formatted non-zero Full gate: non-zero-or-incomplete" "$(rfield REASON)" "non-zero-or-incomplete"
+
+run_in "$v_repo" "$VERIFY_COMMITS" --branch feat/test-verify --base main --role fixer \
+  --since "$pre_fix2" --gate-line "- **Full gate:** exit 0 @ 0000000 (100s)"
+expect_eq "verify formatted wrong SHA Full gate: full-gate" "$(rfield GATE)" "full-gate"
+expect_eq "verify formatted wrong SHA Full gate: sha-mismatch" "$(rfield REASON)" "sha-mismatch"
+
+run_in "$v_repo" "$VERIFY_COMMITS" --branch feat/test-verify --base main --role fixer \
+  --since "$pre_fix2" --gate-line "**Note:** Full gate: exit 0 @ $c3 (100s)"
+expect_eq "verify prefixed Full gate rejected: full-gate" "$(rfield GATE)" "full-gate"
+expect_eq "verify prefixed Full gate rejected: non-zero-or-incomplete" "$(rfield REASON)" "non-zero-or-incomplete"
+
+# Formatted Docs gate on docs-only commit
+pre_fix3="$(git -C "$v_repo" rev-parse HEAD)"
+echo more >> "$v_repo/CHANGELOG.md"
+git -C "$v_repo" add CHANGELOG.md
+git -C "$v_repo" commit -q -m "docs: update changelog"
+c4="$(git -C "$v_repo" rev-parse --short HEAD)"
+run_in "$v_repo" "$VERIFY_COMMITS" --branch feat/test-verify --base main --role fixer \
+  --since "$pre_fix3" --gate-line "- **Docs gate:** exit 0 @ $c4 (5s)"
+expect_eq "verify formatted Docs gate: lint-only" "$(rfield GATE)" "lint-only"
+expect_eq "verify formatted Docs gate: docs-gate-verified" "$(rfield REASON)" "docs-gate-verified"
+
 echo
 if [[ "$FAILURES" -gt 0 ]]; then
   echo "[FAIL] $FAILURES check(s) failed."

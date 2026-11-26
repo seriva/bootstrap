@@ -17,6 +17,7 @@ Every `bs-*` doc and role brief uses these words and placeholders in exactly thi
 For every role brief (`Implementer`, `Defect Fixer`, `Code Reviewer (Pass 1)`, `Code Reviewer (Pass 2)`):
 - Never spawn or dispatch subagents; probe inline.
 - Put your entire reply in one final message.
+- **Never end your turn while any command is still running** (`bs-gate-run`, `bs-commit`, tests, installs, probes): T3 Code treats turn-end as final task completion and drops your final reply (and gate line). Never pass a shell job to `t3_background_wait` (it returns immediately for shell jobs) and never yield across turns to wait for a system notification; if your tool auto-backgrounds a command after a short wait (e.g. a 10 s cap on `bs-commit` pre-commit hooks or a long test), stay in-turn until it exits, then write your final reply.
 - **Writers** (`Implementer`, `Defect Fixer`):
   - **Start check**: HEAD is `$WORKING_BRANCH` and `git status --porcelain` is clean, else stop and report. Install dependencies per **Dependencies** if needed.
   - Never push, amend, or rebase; the orchestrator pushes after verifying.

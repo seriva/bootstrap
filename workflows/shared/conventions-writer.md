@@ -35,9 +35,8 @@ How a task is implemented (`/bs-task`, `Implementer`, `Defect Fixer`):
      - Simple command: `"{{BS_GATE_RUN}}" -- <cmd> [args...]`
      - Compound command from `AGENTS.md` (e.g. `npm test && npm run test:e2e`): `"{{BS_GATE_RUN}}" -c "<command>"`
    - It writes full output to a unique temp log, prints `exit=<rc> secs=<S> log=<path>` (plus the tail on failure), and exits with `<rc>`.
-   - **T3 Code / turn discipline**:
+   - **T3 Code / turn discipline** (**Worker rules** (conventions-core)):
      - Run in the foreground with your tool's longest timeout (e.g. Claude Code Bash `timeout: 600000`).
-     - Never pass a shell job to `t3_background_wait` (it returns immediately for shell jobs), never poll across turns, and never end your turn with a gate command still running (T3 Code treats turn-end as task completion).
      - Only if a single command can outlast your tool's max timeout, background `"{{BS_GATE_RUN}}"` and block in-turn until `^exit=` appears in its log (e.g. Claude Code `Monitor`).
 2. **Result**:
    - `exit=0` is green. Anything else is red, timeouts and "host load" included.
@@ -68,7 +67,7 @@ How a task is implemented (`/bs-task`, `Implementer`, `Defect Fixer`):
    - Intermediate tasks (`Task N.1 .. N.(M-1)`): the task's `Test:` files. The commit hook lints; without `lefthook.yml`, also run format and lint.
    - `Task N.M`, a standalone task, or `Defect Fixer`: the **Full gate** (a docs-only review fix: the **Docs gate**).
    - Docs-only commits (follow-ups, release notes): the commit hook alone (without `lefthook.yml`: format and lint).
-3. **Commit**: `"{{BS_COMMIT}}" [--only] --exclude-hook <suite> -m "<subject>" [-m "<body>"] -- <allowed>...`, paths repo-root-relative. `<allowed>` is:
+3. **Commit**: `"{{BS_COMMIT}}" [--only] --exclude-hook <suite> -m "<subject>" [-m "<body>"] -- <allowed>...`, paths repo-root-relative. Wait in-turn until it exits and prints the short SHA (**Worker rules** (conventions-core); pre-commit hooks can exceed short shell wait caps). `<allowed>` is:
    - `PRE_DIRTY` not empty: pass `--only`, and only the task's files.
    - Plan task: its `Files:` and tests, `$PLAN_FILE`, `CHANGELOG.md`, `README.md`, `docs/`.
    - Standalone: only the files the task needed (`plans/follow-ups.md` for its **Side sightings** (conventions-core)).

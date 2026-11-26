@@ -98,8 +98,18 @@ else
   files_csv="$(IFS=','; printf '%s' "${touched_files[*]}")"
 fi
 
-# Strip surrounding whitespace and optional backticks from --gate-line.
-line="$(printf '%s' "$gate_line" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^`//' -e 's/`$//')"
+# Strip surrounding whitespace, leading list markers (- / *), and harmless bold/backtick wrappers.
+line="$(printf '%s' "$gate_line" | sed -E \
+  -e 's/^[[:space:]]+//' \
+  -e 's/[[:space:]]+$//' \
+  -e 's/^[-*][[:space:]]+//' \
+  -e 's/^`(.+)`$/\1/' \
+  -e 's/^\*\*((Full|Docs) gate)(:\*\*|\*\*:)[[:space:]]*/\1: /' \
+  -e 's/^\*\*(.+)\*\*$/\1/' \
+  -e 's/^`(.+)`$/\1/' \
+  -e 's/^((Full|Docs) gate):[[:space:]]+`(.+)`$/\1: \3/' \
+  -e 's/^[[:space:]]+//' \
+  -e 's/[[:space:]]+$//')"
 
 gate="full-gate"
 reason=""
