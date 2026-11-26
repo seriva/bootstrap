@@ -45,18 +45,7 @@ Invoking `/bs-exec` authorizes managing plan branches, running `/bs-loop` per ph
    - **`closed`**: report that the plan is complete and stop.
 
 ### Step 3: Phase Execution via `/bs-loop`
-1. **Implement**:
-   - **Resolve role `phase-implementer` per Dispatch** (`{{BS_DISPATCH}}`):
-     - **`VIA=native` (host subagent)**:
-       1. Check out `$PHASE_BRANCH` yourself: `git fetch origin`, then `git checkout "$PHASE_BRANCH"` if it exists, else `git checkout --no-track -b "$PHASE_BRANCH" "origin/$PLAN_BRANCH"`.
-       2. Spawn subagent `Phase Implementer` per **Dispatch** (never put `--implementer-model` in the prompt). Prompt:
-          > You are a dispatched fresh-context subagent (`Phase Implementer`); do not spawn or dispatch any subagents. Read `{{BS_ROLE_IMPLEMENTER}}` and follow it.
-          > - `TARGET_REPO`: `$TARGET_REPO`
-          > - `WORKING_BRANCH`: `$PHASE_BRANCH` (checked out; commit only there, never on `$PLAN_BRANCH`), `BASE_BRANCH`: `$PLAN_BRANCH`
-          > - Work: Phase `$PHASE_NUM` (`$PHASE_NAME`) of `$PLAN_FILE`
-          > - `PROBE_SKILL`: `{{BS_PROBE_SKILL}}`
-       3. Verify per **Verify**, then run `/bs-loop` Step 2.3 yourself (push and open the draft PR). A phase is pushed only after its gate passed, as in the path below.
-     - **Otherwise** (`inline` or `delegate_task`): run `/bs-loop` Steps 1–2 yourself for Phase N with `BASE_BRANCH="$PLAN_BRANCH"`. Step 2.2 routes per **Dispatch**; you push and open the draft PR.
+1. **Implement**: run `/bs-loop` Steps 1–2 yourself for Phase N with `BASE_BRANCH="$PLAN_BRANCH"`, `WORKING_BRANCH="$PHASE_BRANCH"`, and role `phase-implementer` (Step 2.2 routes it per **Dispatch** and hands out the `Implementer` brief, `{{BS_ROLE_IMPLEMENTER}}`). You push and open the draft PR, only after its gate passed (**Verify**).
 2. **Review**: run `/bs-loop` Steps 3–4 on `$PHASE_BRANCH` against `$PLAN_BRANCH`, routing roles per **Dispatch**.
 3. **Phase Gate**:
    - `BLOCKED_BY_DEFECTS`, `BLOCKED_BY_CI`, or `PENDING_REVIEW` → halt (even in `--auto`), leave the PR in **Draft**, and alert the user.

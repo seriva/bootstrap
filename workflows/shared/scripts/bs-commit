@@ -36,10 +36,17 @@ next_on_failure() {
     6) echo "stage the task's files with git add, then retry; if nothing changed, skip this commit" ;;
   esac
 }
-trap 'rc=$?; if [ "$rc" -ne 0 ]; then n="$(next_on_failure "$rc")"; [ -z "$n" ] || echo "next: $n" >&2; fi' EXIT
+on_exit() {
+  local rc=$? n
+  if [ "$rc" -ne 0 ]; then
+    n="$(next_on_failure "$rc")"
+    [ -z "$n" ] || echo "next: $n" >&2
+  fi
+}
+trap on_exit EXIT
 
 only=false
-hook=test
+hook="test"
 msgs=()
 while [ $# -gt 0 ]; do
   case "$1" in

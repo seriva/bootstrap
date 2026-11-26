@@ -7,7 +7,7 @@ description: "Fresh-context, probe-verified AI code review for local diffs, bran
 
 Invoking `/bs-review` dispatches a fresh-context reviewer with zero implementation history to audit a diff using `/bs-probe` (`{{BS_PROBE_SKILL}}`). The reviewer follows its role brief, `{{BS_ROLE_REVIEWER}}`, which holds the **Review Rubric**.
 - Used standalone, or as Pass 1 of `/bs-loop` Step 3.
-- Worker conventions (**Target**, **Probes**, **People docs**, **Follow-ups**) are defined in `{{BS_CONVENTIONS}}`.
+- Worker conventions (**Terms**, **Target**, **Probes**, **People docs**, **Follow-ups**) are defined in `{{BS_CONVENTIONS}}`.
 - Orchestrator **Dispatch** is defined in `{{BS_DISPATCH}}`.
 
 > [!IMPORTANT]

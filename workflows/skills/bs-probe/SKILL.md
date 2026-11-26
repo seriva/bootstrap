@@ -6,7 +6,7 @@ description: "Read-only root-cause investigation using throwaway probes and sibl
 # Root-Cause Probe Investigation (bs-probe)
 
 Invoking `/bs-probe` authorizes inspecting `$TARGET_REPO` and running non-destructive probes in `.probes/`, without modifying tracked files or committing.
-- Shared worker conventions (**Target**, **Probes**, **Follow-ups**) are defined in `{{BS_CONVENTIONS}}`.
+- Shared worker conventions (**Terms**, **Target**, **Probes**, **Follow-ups**) are defined in `{{BS_CONVENTIONS}}`.
 - Used standalone, or as the probing building block inside `/bs-plan`, `/bs-task`, `/bs-review`, and `/bs-loop`.
 
 ## Workflow

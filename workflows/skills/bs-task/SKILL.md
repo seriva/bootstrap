@@ -11,7 +11,7 @@ Invoking `/bs-task` executes a single task via TDD, either:
 
 `/bs-loop` and `/bs-exec` do not use this skill: their implementers follow `{{BS_ROLE_IMPLEMENTER}}`, which shares its **Implementation** rules.
 
-Shared worker conventions (**Target**, **Probes**, **Implementation**, **Gate runs**, **Safe commit**, **People docs**, **Follow-ups**) are defined in `{{BS_CONVENTIONS}}`.
+Shared worker conventions (**Terms**, **Target**, **Probes**, **Implementation**, **Gate runs**, **Safe commit**, **People docs**, **Follow-ups**) are defined in `{{BS_CONVENTIONS}}`.
 
 ## Must not break
 1. **Same root, same fix, now.** A defect through a mechanism your diff touches is part of this task: fix that mechanism once.

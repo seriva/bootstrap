@@ -7,7 +7,7 @@ description: "End-to-end autonomous development loop: implementation, quality ga
 
 Invoking `/bs-loop` authorizes discovering target repos, branching, committing, running tests, and managing GitHub PRs.
 - It orchestrates `/bs-review` (`{{BS_REVIEW_SKILL}}`) and the role briefs its subagents follow: `Implementer` (`{{BS_ROLE_IMPLEMENTER}}`), `Defect Fixer` (`{{BS_ROLE_DEFECT_FIXER}}`), and `Code Reviewer (Pass 2)` (`{{BS_ROLE_VERIFIER}}`).
-- Worker conventions (**Target**, **States**, **Probes**, **Gate runs**, **Safe commit**, **People docs**, **Follow-ups**) are in `{{BS_CONVENTIONS}}`.
+- Worker conventions (**Terms**, **Target**, **States**, **Probes**, **Gate runs**, **Safe commit**, **People docs**, **Follow-ups**) are in `{{BS_CONVENTIONS}}`.
 - **Dispatch** and **CI wait** are in `{{BS_DISPATCH}}`.
 
 ## Must not break
@@ -44,13 +44,13 @@ Invoking `/bs-loop` authorizes discovering target repos, branching, committing, 
      - Standalone: the existing `feat/*`/`fix/*` branch, else `<type>/<task-slug>`.
      - Create a missing branch with `git checkout --no-track -b "$WORKING_BRANCH" "origin/$BASE_BRANCH"`.
 2. **Implementation** (one phase, or one standalone task):
-   - **Routing**:
-     - `IMPLEMENTER == HOST_PROVIDER` → follow `{{BS_ROLE_IMPLEMENTER}}` inline, with the inputs below.
-     - Otherwise → dispatch `Implementer` on `IMPLEMENTER` per **Dispatch** with the prompt below, verify per **Verify**, then go to Step 2.3.
+   - **Routing**: resolve role `implementer` per **Dispatch** (`phase-implementer` when `/bs-exec` runs a phase; its `<Role>` is then `Phase Implementer`).
+     - `VIA=inline` → follow `{{BS_ROLE_IMPLEMENTER}}` inline, with the inputs below.
+     - Otherwise → dispatch `<Role>` per **Dispatch** with the prompt below (never put model flags in it), verify per **Verify**, then go to Step 2.3.
    - **`Implementer` prompt** (placeholders filled):
-     > You are a dispatched fresh-context subagent (`Implementer`); do not spawn or dispatch any subagents. Read `{{BS_ROLE_IMPLEMENTER}}` and follow it.
+     > You are a dispatched fresh-context subagent (`<Role>`); do not spawn or dispatch any subagents. Read `{{BS_ROLE_IMPLEMENTER}}` and follow it.
      > - `TARGET_REPO`: `$TARGET_REPO`
-     > - `WORKING_BRANCH`: `$WORKING_BRANCH` (checked out), `BASE_BRANCH`: `$BASE_BRANCH`
+     > - `WORKING_BRANCH`: `$WORKING_BRANCH` (checked out; commit only there, never on `$BASE_BRANCH`), `BASE_BRANCH`: `$BASE_BRANCH`
      > - Work: `<Phase N ($PHASE_NAME) of $PLAN_FILE | standalone task: $TASK>`
      > - `PROBE_SKILL`: `{{BS_PROBE_SKILL}}`
 3. **Draft PR**:
@@ -65,68 +65,73 @@ Invoking `/bs-loop` authorizes discovering target repos, branching, committing, 
 Review `$WORKING_BRANCH` against `origin/$BASE_BRANCH` (fetched; the local base branch may be stale, e.g. in a worktree).
 
 > [!IMPORTANT]
-> **NO SELF-REVIEW:** Never review your own diff in the current context.
+> **NO SELF-REVIEW:** every pass is a fresh-context `Code Reviewer` on `REVIEWER`.
 > - `REVIEWER` unreachable (**Providers, Models & Routing**) → leave the PR in **Draft**, tell the user, and return the PR URL with `REVIEW_STATUS=PENDING_REVIEW`.
 > - Notify the user on each dispatch and echo each pass's full findings in chat.
 
-- **Pass 1** (`Code Reviewer (Pass 1)` on `REVIEWER`, zero history, `git diff origin/$BASE_BRANCH...HEAD`):
-  - `LGTM` (no High/Medium) → `REVIEW_STATUS=PASSED`, Step 4, after the **Same-root check** and **User decisions** below.
-  - High/Medium → Docs-only fast path or Fix Turn, after the same two steps.
-- **Same-root check** (before acting on a Pass 1 verdict):
-  - Candidates:
-    - each behavioural `### Low` item (wrong output, crash, broken build, valid input rejected, invalid input accepted; never a style nit; the reviewer brief keeps these out of Low, so one here was misfiled) and each `### Out of Scope` item;
-    - each implementer `### Side Sightings` or `### Unconfirmed` item Pass 1 did not classify;
-    - each line the diff adds to `plans/follow-ups.md`.
-  - Check both tests for every candidate, even when Pass 1 has no High/Medium findings. Its own repro runs through:
-    1. the mechanism of a High/Medium finding, or
-    2. a mechanism the diff adds or changes (newly written code in a file the diff creates counts; a function moved from another file with no line edited does not).
-  - Either one holds → a failing sibling (**Review Rubric** item 3 in `{{BS_ROLE_REVIEWER}}`), even if the reviewer found it on `<BASE>` too or the plan prescribes it.
-  - Promote it to Medium, say so in chat, and treat it as a Medium finding from then on. An `LGTM` with a promoted item goes to the Fix Turn.
-  - **Exception, pre-existing**: the item says it fails the same way on `<BASE>`, it lies outside the bug or feature the task or plan targets, and its repro does not run through the mechanism of an unmarked High/Medium finding (a defect the diff introduced) → do not promote it. Mark it `(pre-existing)`, say so in chat, and leave it to **User decisions**.
-  - Never demote a finding yourself.
-- **User decisions** (before acting on a Pass 1 verdict, after the same-root check; also when Pass 1 was `LGTM`, and even under `/bs-exec --auto`). Their answer stands; it is the only way a finding leaves the Fix Turn.
-  - **Plan design** (a High/Medium finding, promoted ones included, marked `(plan design: …)` or that the plan prescribes): fix it now, or record it in `plans/follow-ups.md`.
-  - **Pre-existing** (a High/Medium finding marked `(pre-existing)`, or a same-root candidate left unpromoted under its exception): fix it now (Medium), or record it in `plans/follow-ups.md`.
-    - Skip the question when the task (standalone `$TASK`, or the plan task's `Done when:` or `Test:`) targets that bug or feature, the item being an incomplete sibling of it: it is the task, so it is Medium.
-    - Ask about all of them in one question, once per root per run.
-  - **Gate change** (a finding marked `(gate change: …)`): fix the code instead and revert the change (it stays in the Fix Turn), or keep the change (name it in the Step 4 report).
-  - **Plan impact** (phases with a `$PLAN_FILE`): an unpromoted `### Out of Scope` item, behavioural `### Low`, or sighting that
-    - the reviewer, the implementer, or you expect to break a later phase's task or `Done when:`, or
-    - made the implementer drop or narrow a test case (its `### Deviations`), or
-    - has the same root as a follow-up recorded in an earlier phase of this plan.
-    - Ask: fix it now (promote it to Medium), or keep it in `plans/follow-ups.md`. Name the later task or dropped test it affects. Ask once per root per run.
-  - Every finding the user chooses to record here is deferred by the user (**Deferred items**): it goes on the `Deferred by user:` line of every later pass.
-  - No High/Medium finding left → `REVIEW_STATUS=PASSED`, Step 4 (no Fix Turn).
-- **Docs-only fast path** (Pass 1 only, after the same-root check and user decisions): every remaining High/Medium finding is strictly a **People docs** wording or accuracy edit to `CHANGELOG.md`, `README.md`, or `docs/` with a suggested rewrite (no code, test, or missing-remedy breaking-change findings):
-  - Apply the rewrite(s) inline on `$WORKING_BRANCH`, run the **Docs gate** (**Gate runs**), **Safe commit** `"docs(<scope>): address review docs feedback"` (`--` only those docs paths), and `git push`.
-  - Gate green → `REVIEW_STATUS=PASSED`, Step 4 (no `Defect Fixer`, no Pass 2; record the commit hash in Step 4.2). Red → stop and report.
-- **Fix Turn** (max 1): `Defect Fixer` on `IMPLEMENTER`, given the Pass 1 High/Medium findings, promoted ones included, minus those the user chose to record.
-  - It commits the fix as `"fix(<scope>): address review feedback"`. Verify it per **Verify**, then `git push` → Pass 2.
-  - Red gate → still push (the PR must show the spent Fix Turn for **States**), then `BLOCKED_BY_DEFECTS` (Step 4).
-- **Pass 2** (terminal; a new `Code Reviewer (Pass 2)` on `REVIEWER`, zero history):
-  1. **Classify first** (its `LGTM` token alone never decides the outcome); say each move in chat:
-     - Its own probe results show the fix regressed something against `<BASE>` → `### Unresolved`.
-     - An `### Out of Scope` item whose repro runs through a verified finding's mechanism or code the fix changed is a partial fix → `### Unresolved`.
-     - Any other `### Out of Scope` item or `Defect Fixer` sighting whose repro runs through a mechanism the diff adds or changes (**Same-root check** test 2) was missed by Pass 1 → `### Missed` (mark `(pre-existing)` if it fails the same way on `origin/$BASE_BRANCH` outside the task or plan's target).
-  2. **Then the outcome**, first that applies:
-     - Anything in `### Unresolved` → `BLOCKED_BY_DEFECTS` (stop). List any `### Missed` items with the unresolved ones.
-     - `### Missed` items → ask the user, even under `/bs-exec --auto` (once per root per run): fix now, or record in `plans/follow-ups.md`. Clearly label any `(pre-existing)` item as failing the same way on `BASE` outside this phase's target and recommend recording it in `plans/follow-ups.md` rather than widening the PR.
-       - Fix now → their answer grants the **User-granted Fix Turn** on those items.
-       - Record → `PASSED`; Step 4.1 records them.
-     - Otherwise → `PASSED`.
-- **Resumed run** in state `fix-used` (**States**): the Fix Turn is spent, so Pass 1 is terminal.
-  - Run the **Same-root check** and then **User decisions** on its verdict first, as for any Pass 1; a promoted item counts as High/Medium, and one the user chose to record leaves it.
-  - `LGTM` (no High/Medium left) → `PASSED`.
-  - High/Medium → `BLOCKED_BY_DEFECTS`.
-- **User-granted Fix Turn**:
-  - When: the PR is `BLOCKED_BY_DEFECTS` and the user explicitly asks to fix it on its branch, or the user chose "fix now" for a terminal pass's `### Missed` items. One per request; never grant one yourself.
-  - Clean tree first (`git status --porcelain`). Dirty → stop and list the paths.
-  - Run a Fix Turn on the latest `### Unresolved` and `### Missed` items. In a new session, take them (and the `Gate changes kept:` and `Deferred by user:` lines) from the latest **Findings** in the PR body or its comments.
-  - **Deferred items**: the user may grant the turn for only some items, or say a fix is wanted only if cheap. Every item left out, and every one the `Defect Fixer` leaves unfixed under such a condition, is deferred by the user: name each in chat, pass it to the next pass's `Deferred by user:` line, and record it at Step 4.1.
-    - The line accumulates: each pass's prompt and each Step 4.2 report carry every deferral made so far on this PR (from **User decisions** and every Fix Turn), never only the latest.
-  - Then a new `Code Reviewer (Pass <N+1>)` with the Pass 2 prompt (given those items); it is terminal like Pass 2.
-  - Step 4: name every pass in `<passes run>`.
-  - Step 4.2 when the PR body already has a Gate line (it was gated `BLOCKED_BY_DEFECTS`): `set` refuses a report then, so post the report with `gh pr comment "$WORKING_BRANCH" --body-file <report.md>`, then `set` without `<report.md>`. Still the placeholder (a Fix Turn granted for `### Missed` items) → run Step 4.2 as written.
+**Flow** (say each promotion, re-filing, and decision in chat):
+1. **Pass 1**: `Code Reviewer (Pass 1)`, zero history, `git diff origin/$BASE_BRANCH...HEAD`.
+2. **Triage** its verdict, even an `LGTM`: **Same-root check**, then **User decisions**.
+3. **Act**, first that applies:
+   - No High/Medium finding left → `REVIEW_STATUS=PASSED`, Step 4.
+   - Every one left is a **People docs** edit → **Docs-only fast path**.
+   - Otherwise → **Fix Turn**, then **Pass 2**.
+
+**Same-root check** (catches defects the reviewer misfiled below High/Medium):
+- **Candidates**:
+  - **Behavioural** `### Low` items (the reviewer brief keeps these out of Low, so one there is misfiled);
+  - `### Out of Scope` items;
+  - implementer `### Side Sightings` / `### Unconfirmed` items Pass 1 did not classify;
+  - lines the diff adds to `plans/follow-ups.md`.
+- **Promote** a candidate to Medium when its own repro runs through either:
+  1. the mechanism of a High/Medium finding, or
+  2. code the diff owns (the candidate is **Owned**).
+  - This holds even when it fails on `<BASE>` too or the plan prescribes it (**Review Rubric** item 3 in `{{BS_ROLE_REVIEWER}}`). An `LGTM` with a promoted item goes to the Fix Turn.
+- **Exception**: it is **Pre-existing** and its repro does not run through an unmarked (diff-introduced) High/Medium finding → mark it `(pre-existing)` instead and leave it to **User decisions**.
+- Never demote a finding yourself.
+
+**User decisions**: ask even under `/bs-exec --auto`, all in one message, once per root per run. The answer stands, and it is the only way a finding leaves the Fix Turn.
+
+| Item | Choices |
+|---|---|
+| **Plan design**: a High/Medium finding (promoted ones included) marked `(plan design: …)` or that the plan prescribes | fix now, or record |
+| **Pre-existing**: a High/Medium finding marked `(pre-existing)`, or a candidate left unpromoted by the exception. Do not ask when the task (standalone `$TASK`, or the plan task's `Done when:`/`Test:`) targets that bug or feature: it is an incomplete sibling, so Medium | fix now (Medium), or record |
+| **Gate change**: a finding marked `(gate change: …)` | fix the code and revert the change (it stays in the Fix Turn), or keep it (named in the Step 4 report) |
+| **Plan impact** (phases with a `$PLAN_FILE`): an unpromoted `### Out of Scope` item, behavioural `### Low`, or sighting that the reviewer, the implementer, or you expect to break a later phase's task or `Done when:`, that made the implementer drop or narrow a test (its `### Deviations`), or that shares a root with a follow-up from an earlier phase of this plan. Name the later task or dropped test | fix now (promote to Medium), or record |
+
+"Record" means `plans/follow-ups.md` at Step 4.1, and the item becomes a **Deferred item**.
+
+**Deferred items**: every item the user chose to record, left out of a granted Fix Turn, or wanted fixed "only if cheap" and the `Defect Fixer` left unfixed.
+- Name each in chat. It goes on the `Deferred by user:` line of every later pass and every Step 4.2 report.
+- The line accumulates every deferral made on this PR, never only the latest, and Step 4.1 records them all.
+
+**Docs-only fast path** (Pass 1 only): every remaining High/Medium finding is strictly a **People docs** wording or accuracy edit to `CHANGELOG.md`, `README.md`, or `docs/` with a suggested rewrite (no code, test, or missing-remedy breaking-change finding).
+- Apply the rewrite(s) inline on `$WORKING_BRANCH`, run the **Docs gate** (**Gate runs**), **Safe commit** `"docs(<scope>): address review docs feedback"` (`--` only those docs paths), and `git push`.
+- Gate green → `REVIEW_STATUS=PASSED`, Step 4 (no `Defect Fixer`, no Pass 2; record the commit hash in Step 4.2). Red → stop and report.
+
+**Fix Turn** (max 1): `Defect Fixer` on `IMPLEMENTER`, given the Pass 1 High/Medium findings left after triage.
+- It commits the fix as `"fix(<scope>): address review feedback"`. Verify it per **Verify**, then `git push` → Pass 2.
+- Red gate → still push (the PR must show the spent Fix Turn for **States**), then `BLOCKED_BY_DEFECTS` (Step 4).
+
+**Pass 2** (terminal): a new `Code Reviewer (Pass 2)`, zero history.
+1. **Check its filing** (the verifier brief sorts these itself; its `LGTM` token alone never decides). Move to `### Unresolved`:
+   - anything its own probes show the fix regressed against `<BASE>`;
+   - an `### Out of Scope` item whose repro runs through a verified finding's mechanism or code the fix changed (a partial fix).
+   Move to `### Missed`: any other `### Out of Scope` item or `Defect Fixer` sighting that is **Owned**. Mark it `(pre-existing)` if it is **Pre-existing** (`<BASE>` = `origin/$BASE_BRANCH`).
+2. **Outcome**, first that applies:
+   - Any `### Unresolved` → `BLOCKED_BY_DEFECTS` (stop). List any `### Missed` items with them.
+   - Any `### Missed` → ask the user (even under `/bs-exec --auto`, once per root per run): fix now (grants the **User-granted Fix Turn** on them), or record (`PASSED`; Step 4.1 records them). Label each `(pre-existing)` item as failing the same way on `BASE` outside this phase's target, and recommend recording it rather than widening the PR.
+   - Otherwise → `PASSED`.
+
+**Resumed run** in state `fix-used` (**States**): the Fix Turn is spent, so Pass 1 is terminal. Triage it as above; then no High/Medium left → `PASSED`, otherwise `BLOCKED_BY_DEFECTS`.
+
+**User-granted Fix Turn**: never grant one yourself; one per request.
+- When: the PR is `BLOCKED_BY_DEFECTS` and the user explicitly asks to fix it on its branch, or the user chose "fix now" for a terminal pass's `### Missed` items.
+- Clean tree first (`git status --porcelain`). Dirty → stop and list the paths.
+- Run a Fix Turn on the latest `### Unresolved` and `### Missed` items. In a new session, take them (and the `Gate changes kept:` and `Deferred by user:` lines) from the latest **Findings** in the PR body or its comments.
+- The user may grant it for only some items, or only if cheap (**Deferred items**).
+- Then a new `Code Reviewer (Pass <N+1>)` with the Pass 2 prompt (given those items), terminal like Pass 2. Step 4 names every pass in `<passes run>`.
+- Step 4.2 when the PR body already has a Gate line (it was gated `BLOCKED_BY_DEFECTS`): `set` refuses a report then, so post the report with `gh pr comment "$WORKING_BRANCH" --body-file <report.md>`, then `set` without `<report.md>`. Still the placeholder (a Fix Turn granted for `### Missed` items) → run Step 4.2 as written.
 
 **Subagent dispatch** (route per **Dispatch**):
 

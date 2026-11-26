@@ -41,15 +41,15 @@ Canonical headquarters for agentic development standards, project scaffolding (`
 ## Tech Stack
 
 - **Language / Runtime**: Bash (`set -euo pipefail`), Python 3 (embedded in `sync.sh`), Markdown (`SKILL.md`, templates)
-- **Verification / Quality Gates**: `bash -n install.sh sync.sh init.sh tests/smoke.sh tests/scripts.sh workflows/shared/scripts/* docker/*.sh docker/harness-install docker/t3-pair`, `./sync.sh --check .`, `./tests/smoke.sh`, `./tests/scripts.sh`
+- **Verification / Quality Gates**: `bash -n install.sh sync.sh init.sh tests/smoke.sh tests/scripts.sh tests/lint.sh workflows/shared/scripts/* docker/*.sh docker/harness-install docker/t3-pair`, `./tests/lint.sh` (ShellCheck), `./sync.sh --check .`, `./tests/smoke.sh`, `./tests/scripts.sh`
 
 ## Commands
 
 - **Test**: `./sync.sh --check . && ./tests/smoke.sh && ./tests/scripts.sh` (smoke test runs `init.sh`, `sync.sh`, and `install.sh` against throwaway targets in a temp dir; script tests run the helper scripts against throwaway git repos)
-- **Lint**: `bash -n install.sh sync.sh init.sh tests/smoke.sh tests/scripts.sh workflows/shared/scripts/* docker/*.sh docker/harness-install docker/t3-pair`
+- **Lint**: `bash -n install.sh sync.sh init.sh tests/smoke.sh tests/scripts.sh tests/lint.sh workflows/shared/scripts/* docker/*.sh docker/harness-install docker/t3-pair && ./tests/lint.sh` (`tests/lint.sh` needs `shellcheck` on `PATH`)
 - **Format**: none
 - **Build**: none (deploy skills with `./install.sh`, sync sibling repos with `./sync.sh`)
-- **Pre-commit gate**: `bash -n install.sh sync.sh init.sh tests/smoke.sh tests/scripts.sh workflows/shared/scripts/* docker/*.sh docker/harness-install docker/t3-pair && ./sync.sh --check . && ./tests/smoke.sh && ./tests/scripts.sh`
+- **Pre-commit gate**: `bash -n install.sh sync.sh init.sh tests/smoke.sh tests/scripts.sh tests/lint.sh workflows/shared/scripts/* docker/*.sh docker/harness-install docker/t3-pair && ./tests/lint.sh && ./sync.sh --check . && ./tests/smoke.sh && ./tests/scripts.sh`
 
 ## Architecture
 
@@ -67,5 +67,7 @@ Canonical headquarters for agentic development standards, project scaffolding (`
 - `sync.sh` — Propagates `scaffold/AGENTS.md` Part 1, tool bridge files, `plans/template.md`, `lefthook-bootstrap.yml` (and checks `lefthook.yml` extends it), and the bootstrap-managed `.gitignore` block to sibling projects (and keeps root `AGENTS.md` Part 1 in sync). A target whose `AGENTS.md` has no Part 1 is reported as drift and otherwise left untouched, as is a CI workflow with a legacy `if:` that skips phase PRs.
 - `tests/smoke.sh` — Smoke test: `init.sh` for both profiles, `sync.sh` drift/repair/idempotency, `--check` exit codes, and leaving a repo without Part 1 untouched, and `install.sh` into a sandboxed `$HOME` (no unrendered `{{BS_*}}` placeholders, every rendered path resolves, helper scripts installed executable, stale entries removed and the user's own kept).
 - `tests/scripts.sh` — Helper script tests against throwaway git repos: `bs-tree-state` and `bs-commit` (unborn HEAD, subdirectories, renames, hook-staged paths, `--only`), asserting the working tree is unchanged after every call; `bs-plan-state` (active/open/finishing/closed/drift) against sample plans; `bs-review-state` (reading and `set`) and `bs-pr-ci` against a fake `gh` on `PATH`; `bs-plan-branch` against a local bare `origin`; `bs-worktree` add/remove and its refusals; `bs-diff-target` for workspace, branch, range, and PR targets (PR via a local bare `origin`); `bs-resolve-role` across providers, model flags, fix escalation, and fallbacks; `bs-verify-commits` for branch/tree checks, SHA verification, and docs-only gate validation.
+- `tests/lint.sh` — Runs ShellCheck (warnings and errors) on every shell script in the repo, found by shebang so extensionless helpers are included.
+- `.github/workflows/ci.yml` — CI for this repo: `tests/lint.sh`, `tests/scripts.sh`, and `tests/smoke.sh` on every PR and push to `main`.
 - `README.md` — Human-facing guide: quick start, how the `bs-*` skills fit together, sync, supported tools, repository layout.
 

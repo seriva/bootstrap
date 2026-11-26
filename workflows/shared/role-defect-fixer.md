@@ -9,23 +9,21 @@ You fix the review findings you were given, on a branch the orchestrator will pu
 4. **Prove what you say about `BASE`.** Never claim a case matches or differs from `BASE` without probing it there.
 5. **Keep test invariants.** Never weaken a test to go green; list every rewritten or deleted test under `### Tests Changed`.
 6. **Report the real gate.** Your `Full gate:` (or `Docs gate:`) line is the actual result of every command of that gate on HEAD; one you could not run makes it `incomplete`, never `exit 0`.
-7. **Never loosen a gate silently.** A config or baseline change that makes a gate check less goes under `### Gate Changes` (**Gate runs**).
+7. **Never make a Gate change silently.** List it under `### Gate Changes` (**Gate runs**).
 
 ## Inputs
 From your prompt: `TARGET_REPO`, `WORKING_BRANCH` (already checked out), `BASE` (`origin/$BASE_BRANCH`), `PROBE_SKILL` (the path of the `/bs-probe` skill), and the findings to fix.
 
 ## Boundaries
-- Never push, amend, or rebase; the orchestrator pushes after verifying.
-- Never spawn or dispatch subagents; probe inline.
-- Never edit `plans/follow-ups.md`: defects in other mechanisms go under `### Side Sightings` (**Side sightings**).
+- **Worker rules** apply (writer).
 
 ## Read first
 1. `AGENTS.md` in `$TARGET_REPO`.
-2. `{{BS_CONVENTIONS}}`: **Target**, **Probes**, **Implementation**, **Gate runs**, **Safe commit**, **People docs**, **Follow-ups**. Skip **States**.
+2. `{{BS_CONVENTIONS}}`: **Terms**, **Worker rules**, **Target**, **Probes**, **Implementation**, **Gate runs**, **Safe commit**, **People docs**, **Follow-ups**. Skip **States**.
 3. The `/bs-probe` skill (`PROBE_SKILL` in your prompt) in full: Step 3 uses its sibling-path step.
 
 ## Steps
-1. **Start check**: HEAD is `WORKING_BRANCH` and `git status --porcelain` is clean. Otherwise stop and report.
+1. **Start check** (**Worker rules**).
 2. **Fix each finding** per **Implementation** (tests first; skip its plan-task items).
 3. **Sibling and regression probes**, before the gate:
    - **Siblings**: for each finding, probe the other paths through the mechanism you changed, per `/bs-probe`'s sibling-path step: other callers, other input forms (nested, pointer, aliased, qualified, generic, reassigned), other contexts and targets. A failing sibling is part of this fix: fix it in the same mechanism.
@@ -37,7 +35,7 @@ From your prompt: `TARGET_REPO`, `WORKING_BRANCH` (already checked out), `BASE` 
    - Probe the invariants those readers hold that your fix could break, comparing with `HEAD~1` where useful: error messages, emitted or printed output, runtime checks, unused or used tracking, cache keys.
    - A reader that breaks is part of this fix (**Same root, same fix**).
 5. **User-facing behaviour changed** → update `CHANGELOG.md` and `docs/` per **People docs**. New errors for programs that used to build need a `**Breaking:**` entry.
-6. **Sighting audit**: check every suspected defect you would report under `### Side Sightings` or `### Unconfirmed` against `git diff "$(git merge-base "$BASE" HEAD)"` (the branch's changes, your uncommitted fix included). One whose repro runs through a function that diff changes is yours (**Side sightings** item 1): probe it, then fix or refute it. Never return it as "not probed", "path I didn't change", or left for later.
+6. **Sighting audit**: check every suspected defect you would report against **Owned** (the branch's changes, your uncommitted fix included) per **Side sightings** item 1: an owned one is yours to probe, then fix or refute.
 7. **Gate and commit**: run the **Full gate** (a docs-only fix: the **Docs gate**) per **Gate runs** until green, then **Safe commit** `"fix(<scope>): address review feedback"`.
 
 ## Reply

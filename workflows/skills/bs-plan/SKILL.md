@@ -6,7 +6,7 @@ description: Conducts an empirical codebase audit with probe verification, defin
 # Autonomous Design Plan Generator (bs-plan)
 
 Invoking `/bs-plan` authorizes inspecting code, running non-destructive probes and tests, writing a plan under `plans/`, and linking it in `plans/roadmap.md`.
-- Shared worker conventions (**Target**, **States**, **Probes**, **People docs**, **Follow-ups**) are defined in `{{BS_CONVENTIONS}}`.
+- Shared worker conventions (**Terms**, **Target**, **States**, **Probes**, **People docs**, **Follow-ups**) are defined in `{{BS_CONVENTIONS}}`.
 
 ## Must not break
 1. **Probe before claiming.** Every gap, baseline, and code claim in a plan is backed by a recorded probe or a read of the code.

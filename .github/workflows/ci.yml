@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      # The tests make commits in throwaway repos; give git an identity on the runner.
+      GIT_AUTHOR_NAME: ci
+      GIT_AUTHOR_EMAIL: ci@example.invalid
+      GIT_COMMITTER_NAME: ci
+      GIT_COMMITTER_EMAIL: ci@example.invalid
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: ShellCheck
+        run: tests/lint.sh
+
+      - name: Sync check
+        run: ./sync.sh --check .
+
+      - name: Helper script tests
+        run: tests/scripts.sh
+
+      - name: Smoke test
+        run: tests/smoke.sh

@@ -2,6 +2,23 @@
 
 Shared conventions referenced by all `bs-*` skills. Orchestrator-only dispatch and CI rules live in `{{BS_DISPATCH}}`.
 
+## Terms
+Every `bs-*` doc and role brief uses these words in exactly this sense.
+- **Owned**: a defect whose repro runs through a function the diff adds or changes, or through newly written code in a file the diff creates. A function moved from another file with no line edited is not owned (`git blame -s -C5 -C5 <BASE>..HEAD -- <file>` prints each of its lines with a leading `^`). Reviewers judge against the diff under review. Writers take it as `git diff "$(git merge-base "origin/$BASE_BRANCH" HEAD)"`, which includes uncommitted edits (standalone `/bs-task`: `git diff HEAD` plus its task commits).
+- **Behavioural**: wrong output, crash, broken build, valid input rejected, or invalid input accepted. Anything else (naming, comments, dead code, style) is a nit.
+- **Pre-existing**: fails the same way on `<BASE>` and lies outside the bug or feature the task or plan targets. An incomplete sibling of that bug or feature is never pre-existing.
+- **Gate change**: a change that makes a gate check less: lint or format rules and excludes, quality baselines (e.g. a re-saved `sentrux gate`), coverage or size thresholds, hook or CI config, and skipped or disabled checks.
+
+## Worker rules
+For every role brief (`Implementer`, `Defect Fixer`, `Code Reviewer`, `Fix Verifier`), dispatched or run inline:
+- Never spawn or dispatch subagents; probe inline.
+- Put your entire reply in one final message.
+- **Writers** (`Implementer`, `Defect Fixer`):
+  - **Start check**: HEAD is `WORKING_BRANCH` and `git status --porcelain` is clean, else stop and report. Install dependencies per **Dependencies** if needed.
+  - Never push, amend, or rebase; the orchestrator pushes after verifying.
+  - Never edit `plans/follow-ups.md`: defects in other mechanisms go under `### Side Sightings` (**Side sightings**).
+- **Reviewers** (`Code Reviewer`, `Fix Verifier`): never modify tracked or pre-existing dirty files, never commit, and never run the full **Test** command (the orchestrator's **Verify** and CI gate it).
+
 ## Target
 1. **`TARGET_REPO`**:
    - In a git repo: `git rev-parse --show-toplevel`.
@@ -91,7 +108,7 @@ How a task is implemented (`/bs-task`, `Implementer`, `Defect Fixer`):
    - `exit=0` is green. Anything else is red, timeouts and "host load" included.
    - Warnings your diff causes are yours to fix, also off its lines (e.g. an import it left unused).
    - Only warnings already on the base are pre-existing. Leave them, and never report them as sightings or follow-ups.
-   - **Gate changes**: making a gate check less is never a silent way to green. That covers lint or format rules and excludes, quality baselines (e.g. a re-saved `sentrux gate`), coverage or size thresholds, hook or CI config, and skipped or disabled checks.
+   - **Gate changes**: a **Gate change** is never a silent way to green.
      - First look for a code change that passes the gate as it is.
      - None → make the narrowest change, and list it under `### Gate Changes` in your reply: the file, what it stops checking, the failing output that forced it, and why no code change avoids it.
      - The user decides whether it stays (`/bs-loop` **Gate change**).
@@ -142,7 +159,7 @@ Follow `AGENTS.md` **Audiences**, **Changelog**, and **Docs**. In addition:
 
 **What goes in the ledger**:
 - Real bugs outside the diff's scope (`### Out of Scope`).
-- Unfixed behavioural `### Low` items: wrong output, crash, broken build, valid input rejected, invalid input accepted.
+- Unfixed **Behavioural** `### Low` items.
 - Do not fix these here (**Scope**), and do not leave them only in a PR body.
 - Pure style or wording nits stay in the PR body only.
 
@@ -155,10 +172,10 @@ Follow `AGENTS.md` **Audiences**, **Changelog**, and **Docs**. In addition:
 - An entry ending ` — deferred (…): <reason>` was deferred by the user in `/bs-plan follow-ups`; leave it as is.
 
 **Side sightings** (defects you notice while working):
-1. **In a mechanism your diff adds or changes**: not a sighting but your task (**Same root, same fix**).
-   - How to tell: its repro runs through a function your diff changes (`git diff "$(git merge-base "origin/$BASE_BRANCH" HEAD)"`, which includes uncommitted edits; standalone `/bs-task`: `git diff HEAD` plus your task commits), or through newly written code in a file the diff creates (a function moved from another file with no line edited does not count). Only a probe showing the defect does not pass through your change makes it item 2.
+1. **Owned**: not a sighting but your task (**Same root, same fix**). Only a probe showing the defect does not pass through your change makes it item 2.
    - Probe it, and fix it if it reproduces.
-   - Never return it as a guess, and never defer it.
+   - Never return it as a guess, "not probed", "rare edge", or "path I didn't change", and never defer it.
+   - **Before your final gate**, check every suspected defect you would report under `### Side Sightings` or `### Unconfirmed`, or that is behind a `### Deviations` entry, against **Owned**.
 2. **Any other defect**: isolate a one-line repro with `/bs-probe` before returning (at most two quick probes; do not debug or fix it).
    - Standalone `/bs-task`: record confirmed ones in the ledger above.
    - Under `/bs-loop` (implementers, `Defect Fixer`): never edit `plans/follow-ups.md`. List them under `### Side Sightings` in your reply (repro + mechanism) for the review to classify.

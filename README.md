@@ -229,5 +229,7 @@ bootstrap/
 ├── sync.sh             Synchronizes shared rules across projects (--check, --dry-run)
 ├── tests/smoke.sh      Smoke test for init.sh, sync.sh, and install.sh (runs in a temp dir)
 ├── tests/scripts.sh    Tests for the helper scripts (runs against throwaway repos and a fake gh in a temp dir)
+├── tests/lint.sh       ShellCheck over every shell script (CI runs it with both test suites)
+├── .github/workflows/  CI for this repository
 └── AGENTS.md           Agent guide for this repository
 ```

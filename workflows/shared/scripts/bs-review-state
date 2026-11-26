@@ -46,7 +46,15 @@ next_on_failure() {
 
 err="$(mktemp "${TMPDIR:-/tmp}/bs-review-state.XXXXXX")"
 body_file="$(mktemp "${TMPDIR:-/tmp}/bs-review-state.body.XXXXXX")"
-trap 'rc=$?; rm -f "$err" "$body_file"; if [ "$rc" -ne 0 ]; then n="$(next_on_failure "$rc")"; [ -z "$n" ] || echo "next: $n" >&2; fi' EXIT
+on_exit() {
+  local rc=$? n
+  rm -f "$err" "$body_file"
+  if [ "$rc" -ne 0 ]; then
+    n="$(next_on_failure "$rc")"
+    [ -z "$n" ] || echo "next: $n" >&2
+  fi
+}
+trap on_exit EXIT
 
 # read_state <branch>: print "<state> <base-branch>", or "none".
 read_state() {
