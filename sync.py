@@ -1,0 +1,331 @@
+#!/usr/bin/env python3
+"""Bootstrap Agentic Workflow Sync Script.
+
+Propagates canonical Part 1 from scaffold/AGENTS.md, standard tool bridge files,
+plans/template.md, the shared lefthook-bootstrap.yml hooks, and the
+bootstrap-managed .gitignore block to sibling repositories.
+"""
+
+import os
+import re
+import subprocess
+import sys
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+DEV_DIR = os.path.dirname(SCRIPT_DIR)
+SCAFFOLD_DIR = os.path.join(SCRIPT_DIR, "scaffold")
+BOOTSTRAP_AGENTS = os.path.join(SCAFFOLD_DIR, "AGENTS.md")
+
+PART1_RE = re.compile(r"(# Part 1: Agent Workflow\n[\s\S]*?\n---\n)")
+# The end marker may be the last line of a file with no trailing newline.
+GITIGNORE_BLOCK_RE = re.compile(r"# >>> bootstrap-managed\n[\s\S]*?# <<< bootstrap-managed(?:\n|\Z)")
+# Top-level `extends:` key in lefthook.yml, block list or inline list form.
+LEFTHOOK_EXTENDS_RE = re.compile(r"^extends:.*(?:\n[ \t]+-.*)*", re.MULTILINE)
+SHARED_HOOKS_REL = "lefthook-bootstrap.yml"
+# Legacy job condition that kept CI off phase PRs, e.g.
+# if: "!contains(github.head_ref, 'phase')".
+LEGACY_PHASE_SKIP_RE = re.compile(r"^\s*if:.*github\.head_ref.*phase")
+# Broad tool-dir ignores from the pre-managed-block scaffold. The managed block
+# narrows them to session/state subpaths, so they must go or project config such
+# as .claude/skills/ stays uncommittable. Only exact-line matches are removed.
+LEGACY_BROAD_IGNORES = {".claude/", ".agents/", ".gemini/", ".codex/"}
+
+
+def read_text(path):
+    with open(path, "r", encoding="utf-8") as f:
+        return f.read()
+
+
+def write_text(path, content):
+    parent = os.path.dirname(path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(content)
+
+
+def report(label, state):
+    """Print one status line; state is 'up to date', 'drift' (dry-run) or 'written'."""
+    if state == "up to date":
+        print(f"  - {label}: up to date")
+    elif state == "drift":
+        print(f"  - {label}: [WOULD CREATE/UPDATE]")
+    else:
+        print(f"  - {label}: CREATED/UPDATED")
+
+
+def sync_file(label, target_file, content, dry_run):
+    """Make target_file equal content; returns True when drift was found."""
+    if os.path.isfile(target_file) and read_text(target_file) == content:
+        report(label, "up to date")
+        return False
+    if dry_run:
+        report(label, "drift")
+    else:
+        write_text(target_file, content)
+        report(label, "written")
+    return True
+
+
+def check_lefthook(target_dir):
+    """The synced shared hooks only run if lefthook.yml extends them; returns True on drift.
+    lefthook.yml is project-owned, so it is never rewritten.
+    """
+    lefthook_path = os.path.join(target_dir, "lefthook.yml")
+    if not os.path.isfile(lefthook_path):
+        print(f"  - lefthook.yml: [DRIFT] missing, so {SHARED_HOOKS_REL} is inactive; fix manually")
+        return True
+    extends = LEFTHOOK_EXTENDS_RE.search(read_text(lefthook_path))
+    if not extends or SHARED_HOOKS_REL not in extends.group(0):
+        print(f"  - lefthook.yml: [DRIFT] does not list {SHARED_HOOKS_REL} under `extends:`; fix manually")
+        return True
+    print(f"  - lefthook.yml: extends {SHARED_HOOKS_REL}")
+    # Installed hooks are per-clone state, not repo content: warn, never count as drift.
+    try:
+        hooks_dir = subprocess.run(
+            ["git", "-C", target_dir, "rev-parse", "--path-format=absolute", "--git-path", "hooks"],
+            capture_output=True, encoding="utf-8", errors="replace", check=True,
+        ).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        return False
+    if not os.path.isfile(os.path.join(hooks_dir, "commit-msg")):
+        print("    warning: commit-msg hook not installed; run `lefthook install` in this repo")
+    return False
+
+
+def check_ci_phase_skip(target_dir):
+    """Scaffolds before phase PRs got CI skipped `-phase-` heads with a job `if:`; returns True on drift.
+    Workflows are project-owned, so they are never rewritten.
+    """
+    workflows_dir = os.path.join(target_dir, ".github", "workflows")
+    if not os.path.isdir(workflows_dir):
+        return False
+    drift = False
+    for name in sorted(os.listdir(workflows_dir)):
+        path = os.path.join(workflows_dir, name)
+        if not name.endswith((".yml", ".yaml")) or not os.path.isfile(path):
+            continue
+        for lineno, line in enumerate(read_text(path).splitlines(), 1):
+            if LEGACY_PHASE_SKIP_RE.search(line):
+                print(
+                    f"  - .github/workflows/{name}:{lineno}: [DRIFT] `if:` skips phase PRs; "
+                    "delete it, phase PRs wait for CI; fix manually"
+                )
+                drift = True
+    return drift
+
+
+def strip_legacy_broad_ignores(text):
+    """Drop exact legacy broad tool-dir lines outside the managed block; returns (text, removed)."""
+    kept, removed = [], []
+    for line in text.split("\n"):
+        if line.strip() in LEGACY_BROAD_IGNORES:
+            removed.append(line.strip())
+        else:
+            kept.append(line)
+    return "\n".join(kept), removed
+
+
+def sync_gitignore(target_dir, managed_gitignore_block, dry_run):
+    """Replace/append/create the managed block; content outside the markers is untouched
+    except for known legacy broad ignores, which the block supersedes.
+    """
+    target_file = os.path.join(target_dir, ".gitignore")
+    existing = read_text(target_file) if os.path.isfile(target_file) else None
+    removed = []
+
+    if existing is None:
+        new_text = managed_gitignore_block
+    else:
+        existing_block = GITIGNORE_BLOCK_RE.search(existing)
+        if existing_block:
+            new_text = existing[:existing_block.start()] + managed_gitignore_block + existing[existing_block.end():]
+        else:
+            base, removed = strip_legacy_broad_ignores(existing)
+            separator = "" if base == "" or base.endswith("\n\n") else ("\n" if base.endswith("\n") else "\n\n")
+            new_text = base + separator + managed_gitignore_block
+
+    if existing == new_text:
+        report(".gitignore (managed block)", "up to date")
+        return False
+    if dry_run:
+        report(".gitignore (managed block)", "drift")
+    else:
+        write_text(target_file, new_text)
+        report(".gitignore (managed block)", "written")
+    if removed:
+        verb = "would remove" if dry_run else "removed"
+        print(f"    legacy broad ignores {verb} (superseded by managed block): {', '.join(removed)}")
+    return True
+
+
+def parse_args(argv):
+    prog = argv[0]
+    check_mode = False
+    dry_run = False
+    targets = []
+
+    for arg in argv[1:]:
+        if arg in ("--help", "-h"):
+            print(f"Usage: {prog} [options] [target_dir ...]")
+            print("")
+            print("Synchronizes Part 1 of AGENTS.md, bridge files, plans/template.md,")
+            print("lefthook-bootstrap.yml, and the bootstrap-managed .gitignore block from the")
+            print("bootstrap repository to sibling repositories.")
+            print("")
+            print("Options:")
+            print("  -c, --check    Check targets for drift; exit 1 if drift detected, 0 if clean")
+            print("  -n, --dry-run  Preview changes without modifying files")
+            print("  -h, --help     Show this help message and exit")
+            print("")
+            print("Arguments:")
+            print("  target_dir     Specific target repo directory or path to its AGENTS.md")
+            print("                 (defaults to all sibling directories containing AGENTS.md)")
+            sys.exit(0)
+        elif arg in ("--check", "-c"):
+            check_mode = True
+            dry_run = True
+        elif arg in ("--dry-run", "-n"):
+            dry_run = True
+        elif os.path.isdir(arg):
+            targets.append(os.path.abspath(arg))
+        elif os.path.isfile(arg) and os.path.basename(arg) == "AGENTS.md":
+            targets.append(os.path.abspath(os.path.dirname(arg)))
+        else:
+            print(f"Unknown argument: {arg}")
+            print(f"Usage: {prog} [--check|-c] [--dry-run|-n] [--help|-h] [target_dir ...]")
+            sys.exit(1)
+
+    if not targets:
+        for entry in sorted(os.listdir(DEV_DIR)):
+            candidate = os.path.join(DEV_DIR, entry)
+            if os.path.isdir(candidate) and os.path.isfile(os.path.join(candidate, "AGENTS.md")):
+                targets.append(candidate)
+
+    return check_mode, dry_run, targets
+
+
+def main():
+    check_mode, dry_run, targets = parse_args(sys.argv)
+
+    if not targets:
+        print("No target repositories with AGENTS.md found.")
+        sys.exit(0)
+
+    print("=== Bootstrap Workflow Sync ===")
+    print(f"Source: {BOOTSTRAP_AGENTS}")
+    if check_mode:
+        print("Mode:   CHECK (fails with exit code 1 if drift detected)")
+    elif dry_run:
+        print("Mode:   DRY RUN (no changes written)")
+    print(f"Targets: {len(targets)} repositories")
+    print("--------------------------------")
+
+    canonical_text = read_text(BOOTSTRAP_AGENTS)
+    part1_match = PART1_RE.search(canonical_text)
+    if not part1_match:
+        sys.exit("Error: Could not extract Part 1 from " + BOOTSTRAP_AGENTS)
+    canonical_part1 = part1_match.group(1)
+
+    bridge_rel_paths = [
+        "CLAUDE.md",
+        os.path.join(".github", "copilot-instructions.md"),
+    ]
+    bridges = {}
+    for rel_path in bridge_rel_paths:
+        src_path = os.path.join(SCAFFOLD_DIR, rel_path)
+        if os.path.isfile(src_path):
+            bridges[rel_path] = read_text(src_path)
+
+    shared_hooks_src = os.path.join(SCAFFOLD_DIR, SHARED_HOOKS_REL)
+    shared_hooks = read_text(shared_hooks_src) if os.path.isfile(shared_hooks_src) else None
+
+    managed_gitignore_block = None
+    scaffold_gitignore = os.path.join(SCAFFOLD_DIR, ".gitignore")
+    if os.path.isfile(scaffold_gitignore):
+        block_match = GITIGNORE_BLOCK_RE.search(read_text(scaffold_gitignore))
+        if block_match:
+            managed_gitignore_block = block_match.group(0)
+        else:
+            print(f"Warning: no bootstrap-managed markers in {scaffold_gitignore}; skipping .gitignore sync")
+
+    has_drift = False
+    for target_dir in targets:
+        proj_name = os.path.basename(target_dir)
+        agents_path = os.path.join(target_dir, "AGENTS.md")
+
+        print(f"\n[{proj_name}]")
+        if not os.path.isfile(agents_path):
+            print(f"  - Skipped: AGENTS.md not found in {target_dir}")
+            continue
+
+        target_text = read_text(agents_path)
+        target_part1_match = PART1_RE.search(target_text)
+        if not target_part1_match:
+            has_drift = True
+            print(f"  - AGENTS.md Part 1: [DRIFT] '# Part 1: Agent Workflow ... ---' markers not found in {agents_path}; fix manually")
+            # Without Part 1 this may be a repository that never adopted the standard (auto-discovery
+            # picks up any sibling with an AGENTS.md), so nothing else is written into it.
+            print("  - Skipped: nothing else is synced until AGENTS.md has Part 1")
+            continue
+        if target_part1_match.group(1) == canonical_part1:
+            print("  - AGENTS.md Part 1: up to date")
+        else:
+            has_drift = True
+            if dry_run:
+                print("  - AGENTS.md Part 1: [WOULD UPDATE]")
+            else:
+                write_text(
+                    agents_path,
+                    target_text[:target_part1_match.start(1)]
+                    + canonical_part1
+                    + target_text[target_part1_match.end(1):],
+                )
+                print("  - AGENTS.md Part 1: UPDATED")
+
+        if os.path.abspath(target_dir) == os.path.abspath(SCRIPT_DIR):
+            continue
+
+        for rel_path, content in bridges.items():
+            if sync_file(rel_path, os.path.join(target_dir, rel_path), content, dry_run):
+                has_drift = True
+
+        if shared_hooks is not None:
+            if sync_file(SHARED_HOOKS_REL, os.path.join(target_dir, SHARED_HOOKS_REL), shared_hooks, dry_run):
+                has_drift = True
+            if check_lefthook(target_dir):
+                has_drift = True
+
+        if check_ci_phase_skip(target_dir):
+            has_drift = True
+
+        # Plan template lives in plans/ (everything the skills read and write); docs/ is for people.
+        template_rel_path = os.path.join("plans", "template.md")
+        template_src_path = os.path.join(SCAFFOLD_DIR, template_rel_path)
+        if os.path.isfile(template_src_path):
+            if sync_file(template_rel_path, os.path.join(target_dir, template_rel_path), read_text(template_src_path), dry_run):
+                has_drift = True
+            legacy_template = os.path.join(target_dir, "docs", "feature-plan-template.md")
+            if os.path.isfile(legacy_template):
+                has_drift = True
+                if dry_run:
+                    print("  - docs/feature-plan-template.md: [WOULD REMOVE] (moved to plans/template.md)")
+                else:
+                    os.remove(legacy_template)
+                    print("  - docs/feature-plan-template.md: REMOVED (moved to plans/template.md)")
+
+        if managed_gitignore_block is not None and sync_gitignore(target_dir, managed_gitignore_block, dry_run):
+            has_drift = True
+
+    if check_mode and has_drift:
+        print("\n[FAIL] Workflow drift detected across repositories.")
+        sys.exit(1)
+    elif check_mode:
+        print("\n[PASS] All repositories are in sync.")
+
+    print("--------------------------------")
+    print("Sync complete.")
+
+
+if __name__ == "__main__":
+    main()

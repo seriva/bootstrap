@@ -11,7 +11,7 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TREE_STATE="$REPO_DIR/workflows/shared/scripts/bs-tree-state"
 COMMIT="$REPO_DIR/workflows/shared/scripts/bs-commit"
 PLAN_STATE="$REPO_DIR/workflows/shared/scripts/bs-plan-state"
-REVIEW_STATE="$REPO_DIR/workflows/shared/scripts/bs-review-state"
+REVIEW_STATE="$REPO_DIR/workflows/shared/scripts/bs-review-state.py"
 PLAN_BRANCH="$REPO_DIR/workflows/shared/scripts/bs-plan-branch"
 DIFF_TARGET="$REPO_DIR/workflows/shared/scripts/bs-diff-target"
 WORKTREE="$REPO_DIR/workflows/shared/scripts/bs-worktree"
@@ -19,7 +19,7 @@ PR_CI="$REPO_DIR/workflows/shared/scripts/bs-pr-ci"
 RESOLVE_ROLE="$REPO_DIR/workflows/shared/scripts/bs-resolve-role"
 VERIFY_COMMITS="$REPO_DIR/workflows/shared/scripts/bs-verify-commits"
 GATE_RUN="$REPO_DIR/workflows/shared/scripts/bs-gate-run"
-CHECK_REVIEW="$REPO_DIR/workflows/shared/scripts/bs-check-review"
+CHECK_REVIEW="$REPO_DIR/workflows/shared/scripts/bs-check-review.py"
 SANDBOX="$(mktemp -d "${TMPDIR:-/tmp}/bootstrap-scripts.XXXXXX")"
 trap 'rm -rf "$SANDBOX"' EXIT
 
@@ -129,6 +129,9 @@ if fields_csv:
     want = set(fields_csv.split(","))
     filt = lambda o: {k: v for k, v in o.items() if k in want}
     data = [filt(x) for x in data] if isinstance(data, list) else filt(data)
+if not expr:
+    sys.stdout.write(json.dumps(data) + "\n")
+    sys.exit(0)
 if shutil.which("jq"):
     r = subprocess.run(["jq", "-r", expr], input=json.dumps(data), text=True, capture_output=True)
     if r.returncode != 0:
@@ -617,7 +620,7 @@ expect_next "gh failure: next action retries once" "retry once"
 pr_record MERGED false 0 "**Gate:** PASSED"
 review_state feat/x
 expect_eq "merged" "$OUT" "merged feat/base"
-check "one gh pr view call for the branch with --json" grep -q '^pr view feat/x --json state,isDraft,baseRefName,body,commits --jq ' "$FAKE_GH/calls"
+check "one gh pr view call for the branch with --json" grep -q '^pr view feat/x --json state,isDraft,baseRefName,body,commits$' "$FAKE_GH/calls"
 pr_record CLOSED true 0 "$PH"
 review_state feat/x
 expect_eq "closed beats a placeholder" "$OUT" "closed feat/base"
@@ -802,6 +805,15 @@ review_state record feat/x --defer ""
 expect_code "record with empty value: usage exit 2" 2
 review_state get
 expect_code "get without branch: usage exit 2" 2
+
+# Missing gh executable on PATH must exit 3 with a next: line (never an unhandled traceback).
+PYTHON3_BIN="$(command -v python3)"
+empty_bin="$SANDBOX/empty-bin"
+mkdir -p "$empty_bin"
+run_in "$r" env PATH="$empty_bin" "$PYTHON3_BIN" "$REVIEW_STATE" feat/x
+expect_code "missing gh on PATH: exit 3" 3
+expect_next "missing gh on PATH: next retries once" "retry once"
+check "missing gh on PATH: no traceback" check_not grep -q 'Traceback' "$SANDBOX/stderr"
 
 echo "== bs-plan-branch"
 # Origin with main, a release branch, and committed plans; the clone is what the script runs in.
@@ -1119,6 +1131,17 @@ expect_code "ci without a PR: exit 3" 3
 review_state ci feat/x
 expect_code "ci without passes: usage error" 2
 expect_next "ci usage error: next action fixes the call" "fix the call"
+
+# Missing sibling bs-pr-ci binary must map to BLOCKED_BY_CI error (never a traceback).
+solo_dir="$SANDBOX/solo-rs"
+mkdir -p "$solo_dir"
+cp "$REVIEW_STATE" "$solo_dir/bs-review-state.py"
+chmod +x "$solo_dir/bs-review-state.py"
+ci_record
+run_in "$r" env PATH="$GH_PATH" "$solo_dir/bs-review-state.py" ci feat/x "Pass 1"
+expect_code "ci missing bs-pr-ci: exit 0" 0
+expect_eq "ci missing bs-pr-ci: BLOCKED_BY_CI error" "$(printf '%s\n' "$OUT" | head -n 1)" "BLOCKED_BY_CI error"
+check "ci missing bs-pr-ci: no traceback" check_not grep -q 'Traceback' "$SANDBOX/stderr"
 
 echo "== bs-diff-target"
 EMPTY_TREE="$(git hash-object -t tree /dev/null)"
@@ -1776,6 +1799,12 @@ run_in "$cr_repo" "$CHECK_REVIEW" --pass 1 --base no-such-ref "$cr_dir/p1-clean.
 expect_code "check-review unknown base: exit 2" 2
 run_in "$cr_repo" "$CHECK_REVIEW" --pass 2 --base "$cr_fix_base" --fix-shas badsha "$cr_dir/p2-missed.md"
 expect_code "check-review unknown fix sha: exit 2" 2
+
+# Missing git on PATH must exit 2 with a next: line (never an unhandled traceback).
+run_in "$cr_repo" env PATH="$empty_bin" "$PYTHON3_BIN" "$CHECK_REVIEW" --pass 1 --base origin/main "$cr_dir/p1-clean.md"
+expect_code "check-review missing git on PATH: exit 2" 2
+expect_next "check-review missing git on PATH: next fixes call" "fix the call"
+check "check-review missing git on PATH: no traceback" check_not grep -q 'Traceback' "$SANDBOX/stderr"
 
 echo "== bs-verify-commits"
 v_repo="$(new_repo)"

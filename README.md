@@ -227,10 +227,10 @@ bootstrap/
 │       └── models.env             Default paired and fix-escalation model names, filled in at install (override in ${XDG_CONFIG_HOME:-~/.config}/bootstrap/models.env)
 ├── install.sh          Installs skills, shared docs, and helper scripts across detected AI tools
 ├── init.sh             Scaffolds a new project (--type continuous|versioned)
-├── sync.sh             Synchronizes shared rules across projects (--check, --dry-run)
+├── sync.sh / sync.py   Synchronizes shared rules across projects (--check, --dry-run)
 ├── tests/smoke.sh      Smoke test for init.sh, sync.sh, and install.sh (runs in a temp dir)
 ├── tests/scripts.sh    Tests for the helper scripts (runs against throwaway repos and a fake gh in a temp dir)
-├── tests/lint.sh       ShellCheck over every shell script (CI runs it with both test suites)
+├── tests/lint.sh       Syntax and ShellCheck lint over every shell and Python script (CI runs it with both test suites)
 ├── .github/workflows/  CI for this repository
 └── AGENTS.md           Agent guide for this repository
 ```

@@ -78,21 +78,37 @@ SHARED_SED_ARGS=(
   -e "s|{{BS_FIX_MODEL_AGY}}|$(sed_escape "${BS_FIX_MODEL_AGY:-none}")|g"
   -e "s|{{BS_FIX_MODEL_CODEX}}|$(sed_escape "${BS_FIX_MODEL_CODEX:-none}")|g"
 )
+# Track placeholder keys to catch collisions (e.g., bs-foo next to bs-foo.py, or a script
+# colliding with a shared doc like BS_DISPATCH).
+SEEN_PLACEHOLDER_KEYS=""
+register_placeholder() {
+  local key="$1" target="$2"
+  case " $SEEN_PLACEHOLDER_KEYS " in
+    *" $key "*)
+      echo "Error: duplicate placeholder key {{${key}}} (collision at $target)" >&2
+      exit 1
+      ;;
+  esac
+  SEEN_PLACEHOLDER_KEYS="${SEEN_PLACEHOLDER_KEYS:+$SEEN_PLACEHOLDER_KEYS }$key"
+  SHARED_SED_ARGS+=(-e "s|{{${key}}}|$(sed_escape "$target")|g")
+}
 # Shared docs are referenced as {{BS_<NAME_UPPER>}} (conventions-core.md -> {{BS_CONVENTIONS_CORE}},
 # role-implementer.md -> {{BS_ROLE_IMPLEMENTER}}), so every doc can cite every other.
 for doc_path in "$SHARED_SRC"/*.md; do
   [ -f "$doc_path" ] || continue
   doc_name="$(basename "$doc_path" .md)"
   doc_key="BS_$(printf '%s' "$doc_name" | tr '[:lower:]-' '[:upper:]_')"
-  SHARED_SED_ARGS+=(-e "s|{{${doc_key}}}|$(sed_escape "$BOOTSTRAP_SHARE_DIR/$doc_name.md")|g")
+  register_placeholder "$doc_key" "$BOOTSTRAP_SHARE_DIR/$doc_name.md"
 done
-# Helper scripts are referenced as {{<NAME_UPPER>}} (bs-commit -> {{BS_COMMIT}}). Added before
-# the shared docs are rendered, because shared docs reference them too.
+# Helper scripts are referenced as {{<NAME_UPPER>}} (bs-commit -> {{BS_COMMIT}},
+# bs-check-review.py -> {{BS_CHECK_REVIEW}}). Added before the shared docs are rendered,
+# because shared docs reference them too.
 for script_path in "$SHARED_SRC"/scripts/*; do
   [ -f "$script_path" ] || continue
   script_name="$(basename "$script_path")"
-  script_key="$(printf '%s' "$script_name" | tr '[:lower:]-' '[:upper:]_')"
-  SHARED_SED_ARGS+=(-e "s|{{${script_key}}}|$(sed_escape "$BOOTSTRAP_SHARE_DIR/scripts/$script_name")|g")
+  script_stem="${script_name%.py}"
+  script_key="$(printf '%s' "$script_stem" | tr '[:lower:]-' '[:upper:]_')"
+  register_placeholder "$script_key" "$BOOTSTRAP_SHARE_DIR/scripts/$script_name"
 done
 
 # Install helper scripts, shared conventions, and dispatch rules once per user
