@@ -13,9 +13,26 @@ Usage: bs-worktree add <ref> [<label>]
   remove   remove that worktree and prune it; refuses anything but a linked worktree of this
            repo (the main checkout, a plain directory, another repo's worktree)
 Exit: 0 ok, 2 usage, not a repo, unknown ref, not a linked worktree, 3 git worktree failed
+On a non-zero exit, the last stderr line is "next: <action>" for the caller.
 EOF
   exit 2
 }
+
+next_on_failure() {
+  case "$1" in
+    2) echo "fix the call as the error above says (a known ref; remove only a linked worktree this helper added), then retry" ;;
+    3) echo "git worktree failed (error above): run git worktree prune and retry once; if it fails again, stop and report the error" ;;
+    *) echo "unexpected failure (error above): stop and report the error" ;;
+  esac
+}
+on_exit() {
+  local rc=$? n
+  if [ "$rc" -ne 0 ]; then
+    n="$(next_on_failure "$rc")"
+    [ -z "$n" ] || echo "next: $n" >&2
+  fi
+}
+trap on_exit EXIT
 
 [ $# -ge 2 ] || usage
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "bs-worktree: not inside a git work tree" >&2; exit 2; }

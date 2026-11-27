@@ -51,7 +51,6 @@ Invoking `/bs-review` dispatches a fresh-context reviewer via **T3 Code (`delega
    - Step 1 printed `PR <N>` → remove its worktree: `"{{BS_DIFF_TARGET}}" cleanup <REVIEW_WORKDIR> <N>`.
    - Verify per **Verify** (dispatch), with one exception: instead of requiring a clean `git status --porcelain`, rerun `"{{BS_TREE_STATE}}" hash` and compare it with the Step 1 hash.
    - **Hash mismatch** → undo nothing.
-     - Why: the user may have edited files during the review, and the hash cannot tell those edits from the reviewer's or say which file changed.
      - Under `### Working Tree Changed`, say the tree changed during the review and show `git status --porcelain` (which also lists the user's own pre-existing edits).
      - Standalone: still echo the findings below. Called by `/bs-loop`: report `PENDING_REVIEW`.
    - **Missing reply sections** → re-dispatch once. The second run also fails → report `PENDING_REVIEW`.

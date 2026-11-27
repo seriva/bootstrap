@@ -11,15 +11,16 @@ Every `bs-*` doc and role brief uses these words and placeholders in exactly thi
 - **Owned**: a defect whose repro runs through a function the diff adds or changes, or through newly written code in a file the diff creates. A function moved from another file with no line edited is not owned (`git blame -s -C5 -C5 <BASE>..HEAD -- <file>` prints each of its lines with a leading `^`). Reviewers judge against the diff under review. Writers take it as `git diff "$(git merge-base "origin/$BASE_BRANCH" HEAD)"`, which includes uncommitted edits; standalone `/bs-task` uses `git diff HEAD` plus its task commits.
 - **Behavioural**: wrong output, crash, broken build, valid input rejected, or invalid input accepted. Anything else (naming, comments, dead code, style) is a nit.
 - **Pre-existing**: fails the same way on `<BASE>` and lies outside the bug or feature the task or plan targets. An incomplete sibling of that bug or feature is never pre-existing.
+- **Clean tree**: `git status --porcelain` prints nothing. Dirty → stop and list the paths; never stash, discard, or commit them.
 - **Gate change**: a change that makes a gate check less: lint or format rules and excludes, quality baselines (e.g. a re-saved `sentrux gate`), coverage or size thresholds, hook or CI config, and skipped or disabled checks.
 
 ## Worker rules
 For every role brief (`Implementer`, `Defect Fixer`, `Code Reviewer (Pass 1)`, `Code Reviewer (Pass 2)`):
 - Never spawn or dispatch subagents; probe inline.
 - Put your entire reply in one final message.
-- **Never end your turn while any command is still running** (`bs-gate-run`, `bs-commit`, tests, installs, probes): T3 Code treats turn-end as final task completion and drops your final reply (and gate line). Never pass a shell job to `t3_background_wait` (it returns immediately for shell jobs) and never yield across turns to wait for a system notification; if your tool auto-backgrounds a command after a short wait (e.g. a 10 s cap on `bs-commit` pre-commit hooks or a long test), stay in-turn until it exits, then write your final reply.
+- **Never end your turn while a command is still running** (gates, `bs-commit`, tests, installs, probes): T3 Code treats turn-end as completion and drops your final reply. Never wait via `t3_background_wait` or a later system notification; if your tool backgrounds a command (e.g. a 10 s cap on pre-commit hooks), stay in-turn until it exits.
 - **Writers** (`Implementer`, `Defect Fixer`):
-  - **Start check**: HEAD is `$WORKING_BRANCH` and `git status --porcelain` is clean, else stop and report. Install dependencies per **Dependencies** if needed.
+  - **Start check**: HEAD is `$WORKING_BRANCH` and the tree is a **Clean tree**, else stop and report. Install dependencies per **Dependencies** if needed.
   - Never push, amend, or rebase; the orchestrator pushes after verifying.
   - Never edit `plans/follow-ups.md`: defects in other mechanisms go under `### Side Sightings` (**Side sightings**).
 - **Reviewers** (`Code Reviewer (Pass 1)`, `Code Reviewer (Pass 2)`): never modify tracked or pre-existing dirty files, never commit, and never run the full **Test** command (the orchestrator's **Verify** (dispatch) and CI gate it).

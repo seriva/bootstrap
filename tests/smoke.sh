@@ -323,6 +323,16 @@ else
   fail "broken cross-file doc reference(s) above"
 fi
 
+# Word budget for what agents must read: every skill and shared doc together. Raise it only on
+# purpose; prefer moving a mechanical rule into a helper script and its tests.
+DOC_WORD_BUDGET=13200
+doc_words="$(cat "$REPO_DIR"/workflows/skills/*/SKILL.md "$REPO_DIR"/workflows/shared/*.md | wc -w | tr -d ' ')"
+if [[ "$doc_words" -le "$DOC_WORD_BUDGET" ]]; then
+  pass "skills and shared docs stay within the word budget ($doc_words/$DOC_WORD_BUDGET)"
+else
+  fail "skills and shared docs exceed the word budget ($doc_words/$DOC_WORD_BUDGET words)"
+fi
+
 echo
 if [[ "$FAILURES" -gt 0 ]]; then
   echo "[FAIL] $FAILURES check(s) failed."

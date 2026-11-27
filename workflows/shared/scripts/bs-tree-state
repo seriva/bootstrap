@@ -14,9 +14,25 @@ Usage: bs-tree-state <command>
   dirty                   Paths already dirty (modified, staged, or untracked), sorted
   baseline -- <path>...   "<blob-sha|missing|non-file> <path>" per path, in order,
                           then "staged <sha>" for the staged diff of those paths
+On a non-zero exit, the last stderr line is "next: <action>" for the caller.
 EOF
   exit 2
 }
+
+next_on_failure() {
+  case "$1" in
+    2) echo "fix the call as the usage or error above says (run it inside the target repo), then retry" ;;
+    *) echo "unexpected failure (error above): stop and report the error" ;;
+  esac
+}
+on_exit() {
+  local rc=$? n
+  if [ "$rc" -ne 0 ]; then
+    n="$(next_on_failure "$rc")"
+    [ -z "$n" ] || echo "next: $n" >&2
+  fi
+}
+trap on_exit EXIT
 
 [ $# -ge 1 ] || usage
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "bs-tree-state: not inside a git work tree" >&2; exit 2; }

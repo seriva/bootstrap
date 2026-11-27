@@ -1931,6 +1931,57 @@ run_in "$v_repo" "$VERIFY_COMMITS" --branch feat/test-verify --base main --role 
 expect_eq "verify formatted Docs gate: lint-only" "$(rfield GATE)" "lint-only"
 expect_eq "verify formatted Docs gate: docs-gate-verified" "$(rfield REASON)" "docs-gate-verified"
 
+echo "== helper contract: every non-zero exit ends in a next: line"
+# Every helper, called wrongly (no arguments, a bogus argument) and from outside a git work tree,
+# must end its stderr with "next: <action>" whenever it exits non-zero (never a bare exit or a
+# traceback). bs-gate-run passes a wrapped command's exit code through, so only its usage error counts.
+outside="$(mktemp -d "$SANDBOX/outside.XXXXXX")"
+contract_repo="$(new_repo)"
+# The fake gh fails every pr view, so no call reaches a fixture this section never wrote.
+fake_gh_reset
+echo "gh: simulated failure" > "$FAKE_GH/pr-view.err"
+# contract_run [--must-fail] <dir> <label> <cmd...>: run from <dir>; a non-zero exit needs a next:
+# last line, and --must-fail also rejects exit 0 (a helper that accepted the bad call).
+contract_run() {
+  local must_fail=false
+  if [ "$1" = --must-fail ]; then must_fail=true; shift; fi
+  local dir="$1" label="$2" last
+  shift 2
+  set +e
+  (cd "$dir" && env PATH="$GH_PATH" GIT_CEILING_DIRECTORIES="$SANDBOX" "$@") \
+    >/dev/null 2>"$SANDBOX/stderr"
+  CODE=$?
+  set -e
+  last="$(tail -n 1 "$SANDBOX/stderr")"
+  if [ "$CODE" -eq 0 ] && [ "$must_fail" = true ]; then
+    fail "$label (exit 0: the bad call was accepted)"
+  elif [ "$CODE" -eq 0 ]; then
+    pass "$label (exit 0)"
+  else
+    case "$last" in
+      "next: "?*) pass "$label (exit $CODE)" ;;
+      *) fail "$label (exit $CODE, last stderr line: '$last')" ;;
+    esac
+  fi
+  check "$label: no traceback" check_not grep -q 'Traceback' "$SANDBOX/stderr"
+}
+for script in "$REPO_DIR"/workflows/shared/scripts/*; do
+  [ -f "$script" ] || continue
+  name="$(basename "$script")"
+  if [ "$name" = bs-gate-run ]; then
+    contract_run "$contract_repo" "$name without arguments" "$script"
+    continue
+  fi
+  contract_run "$contract_repo" "$name without arguments" "$script"
+  contract_run --must-fail "$contract_repo" "$name with a bogus argument" "$script" --bogus-flag
+  contract_run --must-fail "$outside" "$name outside a git work tree" "$script" feat/x
+done
+# A wrapping helper prints only its own next: line, never the wrapped helper's too.
+run_in "$contract_repo" "$DIFF_TARGET" cleanup "$outside" 1
+expect_code "diff-target cleanup of a non-worktree: exit 2" 2
+expect_next "diff-target cleanup of a non-worktree: next names the cleanup call" "cleanup <pr-workdir> <N>"
+expect_eq "diff-target cleanup of a non-worktree: one next: line" "$(grep -c '^next: ' "$SANDBOX/stderr")" 1
+
 echo
 if [[ "$FAILURES" -gt 0 ]]; then
   echo "[FAIL] $FAILURES check(s) failed."

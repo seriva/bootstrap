@@ -31,7 +31,7 @@ From your prompt: `TARGET_REPO`, `WORKING_BRANCH`, `BASE` (`origin/$BASE_BRANCH`
    - Probe the other paths through each finding's mechanism and through the code the fix changed (Must-not-break rule 2), not only the finding's own repro.
    - If you spot a defect in new or changed code elsewhere in the diff while checking context or sightings, classify it by rule 5.
 3. **Sightings**: probe each `Defect Fixer` sighting and classify it. Still unreproduced → `### Unconfirmed`.
-4. **Changed tests**: a test the fix rewrote or deleted that no longer covers an invariant the code still has → `### Unresolved`.
+4. **Changed tests**: check each against Must-not-break rule 3.
 5. **Probes**: run verification probes per `/bs-probe`, plus the **Lint** command and the test files the fix touched.
 6. **Disregard Low nits.**
 

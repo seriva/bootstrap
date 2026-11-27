@@ -26,9 +26,7 @@ Invoking `/bs-exec` authorizes managing plan branches, running `/bs-loop` per ph
    - Resolve `$TARGET_REPO` and read `AGENTS.md` per **Target** (conventions-core).
    - `$PLAN_FILE`: the explicit plan path, else the one plan `"{{BS_PLAN_STATE}}" active` lists (if several, ask).
 3. **Plan Branch**: run `"{{BS_PLAN_BRANCH}}" "$PLAN_FILE"`.
-   - It checks out (or creates and pushes) `feat/<plan-slug>`, resolves the base branch, records it in the plan's `**Base branch:**` line, turns `Draft` into `In Progress`, and commits and pushes that header.
    - Take `PLAN_SLUG`, `PLAN_BRANCH`, `BASE_BRANCH`, and `START_BRANCH` from its `KEY=value` output.
-   - Non-zero exit → do its `next:` line per **Helpers** (conventions-core): dependencies, dirty trees, network retries, and a branch held by another worktree each get their own action.
 
 ### Plan State
 1. `git checkout "$PLAN_BRANCH" && git pull`, then `"{{BS_PLAN_STATE}}" "$PLAN_FILE"` per **States** (dispatch).
@@ -39,7 +37,7 @@ Invoking `/bs-exec` authorizes managing plan branches, running `/bs-loop` per ph
        - **in review** → check out and pull `$PHASE_BRANCH`, then follow **Resume** (dispatch) (`{{BS_RECOVERY}}`).
        - `gated:BLOCKED_BY_DEFECTS` and the user asks to fix it → check out and pull `$PHASE_BRANCH`, read `{{BS_RECOVERY}}`, run **User-granted Fix Turn** (recovery) and **Finalize PR** (bs-loop), then **Phase Gate**.
        - Otherwise → report the PR URL and state, and STOP.
-     - **Drift note**: run `"{{BS_PLAN_STATE}}" drift "$PLAN_FILE" "$BASE_BRANCH"`. If it prints any `<slug> <date>` lines, say in chat that those related plans landed after `$PLAN_FILE` (so it may be stale and `/bs-plan review` re-audits it), then continue (the `Phase Implementer` checks each task's `Done when:` before implementing it).
+     - **Drift note**: run `"{{BS_PLAN_STATE}}" drift "$PLAN_FILE" "$BASE_BRANCH"`. If it prints any `<slug> <date>` lines, say in chat that those related plans landed after `$PLAN_FILE`, so it may be stale (`/bs-plan review` re-audits it), then continue.
      - Otherwise go to **Run Phase**.
    - **`finishing …`**: go to **Finalize Plan**.
    - **`closed`**: report that the plan is complete and stop.
@@ -73,7 +71,7 @@ Invoking `/bs-exec` authorizes managing plan branches, running `/bs-loop` per ph
      - Move it to `plans/archive/`.
      - Update its `plans/roadmap.md` row under `## Completed` with the date and `[Feature](archive/<plan-filename>)`.
      - Stage: `mkdir -p plans/archive && git mv "$PLAN_FILE" plans/archive/ && git add "plans/archive/$(basename "$PLAN_FILE")" plans/roadmap.md`.
-   - **Commit**: `"{{BS_COMMIT}}" -m "docs(<plan-slug>): complete plan" -- "$PLAN_FILE" plans/roadmap.md` (continuous: also `"plans/archive/$(basename "$PLAN_FILE")"`, the move's new side). It refuses anything else staged or added by a hook. Then push.
+   - **Commit**: `"{{BS_COMMIT}}" -m "docs(<plan-slug>): complete plan" -- "$PLAN_FILE" plans/roadmap.md` (continuous: also `"plans/archive/$(basename "$PLAN_FILE")"`, the move's new side). Then push.
    - **Open the final PR** (keep `--title` ≤72 chars):
      `gh pr create --base "$BASE_BRANCH" --head "$PLAN_BRANCH" --title "feat(<plan-slug>): complete plan implementation" --body "All phases completed for $PLAN_FILE."`
    - **CI**: run **CI wait** (dispatch) on `$PLAN_BRANCH` and report the PR URL + CI status (the user merges into `$BASE_BRANCH`).

@@ -13,11 +13,10 @@ How a task is implemented (`/bs-task`, `Implementer`, `Defect Fixer`):
    - Write the planned cases as given.
    - A planned case fails for a reason the task did not name → never swap it for one that passes. Find the mechanism (**Side sightings** (conventions-core)) and list the case under `### Deviations`.
 3. **Implement** the minimal fix or feature within the `AGENTS.md` boundaries.
-4. **Same root, same fix** (**Follow-ups** (conventions-core)): fix the shared mechanism once across sibling paths rather than patching a single caller.
-5. **Existing tests**: when you rewrite or delete one:
+4. **Existing tests**: when you rewrite or delete one:
    - Keep a test for the invariant it protected. Never weaken it just to go green.
    - List it under `### Tests Changed` in your reply: the test, its invariant, and what covers it now (or why the invariant is gone).
-6. **Verification & People docs**:
+5. **Verification & People docs**:
    - **Intermediate plan task (`Task N.1 .. N.(M-1)`)**:
      - Run the task's `Test:` file(s) and the `AGENTS.md` lint command until green.
      - Check off `- [x] Task N.M` in `$PLAN_FILE`.
@@ -34,7 +33,7 @@ How a task is implemented (`/bs-task`, `Implementer`, `Defect Fixer`):
    - Run each gate command on its own via `"{{BS_GATE_RUN}}"`, never `&&`-chained together or in a shell loop, and never piped through `tail`/`grep`/`tee`:
      - Simple command: `"{{BS_GATE_RUN}}" -- <cmd> [args...]`
      - Compound command from `AGENTS.md` (e.g. `npm test && npm run test:e2e`): `"{{BS_GATE_RUN}}" -c "<command>"`
-   - It writes full output to a unique temp log, prints `exit=<rc> secs=<S> log=<path>` (plus the tail on failure), and exits with `<rc>`.
+   - It logs the full output and prints `exit=<rc> secs=<S> log=<path>`.
    - **T3 Code / turn discipline** (**Worker rules** (conventions-core)):
      - Run in the foreground with your tool's longest timeout (e.g. Claude Code Bash `timeout: 600000`).
      - Only if a single command can outlast your tool's max timeout, background `"{{BS_GATE_RUN}}"` and block in-turn until `^exit=` appears in its log (e.g. Claude Code `Monitor`).
@@ -67,12 +66,11 @@ How a task is implemented (`/bs-task`, `Implementer`, `Defect Fixer`):
    - Intermediate tasks (`Task N.1 .. N.(M-1)`): the task's `Test:` files. The commit hook lints; without `lefthook.yml`, also run format and lint.
    - `Task N.M`, a standalone task, or `Defect Fixer`: the **Full gate** (a docs-only review fix: the **Docs gate**).
    - Docs-only commits (follow-ups, release notes): the commit hook alone (without `lefthook.yml`: format and lint).
-3. **Commit**: `"{{BS_COMMIT}}" [--only] --exclude-hook <suite> -m "<subject>" [-m "<body>"] -- <allowed>...`, paths repo-root-relative. Wait in-turn until it exits and prints the short SHA (**Worker rules** (conventions-core); pre-commit hooks can exceed short shell wait caps). `<allowed>` is:
+3. **Commit**: `"{{BS_COMMIT}}" [--only] --exclude-hook <suite> -m "<subject>" [-m "<body>"] -- <allowed>...`, paths repo-root-relative. Wait in-turn until it prints the short SHA (**Worker rules** (conventions-core)); a non-zero exit → do its `next:` line. `<allowed>` is:
    - `PRE_DIRTY` not empty: pass `--only`, and only the task's files.
    - Plan task: its `Files:` and tests, `$PLAN_FILE`, `CHANGELOG.md`, `README.md`, `docs/`.
    - Standalone: only the files the task needed (`plans/follow-ups.md` for its **Side sightings** (conventions-core)).
    - `Defect Fixer`: the files the findings or their shared mechanism need, plus tests and the **People docs** (conventions-core) files its change needs.
-4. **Exit**: 0 means committed (it prints the short SHA). Otherwise do its `next:` line (**Helpers** (conventions-core)).
-5. **Subject**:
+4. **Subject**:
    - At most 72 chars, including `<type>[(<scope>)]:` and any `(Task N.M)`; truncate only the `<summary>`.
    - Plan work uses `(<plan-slug>)` as its scope.

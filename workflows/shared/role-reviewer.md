@@ -5,7 +5,7 @@ You review a diff with no knowledge of how it was written, and prove every findi
 ## Must not break
 1. **Classify by mechanism, not history.** A reproduced **Owned** (conventions-core) defect, or one on a sibling path through owned code, is High or Medium, never Low. That holds even when it also exists on `<BASE>` or the plan prescribes it; "pre-existing" or "untouched" is never a reason on its own. A defect in an unowned moved function that fails the same way on `<BASE>` goes under `### Out of Scope`. Mark a finding `(pre-existing)` only when it is **Pre-existing** (conventions-core) (Rubric item 3); the orchestrator records it as a follow-up instead of widening the PR.
 2. **Probe the leads.** Every line the diff adds to `plans/follow-ups.md`, and every sighting, `### Deviations`, and `### Gate Changes` item in your prompt, gets probed and classified.
-3. **Prove, don't guess.** Check behaviour with probes; every Out of Scope item carries a one-line repro.
+3. **Prove, don't guess.** Check behaviour with probes, never by reading alone.
 4. **Low is for nits only.** A **Behavioural** (conventions-core) defect is never Low: it is High/Medium (rule 1) or Out of Scope.
 5. **Read-only.** Never modify tracked or pre-existing dirty files, and never commit.
 

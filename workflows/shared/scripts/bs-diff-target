@@ -19,20 +19,52 @@ then UNTRACKED per new file to read in full ("UNTRACKED none" if there are none)
   #<N>, PR URL   the PR head in a detached worktree outside the repo, against origin/<base>
 cleanup          remove that worktree (never the main checkout) and refs/bs-review/pr-<N>
 Exit: 0 ok, 2 usage, not a repo, no commits, unknown ref, 3 gh, fetch, or worktree failed
+On a non-zero exit, the last stderr line is "next: <action>" for the caller.
 EOF
   exit 2
 }
 
+mode="diff"
+next_on_failure() {
+  case "$1" in
+    2) if [ "$mode" = cleanup ]; then
+         echo "fix the call as the error above says (bs-diff-target cleanup <pr-workdir> <N>, with the WORKDIR and PR it printed), then retry"
+       else
+         echo "fix the target as the error above says (an existing branch, <base>...<head>, #N, or PR URL, inside a repo with commits), then retry"
+       fi ;;
+    3) echo "gh, git fetch, or the PR worktree failed (error above): retry once; if it fails again, stop and report the error" ;;
+    *) echo "unexpected failure (error above): stop and report the error" ;;
+  esac
+}
+on_exit() {
+  local rc=$? n
+  if [ "$rc" -ne 0 ]; then
+    n="$(next_on_failure "$rc")"
+    [ -z "$n" ] || echo "next: $n" >&2
+  fi
+}
+trap on_exit EXIT
+
 [ $# -le 3 ] || usage
 worktree="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/bs-worktree"
+# run_worktree <args...>: bs-worktree with its next: line dropped, so this script's is the only one.
+run_worktree() {
+  local err rc=0
+  err="$(mktemp "${TMPDIR:-/tmp}/bs-diff-target.XXXXXX")"
+  "$worktree" "$@" 2>"$err" || rc=$?
+  grep -v '^next: ' "$err" >&2 || true
+  rm -f "$err"
+  return "$rc"
+}
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "bs-diff-target: not inside a git work tree" >&2; exit 2; }
 top="$(git rev-parse --show-toplevel)"
 cd "$top"
 has() { git rev-parse -q --verify "$1^{commit}" >/dev/null 2>&1; }
 
 if [ "${1:-}" = cleanup ]; then
+  mode=cleanup
   [ $# -eq 3 ] || usage
-  "$worktree" remove "$2"
+  run_worktree remove "$2"
   git update-ref -d "refs/bs-review/pr-$3" 2>/dev/null || true
   exit 0
 fi
@@ -48,7 +80,7 @@ case "$target" in
     info="$(gh pr view "$pr" --json baseRefName,headRefOid --jq '"\(.baseRefName) \(.headRefOid)"')" || exit 3
     base="${info%% *}" head="${info##* }"
     git fetch -q origin "$base" "+refs/pull/$n/head:refs/bs-review/pr-$n" || exit 3
-    wt="$("$worktree" add "$head" "review-pr-$n")" || exit 3
+    wt="$(run_worktree add "$head" "review-pr-$n")" || exit 3
     printf 'BASE origin/%s\nDIFF git diff origin/%s...HEAD\nWORKDIR %s\nPR %s\nUNTRACKED none\n' \
       "$base" "$base" "$wt" "$n"
     exit 0 ;;

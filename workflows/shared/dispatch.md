@@ -20,10 +20,7 @@ Run `"{{BS_PLAN_STATE}}" <plan-file>` on the plan branch. It prints one of:
 - Any other state: nothing to resume.
 - **Triage state**: `"{{BS_REVIEW_STATE}}" record <branch> ...` persists passes, fix SHAs, `fix-used`, deferred items, and kept gate changes in a hidden PR-body block; `"{{BS_REVIEW_STATE}}" get <branch>` reads them back across passes and resumed sessions.
 
-**Resume** (in review only; never re-implement):
-- The tree must be clean (`git status --porcelain`).
-- Dirty → stop and list the paths; never stash, discard, or commit them.
-- Clean → follow **Resuming an interrupted run** (recovery).
+**Resume** (in review only; never re-implement): follow **Resuming an interrupted run** (recovery).
 
 ## Dispatch
 Orchestrated workflows (`/bs-exec`, `/bs-loop`, `/bs-review`) dispatch every worker role through **T3 Code (`delegate_task`)** — never native harness subagents.
@@ -44,7 +41,6 @@ Providers: `claude`, `agy`, `codex`, or `host` (= `HOST_PROVIDER`).
     [--implementer-model <m>] [--reviewer-model <m>] \
     [--reachable "<csv>"]
   ```
-  - Non-zero exit → do its stderr `next:` line (**Helpers** (conventions-core)).
   - Prints `PROVIDER`, `VIA`, `MODEL`, `EFFORT`, `ON_UNAVAILABLE`, `NOTE`.
   - `NOTE` is not `none` → say it in chat.
 - **Execute per `VIA`**:
@@ -61,11 +57,11 @@ Providers: `claude`, `agy`, `codex`, or `host` (= `HOST_PROVIDER`).
 
 ### Verify
 1. **Notify**: before dispatching, print `> 🤖 **Dispatching <Role>** to <provider> (<model>). Waiting for completion...` and note the time (`date +%s`). For `Defect Fixer`, also note `PRE_FIX_SHA="$(git rev-parse HEAD)"`.
-2. **Echo** (concise, to keep orchestrator context lean across phases — the child thread holds the full transcript and the PR body holds probe details): under `### 🤖 <Role> Output (<provider>, <M> min)`:
-   - Reviews: verdict, every `High`/`Medium`/`Unresolved`/`Missed` finding, `Out of Scope` one-liners, and a probe count (full probes stay in the child thread and PR `<details>`).
+2. **Echo** (concise; the child thread and PR body keep the details): under `### 🤖 <Role> Output (<provider>, <M> min)`:
+   - Reviews: verdict, every `High`/`Medium`/`Unresolved`/`Missed` finding, `Out of Scope` one-liners, and a probe count.
    - Implementation or fix: commit hashes + one-line summaries, gate line, and any `### Deviations`, `### Side Sightings`, `### Unconfirmed`, `### Tests Changed`, and `### Gate Changes`.
 3. **Check implementer and `Defect Fixer` commits** via `"{{BS_VERIFY_COMMITS}}"`:
-   - If the reply looks cut off or yielded early (e.g. `"Waiting for …"`, missing its final reply or gate line), read the child thread (`t3_thread_read`) first so you pass the real final reply (if one landed) to `bs-verify-commits`.
+   - Pass the real final reply: a reply that looks cut off or yielded early (e.g. `"Waiting for …"`, no gate line, sections split across messages) → read the child thread (`t3_thread_read`) first. The same holds for reviews (step 4).
    ```bash
    "{{BS_VERIFY_COMMITS}}" --branch "$WORKING_BRANCH" --base "$BASE_BRANCH" \
      --role <implementer|fixer> [--since "$PRE_FIX_SHA"] \
@@ -73,7 +69,6 @@ Providers: `claude`, `agy`, `codex`, or `host` (= `HOST_PROVIDER`).
    ```
    - For `Defect Fixer`, always pass `--since "$PRE_FIX_SHA"`.
    - Pass `--unconfirmed` if the reply says elsewhere a Full-gate command did not run (e.g. under `### Unconfirmed`).
-   - Non-zero exit → do its stderr `next:` line (handles wrong branch and dirty tree / **Interrupted worker**).
    - Gate per `GATE` (**Gate runs** (conventions-writer)):
      - `lint-only` → run only the **Lint** command.
      - `lint-and-tests` → run the **Lint** command and the `Test:` files of the phase's tasks (`Defect Fixer`: the test files in `FILES`).
@@ -82,7 +77,6 @@ Providers: `claude`, `agy`, `codex`, or `host` (= `HOST_PROVIDER`).
 4. **Check reviews**:
    - Check the tree: HEAD must still be `$WORKING_BRANCH` and `git status --porcelain` clean (standalone `/bs-review` uses `bs-tree-state` hash instead).
    - Verify the expected reply sections are present.
-   - A reply looks cut off (e.g. split across messages) → read the child thread (`t3_thread_read`) before treating sections as missing.
 5. **Comparing revisions**: never check out another revision into the working tree; use `"{{BS_WORKTREE}}" add`.
 6. **On a mismatch or a red gate**:
    - Implementation → stop and report.
@@ -99,12 +93,7 @@ Providers: `claude`, `agy`, `codex`, or `host` (= `HOST_PROVIDER`).
 Every PR waits, phase PRs included.
 - `/bs-loop` PRs: `bs-review-state ci` runs this wait and applies the mapping below itself (**CI Gate** (bs-loop)).
 - The final plan PR (**Finalize Plan** (bs-exec)): run `"{{BS_PR_CI}}" "<branch>"` yourself; it prints:
-- `pass`: CI passed.
-- `fail <check>,…` → `BLOCKED_BY_CI` with those checks.
-- `skipped`: every check was skipped, so CI did not test this PR.
-  - Not a failure: the review gate keeps its result, with `CI: skipped`.
-  - Never say CI passed.
-  - Tell the user a workflow `if:` excludes the branch.
-- `conflict`: the PR conflicts with its base, so GitHub ran nothing → `BLOCKED_BY_CI` with `merge conflict with <base>`.
-- `none-configured`: CI is `none configured`; not a failure.
-- Exit 3 (gh still failing after the script's own retries, e.g. no PR) → `BLOCKED_BY_CI` with its error. Never retry it yourself.
+  - `pass` or `none-configured`: not a failure.
+  - `skipped`: every check was skipped, so CI did not test this PR. The review gate keeps its result with `CI: skipped`; tell the user a workflow `if:` excludes the branch, and never say CI passed.
+  - `fail <check>,…` or `conflict` → `BLOCKED_BY_CI` with those checks, or with `merge conflict with <base>`.
+  - Exit 3 (gh still failing after its own retries, e.g. no PR) → `BLOCKED_BY_CI` with its error; never retry it yourself.

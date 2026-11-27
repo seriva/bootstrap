@@ -17,15 +17,13 @@ Invoking `/bs-probe` authorizes inspecting `$TARGET_REPO` and running non-destru
    - Slug the mechanism in kebab-case.
 3. **Run Throwaway Probes**:
    - Write and run minimal reproduction or verification scripts.
-   - Location: the host's scratch dir, or `$TARGET_REPO/.probes/` when they need repo-relative imports. Never in source or test dirs.
-   - Before writing the first probe in `.probes/`, exclude it locally: `e="$(git rev-parse --git-path info/exclude)"; grep -qxs '.probes/' "$e" || echo '.probes/' >> "$e"`.
+   - Location, `.probes/` setup, and cleanup per **Probes** (conventions-core).
    - Never modify tracked files.
 4. **Probe Sibling Paths**:
    - List the other callers, input forms, contexts, or targets that pass through the same mechanism.
    - Probe each one, to separate failing siblings from passing controls.
    - Comparing against a `<BASE>` ref during review: check whether another defect also exists on `<BASE>` in a temporary detached worktree outside the repo (`"{{BS_WORKTREE}}" add <BASE> base` prints its dir; `"{{BS_WORKTREE}}" remove <dir>` afterwards).
 5. **Cleanup & Report**:
-   - Delete `.probes/` before any format or lint run or commit (tree-walking linters ignore git's exclude file), and before returning.
    - Invoked standalone → reply with:
      - **Root Cause**: `<root-slug>` (`<mechanism>`, with `file:symbol`)
      - **Repro**: `<snippet or command>` → got `<actual>`, want `<expected>`

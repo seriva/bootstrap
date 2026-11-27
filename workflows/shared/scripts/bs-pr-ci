@@ -29,6 +29,7 @@ trap 'rc=$?; case "$rc" in
 esac' EXIT
 
 [ $# -eq 1 ] && [ -n "$1" ] || usage
+case "$1" in -*) usage ;; esac
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "bs-pr-ci: not inside a git work tree" >&2; exit 2; }
 branch="$1" interval="${BS_PR_CI_POLL_INTERVAL:-10}" limit="${BS_PR_CI_POLL_LIMIT:-3}"
 has_workflows=false

@@ -26,7 +26,7 @@ Invoking `/bs-loop` authorizes discovering target repos, branching, committing, 
 2. **Plan-First**: if the task is non-trivial and standalone and `"{{BS_PLAN_STATE}}" active` lists no plan, run `/bs-plan` and STOP. Present the plan and remind the user to commit it with `plans/roadmap.md` before running `/bs-exec`.
 
 ### Branch & Implement
-1. **Clean tree**: require a clean tree (`git status --porcelain`). Dirty → stop and list the paths; never stash, discard, or commit them.
+1. Require a **Clean tree** (conventions-core).
 2. **Interrupted run**: check `"{{BS_REVIEW_STATE}}" "$(git rev-parse --abbrev-ref HEAD)"` (**States** (dispatch)). If it is in review, or `gated:BLOCKED_BY_DEFECTS` and the user asks to fix it, read `{{BS_RECOVERY}}` and follow **Resuming an interrupted run** (recovery).
 3. **`$BASE_BRANCH`**: run `git fetch origin` first. It must exist as `origin/$BASE_BRANCH`, else stop and ask. First rule that applies:
    1. The caller's or user's base (e.g. `feat/<plan-slug>`).
@@ -52,18 +52,15 @@ Invoking `/bs-loop` authorizes discovering target repos, branching, committing, 
 
 ### Review
 Review `$WORKING_BRANCH` against `origin/$BASE_BRANCH`. Always diff against the fetched remote ref; the local base branch may be stale in a worktree.
-
-> [!IMPORTANT]
-> **NO SELF-REVIEW:** every pass is a fresh-context `Code Reviewer` on `REVIEWER` via `delegate_task`.
-> - `REVIEWER` unreachable (**Providers, Models & Routing** (dispatch)) → leave the PR in **Draft**, tell the user, and return the PR URL with `REVIEW_STATUS=PENDING_REVIEW`.
-> - Notify the user on each dispatch and echo a concise summary per **Verify** (dispatch).
+- `REVIEWER` unreachable (**Providers, Models & Routing** (dispatch)) → leave the PR in **Draft**, tell the user, and return the PR URL with `REVIEW_STATUS=PENDING_REVIEW`.
+- **Targeted**: the task's `$TASK`, `Done when:`, or `Test:` targets that bug or feature (an incomplete sibling), so it is never auto-recorded as `(pre-existing)`.
 
 **Flow** (say each promotion, re-filing, and decision in chat):
 1. **Pass 1**: dispatch `Code Reviewer (Pass 1)` (**Prompts**), zero history, `git diff origin/$BASE_BRANCH...HEAD`.
 2. **Check & Triage** (even on `LGTM`):
-   - Save the reviewer reply to a temp file outside the repo, run `"{{BS_CHECK_REVIEW}}" --pass 1 --base "origin/$BASE_BRANCH" <reply.md>` (non-zero exit → do its `next:` line), and remove the temp file.
-   - **Same-root check**: inspect every `SUSPECT_OWNED` line from `bs-check-review`, any behavioural `### Low` item, any implementer `### Side Sightings` / `### Unconfirmed` Pass 1 skipped, and any line the diff adds to `plans/follow-ups.md`. Promote a candidate to Medium if its repro runs through a High/Medium finding's mechanism or **Owned** (conventions-core) code (even if on `<BASE>` or prescribed by the plan). Exception: if it is **Pre-existing** (conventions-core) outside an unmarked High/Medium finding (and the task's `$TASK` / `Done when:` / `Test:` does not target that bug/feature), mark `(pre-existing)` to auto-record below. Never demote a finding yourself.
-   - **Auto-record `(pre-existing)`** (even on `SUMMARY=clean`): every `PRE_EXISTING` line (unless the task's `$TASK` / `Done when:` / `Test:` targets that bug/feature — an incomplete sibling, so keep it as Medium for the Fix Turn) is automatically recorded to `plans/follow-ups.md` without pausing to ask: note it in chat and persist it via `--defer "<item>"` below so Pass 2 treats it as deferred and **Record Follow-ups** logs it.
+   - Save the reviewer reply to a temp file outside the repo, run `"{{BS_CHECK_REVIEW}}" --pass 1 --base "origin/$BASE_BRANCH" <reply.md>`, and remove the temp file.
+   - **Same-root check**: inspect every `SUSPECT_OWNED` line from `bs-check-review`, any behavioural `### Low` item, any implementer `### Side Sightings` / `### Unconfirmed` Pass 1 skipped, and any line the diff adds to `plans/follow-ups.md`. Promote a candidate to Medium if its repro runs through a High/Medium finding's mechanism or **Owned** (conventions-core) code (even if on `<BASE>` or prescribed by the plan). Exception: **Pre-existing** (conventions-core) outside an unmarked High/Medium finding and not **Targeted** → mark `(pre-existing)` to auto-record below. Never demote a finding yourself.
+   - **Auto-record `(pre-existing)`** (even on `SUMMARY=clean`; never ask): note every `PRE_EXISTING` line in chat and persist it via `--defer "<item>"` below, so Pass 2 treats it as deferred and **Record Follow-ups** logs it. A **Targeted** one stays Medium for the Fix Turn.
    - **User decisions**: ask once in one message (even under `/bs-exec --auto`) for every `DECISION` line (`plan-design`, `gate-change`) plus any **Plan impact** item below.
    - Persist via `"{{BS_REVIEW_STATE}}" record "$WORKING_BRANCH" --pass "Pass 1" [--defer "<item>"]... [--keep-gate "<item>"]...`.
 3. **Act**, first that applies:
@@ -87,11 +84,11 @@ Review `$WORKING_BRANCH` against `origin/$BASE_BRANCH`. Always diff against the 
 - It commits the fix as `"fix(<scope>): address review feedback"`. Verify it per **Verify** (dispatch), then `git push` and record `"{{BS_REVIEW_STATE}}" record "$WORKING_BRANCH" --fix-used [--fix-sha <sha>]... --pass "Fix"` → **Pass 2**.
 - Red gate → still push and run `"{{BS_REVIEW_STATE}}" record "$WORKING_BRANCH" --fix-used --pass "Fix"` so the PR records the spent Fix Turn for **States** (dispatch), then `BLOCKED_BY_DEFECTS` (**Finalize PR**).
 
-**Pass 2** (terminal): read `"{{BS_REVIEW_STATE}}" get "$WORKING_BRANCH"`, then dispatch a new `Code Reviewer (Pass 2)` (**Prompts**), zero history.
-1. **Check its filing** (its `LGTM` token alone never decides): save the reply to a temp file, run `"{{BS_CHECK_REVIEW}}" --pass 2 --base "origin/$BASE_BRANCH" --fix-shas "<FIX_SHAS>" <reply.md>` (non-zero exit → do its `next:` line), and remove the temp file.
+**Pass 2** (terminal): read `"{{BS_REVIEW_STATE}}" get "$WORKING_BRANCH"`, then dispatch a new `Code Reviewer (Pass 2)` (**Prompts**), zero history. Verify it per **Verify** (dispatch).
+1. **Check its filing** (its `LGTM` token alone never decides): save the reply to a temp file, run `"{{BS_CHECK_REVIEW}}" --pass 2 --base "origin/$BASE_BRANCH" --fix-shas "<FIX_SHAS>" <reply.md>`, and remove the temp file.
    - Move to `### Unresolved`: any fix regression against `<BASE>`, and any `SUSPECT_OWNED` / `### Out of Scope` item whose repro runs through a verified finding's mechanism or code the fix changed (a partial fix).
    - Move to `### Missed`: any other `SUSPECT_OWNED` / `### Out of Scope` item or `Defect Fixer` sighting that is **Owned** (conventions-core) (append `(pre-existing)` if **Pre-existing** (conventions-core) on `origin/$BASE_BRANCH`).
-2. **Record pass & auto-record `(pre-existing)`** (even on `SUMMARY=clean`): auto-record every `(pre-existing)` `### Missed` item (`PRE_EXISTING` lines — unless the task's `$TASK` / `Done when:` / `Test:` targets that bug/feature, in which case keep it as a non-`(pre-existing)` `### Missed` item — plus any `SUSPECT_OWNED` item moved to `### Missed (pre-existing)`): note each in chat and persist via `"{{BS_REVIEW_STATE}}" record "$WORKING_BRANCH" --pass "Pass 2" [--defer "<item>"]...` so **Record Follow-ups** logs them without pausing to ask.
+2. **Record pass & auto-record `(pre-existing)`** (even on `SUMMARY=clean`; never ask): every `PRE_EXISTING` line, plus any `SUSPECT_OWNED` item moved to `### Missed (pre-existing)`; a **Targeted** one stays a plain `### Missed` item. Note each in chat and run `"{{BS_REVIEW_STATE}}" record "$WORKING_BRANCH" --pass "Pass 2" [--defer "<item>"]...`.
 3. **Outcome**, first that applies:
    - Any `### Unresolved` → `BLOCKED_BY_DEFECTS` (stop). List any remaining `### Missed` items with them.
    - Any non-`(pre-existing)` `### Missed` → ask the user, even under `/bs-exec --auto`, once per root per run: fix now (read `{{BS_RECOVERY}}` and run **User-granted Fix Turn** (recovery)), or record (persist each via `"{{BS_REVIEW_STATE}}" record "$WORKING_BRANCH" --defer "<item>"`, then `PASSED`; **Record Follow-ups** logs them).
@@ -107,18 +104,16 @@ Review `$WORKING_BRANCH` against `origin/$BASE_BRANCH`. Always diff against the 
      - confirmed `### Side Sightings` that were neither fixed nor refuted.
    - If the file changed: `git add -- plans/follow-ups.md`, **Safe commit** (conventions-writer) `"docs(<scope>): record review follow-ups"` on `$WORKING_BRANCH` (`--` `plans/follow-ups.md`), and `git push`.
 2. **Update PR Body**:
-   - With the host's file-write tool, write a report to a new temp file outside the repo (the host's scratch dir, else the literal path `mktemp` prints; never a fixed name, as runs can overlap). Using `PASSES`, `FIX_SHAS`, `KEPT_GATE`, and `DEFERRED` from `"{{BS_REVIEW_STATE}}" get "$WORKING_BRANCH"`, the report holds:
+   - With the host's file-write tool, write a report to a new temp file outside the repo (never a fixed name; runs can overlap). Using `PASSES`, `FIX_SHAS`, `KEPT_GATE`, and `DEFERRED` from `"{{BS_REVIEW_STATE}}" get "$WORKING_BRANCH"`, the report holds:
      - **Findings**: `High`/`Medium`/`Low`/`Out of Scope`, any `### Unresolved`, `### Missed`, and `### Unconfirmed`, the fix commit hash(es) or `None required`, `Gate changes kept: <file: what it stops checking>` or `None`, `Deferred: <item>` or `None`, and `Follow-ups: <N> recorded in plans/follow-ups.md` or `None`;
      - a collapsed `<details>` block containing `### Verification Probes Run`.
-   - Run `"{{BS_REVIEW_STATE}}" set "$WORKING_BRANCH" <PASSED | BLOCKED_BY_DEFECTS> "<passes run>" <report.md>` (using `PASSES` from `get` as `<passes run>`). It replaces the **Draft PR** placeholder with the Gate line and the report, preserves the state block, and prints the state it reads back.
+   - Run `"{{BS_REVIEW_STATE}}" set "$WORKING_BRANCH" <PASSED | BLOCKED_BY_DEFECTS> "<passes run>" <report.md>` (using `PASSES` from `get` as `<passes run>`).
    - Remove the temp file.
 3. **CI Gate**:
    - `BLOCKED_BY_DEFECTS` → leave the PR in **Draft**, alert the user, and return the PR URL + `REVIEW_STATUS`.
    - `PASSED` → wait until **Record Follow-ups** (including its push) and **Update PR Body** have finished so CI watches the PR's last commit, then run `"{{BS_REVIEW_STATE}}" ci "$WORKING_BRANCH" "<passes run>"` (using `PASSES`):
-     - It waits for CI, rewrites the Gate line from the result, and marks the PR ready when it stays `PASSED`. A failing check or merge conflict makes it `BLOCKED_BY_CI` and keeps the PR in **Draft**.
-     - Take `REVIEW_STATUS` from its first output line (`<REVIEW_STATUS> <ci-result>`).
-     - Do its second output line (`next: <action>`), e.g. tell the user when CI was skipped or alert them when blocked.
-     - Non-zero exit → do its stderr `next:` line (**Helpers** (conventions-core)), and leave the PR in **Draft**.
+     - It waits for CI, rewrites the Gate line, and marks the PR ready only when it stays `PASSED` (a failing check or merge conflict → `BLOCKED_BY_CI`, the PR stays in **Draft**).
+     - Take `REVIEW_STATUS` from its first output line, then do its `next:` line (non-zero exit: also leave the PR in **Draft**).
 
 ## Prompts
 Route every worker per **Dispatch** (dispatch). Fill all placeholders before sending.

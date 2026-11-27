@@ -19,9 +19,25 @@ Usage: bs-plan-state active | <plan-file> | drift <plan-file> <base-branch>
 Tasks are the "- [ ] Task" / "- [x] Task" lines under "## Implementation Tasks", up to the
 next "## " heading, outside fenced code blocks.
 Exit: 0 ok, 2 usage, missing file, no **Status:** line, or no task boxes
+On a non-zero exit, the last stderr line is "next: <action>" for the caller.
 EOF
   exit 2
 }
+
+next_on_failure() {
+  case "$1" in
+    2) echo "fix the call as the error above says (run it inside the target repo on an existing plan file); if the plan itself lacks a **Status:** line or task boxes, stop and report" ;;
+    *) echo "unexpected failure (error above): stop and report the error" ;;
+  esac
+}
+on_exit() {
+  local rc=$? n
+  if [ "$rc" -ne 0 ]; then
+    n="$(next_on_failure "$rc")"
+    [ -z "$n" ] || echo "next: $n" >&2
+  fi
+}
+trap on_exit EXIT
 
 [ $# -ge 1 ] || usage
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "bs-plan-state: not inside a git work tree" >&2; exit 2; }
